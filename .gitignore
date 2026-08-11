@@ -4,3 +4,4 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 *.xcresult
+tmp/

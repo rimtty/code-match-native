@@ -123,10 +123,10 @@ final class ScannerViewModel: ObservableObject {
         feedback.scanAccepted()
         camera.stop()
         isCameraRunning = false
-        finishComparison()
+        finishComparison(resultSoundDelay: 0.28)
     }
 
-    private func finishComparison() {
+    private func finishComparison(resultSoundDelay: TimeInterval = 0) {
         let result = CodeMatcher.compare(qrValue, barcodeValue)
         step = .result(result)
         message = result == .match
@@ -135,7 +135,11 @@ final class ScannerViewModel: ObservableObject {
         if result == .match {
             historyStore.recordMatch(code: qrValue)
         }
-        result == .match ? feedback.success() : feedback.failure()
+        if result == .match {
+            feedback.success(after: resultSoundDelay)
+        } else {
+            feedback.failure()
+        }
     }
 }
 
