@@ -1,0 +1,59 @@
+#!/usr/bin/env swift
+
+import AppKit
+import CoreImage
+import Foundation
+
+let outputDirectory = CommandLine.arguments.dropFirst().first ?? "TestResources/Generated"
+let outputURL = URL(fileURLWithPath: outputDirectory, isDirectory: true)
+try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
+
+let context = CIContext()
+
+func write(_ image: CIImage, name: String, padding: CGFloat = 32) throws {
+    let translated = image.transformed(by: .init(translationX: padding, y: padding))
+    let canvas = CIImage(color: .white).cropped(to: CGRect(
+        x: 0,
+        y: 0,
+        width: image.extent.width + padding * 2,
+        height: image.extent.height + padding * 2
+    ))
+    let composed = translated.composited(over: canvas)
+    guard let cgImage = context.createCGImage(composed, from: composed.extent) else {
+        throw CocoaError(.fileWriteUnknown)
+    }
+    let bitmap = NSBitmapImageRep(cgImage: cgImage)
+    guard let data = bitmap.representation(using: .png, properties: [:]) else {
+        throw CocoaError(.fileWriteUnknown)
+    }
+    try data.write(to: outputURL.appendingPathComponent(name))
+}
+
+func qr(_ value: String) throws -> CIImage {
+    guard
+        let filter = CIFilter(name: "CIQRCodeGenerator"),
+        let data = value.data(using: .utf8)
+    else { throw CocoaError(.featureUnsupported) }
+    filter.setValue(data, forKey: "inputMessage")
+    filter.setValue("M", forKey: "inputCorrectionLevel")
+    guard let output = filter.outputImage else { throw CocoaError(.featureUnsupported) }
+    return output.transformed(by: .init(scaleX: 12, y: 12))
+}
+
+func code128(_ value: String) throws -> CIImage {
+    guard
+        let filter = CIFilter(name: "CICode128BarcodeGenerator"),
+        let data = value.data(using: .ascii)
+    else { throw CocoaError(.featureUnsupported) }
+    filter.setValue(data, forKey: "inputMessage")
+    filter.setValue(12, forKey: "inputQuietSpace")
+    guard let output = filter.outputImage else { throw CocoaError(.featureUnsupported) }
+    return output.transformed(by: .init(scaleX: 4, y: 6))
+}
+
+let reference = "GA141KR9PA02@092D10"
+try write(qr(reference), name: "reference-qr.png", padding: 48)
+try write(code128(reference), name: "reference-code128.png", padding: 48)
+try write(code128("GA141KR9PA02@092D11"), name: "mismatch-code128.png", padding: 48)
+
+print("Generated test codes in \(outputURL.path)")
