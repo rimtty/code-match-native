@@ -4,8 +4,9 @@ import UIKit
 @MainActor
 final class FeedbackPlayer {
     func scanAccepted() {
+        // A phase transition should feel responsive without sounding like a
+        // camera shutter. Live metadata scanning never captures a still image.
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        AudioServicesPlaySystemSound(1108)
     }
 
     func success() {

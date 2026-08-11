@@ -86,6 +86,8 @@ final class CameraScanner: NSObject, @unchecked Sendable {
         }
         session.addInput(input)
 
+        // Decode QR/Code 128 values directly from live video frames. This app
+        // intentionally has no AVCapturePhotoOutput and never takes a photo.
         let output = AVCaptureMetadataOutput()
         guard session.canAddOutput(output) else {
             reportFailure("コード読み取り機能を開始できませんでした。")

@@ -1,57 +1,89 @@
 import SwiftUI
 
 struct ScannerScreen: View {
-    @StateObject private var viewModel = ScannerViewModel()
+    @ObservedObject var historyStore: HistoryStore
+    let sessionID: UUID
+    @StateObject private var viewModel: ScannerViewModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var showsDemoTools = false
+    @State private var showsEndConfirmation = false
+
+    init(historyStore: HistoryStore, sessionID: UUID) {
+        self.historyStore = historyStore
+        self.sessionID = sessionID
+        _viewModel = StateObject(wrappedValue: ScannerViewModel(historyStore: historyStore))
+    }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                AppTheme.paper.ignoresSafeArea()
+        ZStack {
+            AppTheme.paper.ignoresSafeArea()
+            VStack(spacing: 0) {
+                sessionStatusBar
+
                 ScrollView {
                     VStack(spacing: 22) {
-                        hero
                         progress
                         scannerCard
                         privacyNote
                         demoTools
                     }
                     .padding(.horizontal, 18)
+                    .padding(.top, 18)
                     .padding(.bottom, 30)
                 }
             }
-            .toolbar { brandToolbar }
-            .toolbarBackground(AppTheme.paper, for: .navigationBar)
-            .onChange(of: scenePhase) { _, phase in
-                if phase != .active, viewModel.isCameraRunning {
-                    viewModel.toggleCamera()
-                }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active, viewModel.isCameraRunning {
+                viewModel.toggleCamera()
             }
         }
         .tint(AppTheme.green)
         .preferredColorScheme(.light)
+        .alert("このセッションを終了しますか？", isPresented: $showsEndConfirmation) {
+            Button("キャンセル", role: .cancel) {}
+            Button("終了する", role: .destructive) {
+                viewModel.reset()
+                historyStore.endActiveSession()
+            }
+        } message: {
+            Text("一致した\(matchedCount)件は履歴に保存されます。")
+        }
     }
 
-    private var hero: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("SCAN & VERIFY")
-                .font(.caption2.weight(.black))
-                .tracking(2.2)
-                .foregroundStyle(AppTheme.green)
+    private var sessionStatusBar: some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("照合セッション")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white.opacity(0.66))
+                Text("\(matchedCount)件照合済み")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+                    .accessibilityIdentifier("sessionMatchCount")
+            }
 
-            Text("2つのコードを、\nその場で照合。")
-                .font(.system(size: 36, weight: .bold, design: .rounded))
-                .tracking(-1.2)
-                .foregroundStyle(AppTheme.ink)
+            Spacer()
 
-            Text("QRコードとCode 128バーコードを順番にカメラへ。内容が違えば、画面・音・振動ですぐにお知らせします。")
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.muted)
-                .lineSpacing(5)
+            Button("終了") {
+                showsEndConfirmation = true
+            }
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(AppTheme.ink)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 9)
+            .background(AppTheme.lime, in: Capsule())
+            .accessibilityIdentifier("endSessionButton")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 16)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 13)
+        .background(AppTheme.ink)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var matchedCount: Int {
+        historyStore.sessions.first(where: { $0.id == sessionID })?.matchedCount ?? 0
     }
 
     private var progress: some View {
@@ -207,7 +239,7 @@ struct ScannerScreen: View {
             }
 
             if viewModel.step.progress == 3 || !viewModel.qrValue.isEmpty {
-                Button("最初からやり直す", action: viewModel.reset)
+                Button("次のコードを照合", action: viewModel.reset)
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(AppTheme.ink)
                     .frame(maxWidth: .infinity)
@@ -246,26 +278,6 @@ struct ScannerScreen: View {
         .foregroundStyle(AppTheme.muted)
         .padding(14)
         .background(.white.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
-    }
-
-    @ToolbarContentBuilder
-    private var brandToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            HStack(spacing: 9) {
-                Image(systemName: "viewfinder.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(AppTheme.ink, AppTheme.lime)
-                Text("CODE MATCH")
-                    .font(.caption.weight(.black))
-                    .tracking(1.5)
-                    .foregroundStyle(AppTheme.ink)
-            }
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-            Label("端末内で照合", systemImage: "checkmark.shield.fill")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(AppTheme.green)
-        }
     }
 
     private var headerTitle: String {
@@ -450,5 +462,5 @@ private struct CornerFrameShape: Shape {
 }
 
 #Preview("Scanning") {
-    ScannerScreen()
+    RootTabView()
 }

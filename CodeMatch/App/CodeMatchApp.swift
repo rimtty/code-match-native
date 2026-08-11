@@ -4,7 +4,7 @@ import SwiftUI
 struct CodeMatchApp: App {
     var body: some Scene {
         WindowGroup {
-            ScannerScreen()
+            RootTabView()
         }
     }
 }

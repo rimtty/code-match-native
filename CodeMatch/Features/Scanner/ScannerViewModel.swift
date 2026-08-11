@@ -13,6 +13,7 @@ final class ScannerViewModel: ObservableObject {
 
     let camera = CameraScanner()
     private let feedback = FeedbackPlayer()
+    private let historyStore: HistoryStore
     private var scanLocked = false
     private var barcodeCandidate: (value: String, count: Int, date: Date)?
 
@@ -24,7 +25,8 @@ final class ScannerViewModel: ObservableObject {
         }
     }
 
-    init() {
+    init(historyStore: HistoryStore) {
+        self.historyStore = historyStore
         camera.delegate = self
 
         if ProcessInfo.processInfo.arguments.contains("-demoMatch") {
@@ -33,6 +35,7 @@ final class ScannerViewModel: ObservableObject {
             barcodeValue = reference
             step = .result(.match)
             message = "2つのコードは一致しています。"
+            historyStore.recordMatch(code: reference)
         }
     }
 
@@ -129,6 +132,9 @@ final class ScannerViewModel: ObservableObject {
         message = result == .match
             ? "2つのコードは一致しています。"
             : "コードが一致しません。取り違えを確認してください。"
+        if result == .match {
+            historyStore.recordMatch(code: qrValue)
+        }
         result == .match ? feedback.success() : feedback.failure()
     }
 }
