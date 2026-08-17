@@ -51,9 +51,11 @@ func code128(_ value: String) throws -> CIImage {
     return output.transformed(by: .init(scaleX: 4, y: 6))
 }
 
-let reference = "GA141KR9PA02@092D10"
-try write(qr(reference), name: "reference-qr.png", padding: 48)
-try write(code128(reference), name: "reference-code128.png", padding: 48)
-try write(code128("GA141KR9PA02@092D11"), name: "mismatch-code128.png", padding: 48)
+// 実ラベル仕様: QRは納品書兼現品票の固定長レコード、Code 128は現品票の「品番@管理コード」。
+// 品番 BCJH-52-81GG のペアが一致し、BCJH-55-81GG の現品票は不一致になる。
+let referenceQR = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
+try write(qr(referenceQR), name: "reference-qr.png", padding: 48)
+try write(code128("BCJH-52-81GG@1N5X0C"), name: "reference-code128.png", padding: 48)
+try write(code128("BCJH-55-81GG@1KVV0C"), name: "mismatch-code128.png", padding: 48)
 
 print("Generated test codes in \(outputURL.path)")

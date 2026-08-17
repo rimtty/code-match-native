@@ -2,23 +2,68 @@ import XCTest
 @testable import CodeMatch
 
 final class CodeMatcherTests: XCTestCase {
-    func testEqualValuesMatch() {
+    // 実ラベルからデコードした実データ
+    private let qrPayload = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
+    private let barcodePayload = "BCJH-52-81GG@1N5X0C"
+
+    func testPartNumberFromBarcode() {
+        XCTAssertEqual(CodeMatcher.partNumber(fromBarcode: barcodePayload), "BCJH5281GG")
+        XCTAssertEqual(CodeMatcher.partNumber(fromBarcode: "KAAA-55-D86B@0Y5U0I"), "KAAA55D86B")
+        XCTAssertEqual(CodeMatcher.partNumber(fromBarcode: "BCJH-52-81GG"), "BCJH5281GG")
+        XCTAssertNil(CodeMatcher.partNumber(fromBarcode: "@ABC123"))
+    }
+
+    func testPartNumberFromQR() {
+        XCTAssertEqual(CodeMatcher.partNumber(fromQR: qrPayload), "BCJH5281GG")
+        // 枝番が空白のQR(納品書側の枝番欄が空)でも品目番号は取れる
         XCTAssertEqual(
-            CodeMatcher.compare("GA141KR9PA02@092D10", "GA141KR9PA02@092D10"),
+            CodeMatcher.partNumber(fromQR: "DAYA005100DFR55581GA  0001000000010000Y      000000BYBYTLYB16   0*"),
+            "DFR55581GA"
+        )
+        // カード番号フォーマットでない場合は固定位置抽出をしない
+        XCTAssertNil(CodeMatcher.partNumber(fromQR: "HELLO WORLD 1234567890"))
+        XCTAssertNil(CodeMatcher.partNumber(fromQR: "SHORT"))
+    }
+
+    func testRealPairMatches() {
+        XCTAssertEqual(CodeMatcher.compare(qrPayload: qrPayload, barcodePayload: barcodePayload), .match)
+    }
+
+    func testDifferentPartNumberMismatches() {
+        // BCJH-55-81GG (LH) と BCJH-52-81GG (RH) の取り違え
+        XCTAssertEqual(
+            CodeMatcher.compare(qrPayload: qrPayload, barcodePayload: "BCJH-55-81GG@1KVV0C"),
+            .mismatch
+        )
+    }
+
+    func testLotSuffixDifferenceStillMatches() {
+        // バーコードの@以降(管理コード)は品番照合に影響しない
+        XCTAssertEqual(
+            CodeMatcher.compare(qrPayload: qrPayload, barcodePayload: "BCJH-52-81GG@ZZZZZZ"),
             .match
         )
     }
 
-    func testSurroundingWhitespaceIsIgnored() {
-        XCTAssertEqual(CodeMatcher.compare("  ABC\n", "ABC"), .match)
+    func testNonStandardQRFallsBackToContainment() {
+        XCTAssertEqual(
+            CodeMatcher.compare(qrPayload: "PART:BCJH-52-81GG;QTY:12", barcodePayload: barcodePayload),
+            .match
+        )
+        XCTAssertEqual(
+            CodeMatcher.compare(qrPayload: "PART:DFR5-55-8SDA;QTY:30", barcodePayload: barcodePayload),
+            .mismatch
+        )
     }
 
-    func testComparisonIsCaseSensitive() {
-        XCTAssertEqual(CodeMatcher.compare("ABC", "abc"), .mismatch)
+    func testEmptyPayloadsMismatch() {
+        XCTAssertEqual(CodeMatcher.compare(qrPayload: "", barcodePayload: ""), .mismatch)
+        XCTAssertEqual(CodeMatcher.compare(qrPayload: qrPayload, barcodePayload: ""), .mismatch)
     }
 
-    func testDifferentValuesMismatch() {
-        XCTAssertEqual(CodeMatcher.compare("GA141KR9PA02@092D10", "GA141KR9PA02@092D11"), .mismatch)
+    func testFormatPartNumber() {
+        XCTAssertEqual(CodeMatcher.format(partNumber: "BCJH5281GG"), "BCJH-52-81GG")
+        XCTAssertEqual(CodeMatcher.format(partNumber: "ABC"), "ABC")
     }
 }
 
@@ -73,6 +118,25 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(store.sessions.count, 2)
         XCTAssertEqual(store.sessions[0].entries.map(\.code), ["SECOND"])
         XCTAssertEqual(store.sessions[1].entries.map(\.code), ["FIRST"])
+    }
+
+    func testDeleteSessionsRemovesAndPersists() {
+        let storageURL = temporaryStorageURL()
+        defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
+        let store = HistoryStore(storageURL: storageURL)
+        store.beginSession()
+        store.recordMatch(code: "FIRST")
+        store.endActiveSession()
+        store.beginSession()
+        store.endActiveSession()
+
+        store.deleteSessions(at: IndexSet(integer: 0))
+
+        XCTAssertEqual(store.sessions.count, 1)
+        XCTAssertEqual(store.sessions.first?.entries.map(\.code), ["FIRST"])
+
+        let restored = HistoryStore(storageURL: storageURL)
+        XCTAssertEqual(restored.sessions.count, 1)
     }
 
     private func temporaryStorageURL() -> URL {

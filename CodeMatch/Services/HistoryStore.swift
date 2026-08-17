@@ -50,6 +50,11 @@ final class HistoryStore: ObservableObject {
         persist()
     }
 
+    func deleteSessions(at offsets: IndexSet) {
+        sessions.remove(atOffsets: offsets)
+        persist()
+    }
+
     private func persist() {
         do {
             let directory = storageURL.deletingLastPathComponent()

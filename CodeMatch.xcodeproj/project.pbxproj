@@ -23,6 +23,10 @@
 		A1000000000000000000000E /* HistoryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* HistoryModels.swift */; };
 		A1000000000000000000000F /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* HistoryStore.swift */; };
 		A10000000000000000000010 /* HistoryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* HistoryScreen.swift */; };
+		A10000000000000000000011 /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000017 /* SettingsScreen.swift */; };
+		A10000000000000000000012 /* success1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000018 /* success1.mp3 */; };
+		A10000000000000000000013 /* success2.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* success2.mp3 */; };
+		A10000000000000000000014 /* Fail1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001A /* Fail1.mp3 */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,6 +67,10 @@
 		A20000000000000000000014 /* HistoryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryModels.swift; sourceTree = "<group>"; };
 		A20000000000000000000015 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
 		A20000000000000000000016 /* HistoryScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryScreen.swift; sourceTree = "<group>"; };
+		A20000000000000000000017 /* SettingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreen.swift; sourceTree = "<group>"; };
+		A20000000000000000000018 /* success1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = success1.mp3; sourceTree = "<group>"; };
+		A20000000000000000000019 /* success2.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = success2.mp3; sourceTree = "<group>"; };
+		A2000000000000000000001A /* Fail1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Fail1.mp3; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -154,6 +162,7 @@
 			children = (
 				A7000000000000000000000C /* Scanner */,
 				A7000000000000000000000D /* History */,
+				A7000000000000000000000E /* Settings */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -164,6 +173,7 @@
 				A20000000000000000000009 /* Assets.xcassets */,
 				A2000000000000000000000B /* Info.plist */,
 				A2000000000000000000000A /* PrivacyInfo.xcprivacy */,
+				A7000000000000000000000F /* Sounds */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -210,6 +220,24 @@
 				A20000000000000000000016 /* HistoryScreen.swift */,
 			);
 			path = History;
+			sourceTree = "<group>";
+		};
+		A7000000000000000000000E /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000017 /* SettingsScreen.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		A7000000000000000000000F /* Sounds */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000018 /* success1.mp3 */,
+				A20000000000000000000019 /* success2.mp3 */,
+				A2000000000000000000001A /* Fail1.mp3 */,
+			);
+			path = Sounds;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -319,6 +347,9 @@
 			files = (
 				A10000000000000000000009 /* Assets.xcassets in Resources */,
 				A1000000000000000000000A /* PrivacyInfo.xcprivacy in Resources */,
+				A10000000000000000000012 /* success1.mp3 in Resources */,
+				A10000000000000000000013 /* success2.mp3 in Resources */,
+				A10000000000000000000014 /* Fail1.mp3 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -355,6 +386,7 @@
 				A1000000000000000000000E /* HistoryModels.swift in Sources */,
 				A1000000000000000000000F /* HistoryStore.swift in Sources */,
 				A10000000000000000000010 /* HistoryScreen.swift in Sources */,
+				A10000000000000000000011 /* SettingsScreen.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

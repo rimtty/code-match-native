@@ -1,6 +1,6 @@
 # Code Match for iOS
 
-`code-match` SPAの基本機能を、SwiftUIとAVFoundationで再実装したiOSネイティブアプリです。QRコードを先に、Code 128バーコードを次に読み取り、前後の空白・改行だけを除いて完全一致を判定します。一致したコードは作業セッション単位の履歴として端末内だけに保存され、端末外へ送信しません。
+`code-match` SPAの基本機能を、SwiftUIとAVFoundationで再実装したiOSネイティブアプリです。納品書兼現品票のQRコードを先に、現品票のCode 128バーコードを次に読み取り、QRの固定長レコードから抽出した品目番号(10桁)とバーコードの`@`より前の品番を照合します（データ仕様は [docs/qr-barcode-spec-analysis.html](docs/qr-barcode-spec-analysis.html) を参照）。一致したコードは作業セッション単位の履歴として端末内だけに保存され、端末外へ送信しません。
 
 ## すぐに実行する
 

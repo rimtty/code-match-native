@@ -5,7 +5,8 @@ struct RootTabView: View {
 
     init() {
         let store = HistoryStore()
-        if ProcessInfo.processInfo.arguments.contains("-demoMatch") {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-demoMatch") || arguments.contains("-demoMismatch") {
             store.beginSession()
         }
         _historyStore = StateObject(wrappedValue: store)
@@ -21,6 +22,11 @@ struct RootTabView: View {
             HistoryScreen(historyStore: historyStore)
                 .tabItem {
                     Label("履歴", systemImage: "clock.arrow.circlepath")
+                }
+
+            SettingsScreen()
+                .tabItem {
+                    Label("設定", systemImage: "gearshape.fill")
                 }
         }
         .tint(AppTheme.green)
