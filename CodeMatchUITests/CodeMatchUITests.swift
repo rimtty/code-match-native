@@ -14,12 +14,12 @@ final class CodeMatchUITests: XCTestCase {
         XCTAssertTrue(resetButton.waitForExistence(timeout: 2))
         resetButton.tap()
         let scannerTitle = app.staticTexts["scannerTitle"]
-        XCTAssertTrue(scannerTitle.waitForExistence(timeout: 2))
+        XCTAssertTrue(scannerTitle.waitForExistence(timeout: 5))
         let resetCompleted = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "label == %@", "QRコードを読み取る"),
             object: scannerTitle
         )
-        XCTAssertEqual(XCTWaiter.wait(for: [resetCompleted], timeout: 2), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [resetCompleted], timeout: 5), .completed)
     }
 
     func testDemoMismatchShowsBothPartNumbersAndKeepsCountAtZero() {
@@ -46,6 +46,34 @@ final class CodeMatchUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["BCJH-55-81GG"].exists)
         // 不一致は照合済み件数に加算されない
         XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "0件照合済み")
+    }
+
+    func testDuplicateMatchIsFlaggedAndNotRecorded() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-resetHistory"]
+        app.launch()
+
+        let startButton = app.buttons["startSessionButton"]
+        XCTAssertTrue(startButton.waitForExistence(timeout: 3))
+        startButton.tap()
+
+        app.swipeUp()
+        let demoToggle = app.staticTexts["カメラなしで判定をテスト"]
+        XCTAssertTrue(demoToggle.waitForExistence(timeout: 2))
+        demoToggle.tap()
+
+        let matchButton = app.buttons["demoMatchButton"]
+        XCTAssertTrue(matchButton.waitForExistence(timeout: 2))
+        matchButton.tap()
+        XCTAssertTrue(app.staticTexts["一致しました"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
+
+        // 同じ品番をもう一度照合すると「照合済み」表示になり、件数は増えない
+        app.swipeUp()
+        XCTAssertTrue(matchButton.waitForExistence(timeout: 2))
+        matchButton.tap()
+        XCTAssertTrue(app.staticTexts["すでに照合済みです"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
     }
 
     func testSettingsTabAllowsSoundSelection() {

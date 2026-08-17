@@ -51,6 +51,7 @@ private struct ScannerFlowView: View {
 
 private struct SessionStartView: View {
     @ObservedObject var historyStore: HistoryStore
+    @State private var sessionName = ""
 
     var body: some View {
         ZStack {
@@ -89,8 +90,21 @@ private struct SessionStartView: View {
                                 .foregroundStyle(AppTheme.muted)
                         }
 
+                        TextField("セッション名（任意）", text: $sessionName)
+                            .font(.subheadline)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(AppTheme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(AppTheme.line, lineWidth: 1)
+                            }
+                            .submitLabel(.done)
+                            .accessibilityIdentifier("sessionNameField")
+
                         Button {
-                            historyStore.beginSession()
+                            historyStore.beginSession(name: sessionName)
+                            sessionName = ""
                         } label: {
                             Label("記録を開始する", systemImage: "play.fill")
                                 .font(.headline)

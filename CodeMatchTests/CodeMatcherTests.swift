@@ -120,6 +120,56 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(store.sessions[1].entries.map(\.code), ["FIRST"])
     }
 
+    func testRecordMatchStoresPayloadsAndDetectsDuplicates() {
+        let storageURL = temporaryStorageURL()
+        defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
+        let store = HistoryStore(storageURL: storageURL)
+        store.beginSession()
+
+        store.recordMatch(
+            code: "BCJH-52-81GG",
+            qrPayload: "DCLP675300BCJH5281GG02...",
+            barcodePayload: "BCJH-52-81GG@1N5X0C"
+        )
+
+        XCTAssertTrue(store.activeSessionHasMatch(code: "BCJH-52-81GG"))
+        XCTAssertFalse(store.activeSessionHasMatch(code: "BCJH-55-81GG"))
+        XCTAssertEqual(store.activeSession?.entries.first?.qrPayload, "DCLP675300BCJH5281GG02...")
+        XCTAssertEqual(store.activeSession?.entries.first?.barcodePayload, "BCJH-52-81GG@1N5X0C")
+
+        let restored = HistoryStore(storageURL: storageURL)
+        XCTAssertEqual(restored.sessions.first?.entries.first?.barcodePayload, "BCJH-52-81GG@1N5X0C")
+    }
+
+    func testSessionNameCanBeSetAtStartAndRenamed() {
+        let storageURL = temporaryStorageURL()
+        defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
+        let store = HistoryStore(storageURL: storageURL)
+
+        let id = store.beginSession(name: "  午前便  ")
+        XCTAssertEqual(store.activeSession?.name, "午前便")
+
+        store.renameSession(id: id, name: "午後便")
+        XCTAssertEqual(store.activeSession?.name, "午後便")
+
+        // 空文字への変更は「名前なし」へ戻す
+        store.renameSession(id: id, name: "   ")
+        XCTAssertNil(store.activeSession?.name)
+
+        store.renameSession(id: id, name: "確定名")
+        let restored = HistoryStore(storageURL: storageURL)
+        XCTAssertEqual(restored.sessions.first?.name, "確定名")
+    }
+
+    func testBeginSessionWithEmptyNameStoresNil() {
+        let storageURL = temporaryStorageURL()
+        defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
+        let store = HistoryStore(storageURL: storageURL)
+        store.beginSession(name: "")
+        XCTAssertNil(store.activeSession?.name)
+        XCTAssertEqual(store.activeSession?.displayName, "")
+    }
+
     func testDeleteSessionsRemovesAndPersists() {
         let storageURL = temporaryStorageURL()
         defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }

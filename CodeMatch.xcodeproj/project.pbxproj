@@ -27,6 +27,7 @@
 		A10000000000000000000012 /* success1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000018 /* success1.mp3 */; };
 		A10000000000000000000013 /* success2.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* success2.mp3 */; };
 		A10000000000000000000014 /* Fail1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001A /* Fail1.mp3 */; };
+		A10000000000000000000015 /* SessionPDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* SessionPDFExporter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -71,6 +72,7 @@
 		A20000000000000000000018 /* success1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = success1.mp3; sourceTree = "<group>"; };
 		A20000000000000000000019 /* success2.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = success2.mp3; sourceTree = "<group>"; };
 		A2000000000000000000001A /* Fail1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Fail1.mp3; sourceTree = "<group>"; };
+		A2000000000000000000001B /* SessionPDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPDFExporter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -153,6 +155,7 @@
 				A20000000000000000000004 /* FeedbackPlayer.swift */,
 				A20000000000000000000005 /* CameraScanner.swift */,
 				A20000000000000000000015 /* HistoryStore.swift */,
+				A2000000000000000000001B /* SessionPDFExporter.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -387,6 +390,7 @@
 				A1000000000000000000000F /* HistoryStore.swift in Sources */,
 				A10000000000000000000010 /* HistoryScreen.swift in Sources */,
 				A10000000000000000000011 /* SettingsScreen.swift in Sources */,
+				A10000000000000000000015 /* SessionPDFExporter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

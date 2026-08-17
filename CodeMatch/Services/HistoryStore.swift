@@ -28,19 +28,47 @@ final class HistoryStore: ObservableObject {
     }
 
     @discardableResult
-    func beginSession(at date: Date = Date()) -> UUID {
+    func beginSession(name: String? = nil, at date: Date = Date()) -> UUID {
         if let activeSession { return activeSession.id }
 
-        let session = MatchSession(startedAt: date)
+        let trimmedName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let session = MatchSession(
+            startedAt: date,
+            name: (trimmedName?.isEmpty ?? true) ? nil : trimmedName
+        )
         sessions.insert(session, at: 0)
         persist()
         return session.id
     }
 
-    func recordMatch(code: String, at date: Date = Date()) {
+    func recordMatch(
+        code: String,
+        qrPayload: String? = nil,
+        barcodePayload: String? = nil,
+        at date: Date = Date()
+    ) {
         guard let index = sessions.firstIndex(where: \.isActive) else { return }
         let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        sessions[index].entries.append(MatchHistoryEntry(code: normalized, matchedAt: date))
+        sessions[index].entries.append(
+            MatchHistoryEntry(
+                code: normalized,
+                matchedAt: date,
+                qrPayload: qrPayload,
+                barcodePayload: barcodePayload
+            )
+        )
+        persist()
+    }
+
+    /// アクティブセッションでこの品番が照合済みかどうか。
+    func activeSessionHasMatch(code: String) -> Bool {
+        activeSession?.hasMatch(code: code.trimmingCharacters(in: .whitespacesAndNewlines)) ?? false
+    }
+
+    func renameSession(id: UUID, name: String?) {
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        sessions[index].name = (trimmed?.isEmpty ?? true) ? nil : trimmed
         persist()
     }
 
