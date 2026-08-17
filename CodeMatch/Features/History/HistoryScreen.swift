@@ -13,11 +13,16 @@ struct HistoryScreen: View {
                         description: Text("照合タブで記録を開始すると、一致したコードがセッション単位で保存されます。")
                     )
                 } else {
-                    List(historyStore.sessions) { session in
-                        NavigationLink {
-                            SessionHistoryDetail(historyStore: historyStore, sessionID: session.id)
-                        } label: {
-                            SessionHistoryRow(session: session)
+                    List {
+                        ForEach(historyStore.sessions) { session in
+                            NavigationLink {
+                                SessionHistoryDetail(historyStore: historyStore, sessionID: session.id)
+                            } label: {
+                                SessionHistoryRow(session: session)
+                            }
+                        }
+                        .onDelete { offsets in
+                            historyStore.deleteSessions(at: offsets)
                         }
                     }
                     .listStyle(.insetGrouped)

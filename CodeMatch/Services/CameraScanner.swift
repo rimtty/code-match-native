@@ -14,6 +14,8 @@ final class CameraScanner: NSObject, @unchecked Sendable {
     private let sessionQueue = DispatchQueue(label: "jp.rimtty.CodeMatch.camera-session")
     private let metadataQueue = DispatchQueue(label: "jp.rimtty.CodeMatch.metadata")
     private var configured = false
+    private var metadataOutput: AVCaptureMetadataOutput?
+    private var activeType: AVMetadataObject.ObjectType?
 
     func requestAccessAndStart() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -39,6 +41,25 @@ final class CameraScanner: NSObject, @unchecked Sendable {
         sessionQueue.async { [weak self] in
             guard let self, self.session.isRunning else { return }
             self.session.stopRunning()
+        }
+    }
+
+    /// 現在のステップで読むコード種別だけを検出対象にする。
+    /// 不要な解析を省き、検出速度と誤読耐性を高める。
+    func setActiveType(_ type: AVMetadataObject.ObjectType?) {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.activeType = type
+            self.applyActiveType()
+        }
+    }
+
+    /// ガイド枠に対応する領域(メタデータ座標系)だけを検出対象にする。
+    func setRegionOfInterest(_ metadataRect: CGRect) {
+        sessionQueue.async { [weak self] in
+            guard let self, let output = self.metadataOutput else { return }
+            guard metadataRect.width > 0, metadataRect.height > 0 else { return }
+            output.rectOfInterest = metadataRect
         }
     }
 
@@ -95,6 +116,7 @@ final class CameraScanner: NSObject, @unchecked Sendable {
         }
         session.addOutput(output)
         output.setMetadataObjectsDelegate(self, queue: metadataQueue)
+        metadataOutput = output
 
         let supported = output.availableMetadataObjectTypes
         output.metadataObjectTypes = [.qr, .code128].filter(supported.contains)
@@ -102,17 +124,36 @@ final class CameraScanner: NSObject, @unchecked Sendable {
             reportFailure("この端末ではQRコード・Code 128を読み取れません。")
             return false
         }
+        applyActiveType()
 
-        if device.isFocusModeSupported(.continuousAutoFocus) {
-            do {
-                try device.lockForConfiguration()
+        do {
+            try device.lockForConfiguration()
+            if device.isFocusModeSupported(.continuousAutoFocus) {
                 device.focusMode = .continuousAutoFocus
-                device.unlockForConfiguration()
-            } catch { }
-        }
+            }
+            // ラベルは至近距離で読むため、近距離に限定して合焦を速くする。
+            if device.isAutoFocusRangeRestrictionSupported {
+                device.autoFocusRangeRestriction = .near
+            }
+            // 滑らかなAF(動画向け)を無効化し、合焦完了までの時間を短縮する。
+            if device.isSmoothAutoFocusSupported {
+                device.isSmoothAutoFocusEnabled = false
+            }
+            device.unlockForConfiguration()
+        } catch { }
 
         configured = true
         return true
+    }
+
+    private func applyActiveType() {
+        guard let output = metadataOutput else { return }
+        let supported = output.availableMetadataObjectTypes
+        if let activeType, supported.contains(activeType) {
+            output.metadataObjectTypes = [activeType]
+        } else {
+            output.metadataObjectTypes = [.qr, .code128].filter(supported.contains)
+        }
     }
 
     private func reportFailure(_ message: String) {

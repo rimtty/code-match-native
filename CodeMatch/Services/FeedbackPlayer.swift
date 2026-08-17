@@ -1,6 +1,80 @@
 import AVFoundation
-import AudioToolbox
 import UIKit
+
+/// 効果音設定。UserDefaultsで永続化し、設定画面とFeedbackPlayerで共有する。
+enum FeedbackSettings {
+    static let volumeKey = "feedbackVolume"
+    static let successSoundKey = "successSound"
+    static let failureSoundKey = "failureSound"
+    static let defaultVolume = 1.0
+
+    static var volume: Double {
+        UserDefaults.standard.object(forKey: volumeKey) as? Double ?? defaultVolume
+    }
+
+    static var successSound: SuccessSound {
+        SuccessSound(rawValue: UserDefaults.standard.string(forKey: successSoundKey) ?? "") ?? .posBeep
+    }
+
+    static var failureSound: FailureSound {
+        FailureSound(rawValue: UserDefaults.standard.string(forKey: failureSoundKey) ?? "") ?? .alarm
+    }
+}
+
+enum SuccessSound: String, CaseIterable, Identifiable {
+    case sample1
+    case sample2
+    case posBeep
+    case doubleBeep
+    case chime
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .sample1: "サウンド1"
+        case .sample2: "サウンド2"
+        case .posBeep: "ピッ（POSレジ風・標準）"
+        case .doubleBeep: "ピピッ（2回）"
+        case .chime: "チャイム（3音）"
+        }
+    }
+
+    /// バンドル内の音源ファイル名。nilなら合成音を使う。
+    var fileName: String? {
+        switch self {
+        case .sample1: "success1"
+        case .sample2: "success2"
+        case .posBeep, .doubleBeep, .chime: nil
+        }
+    }
+}
+
+enum FailureSound: String, CaseIterable, Identifiable {
+    case failSample
+    case buzzer
+    case alarm
+    case descend
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .failSample: "サウンド1"
+        case .buzzer: "ブブー（ブザー）"
+        case .alarm: "ピピピピ（アラーム・標準）"
+        case .descend: "ブーー（下降音）"
+        }
+    }
+
+    /// バンドル内の音源ファイル名。nilなら合成音を使う。
+    var fileName: String? {
+        switch self {
+        case .failSample: "Fail1"
+        case .buzzer, .alarm, .descend: nil
+        }
+    }
+}
 
 @MainActor
 final class FeedbackPlayer {
@@ -8,6 +82,8 @@ final class FeedbackPlayer {
         let frequency: Double
         let duration: TimeInterval
         let amplitude: Float
+        /// trueのとき奇数倍音を加えてPOSレジのような鋭く通る音にする
+        var piercing: Bool = false
     }
 
     private let audioEngine = AVAudioEngine()
@@ -17,6 +93,8 @@ final class FeedbackPlayer {
         standardFormatWithSampleRate: sampleRate,
         channels: 1
     )!
+    /// バンドル音源のプレイヤーキャッシュ(ファイル名 → プレイヤー)
+    private var filePlayers: [String: AVAudioPlayer] = [:]
 
     init() {
         audioEngine.attach(audioPlayer)
@@ -26,51 +104,137 @@ final class FeedbackPlayer {
 
     func scanAccepted() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        // 各コード受理時は控えめな短いブリップ(最終判定音より小さめ)
         play([
-            Tone(frequency: 1_046.50, duration: 0.07, amplitude: 0.30),
-            Tone(frequency: 1_568.00, duration: 0.10, amplitude: 0.34)
-        ], gap: 0.025)
+            Tone(frequency: 1_567.98, duration: 0.06, amplitude: 0.45, piercing: true)
+        ], gap: 0, volumeScale: 0.6)
     }
 
     func success(after delay: TimeInterval = 0) {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
 
-        let playSuccessChime: () -> Void = { [weak self] in
+        let playSound: () -> Void = { [weak self] in
             guard let self else { return }
-            self.play([
-                Tone(frequency: 523.25, duration: 0.09, amplitude: 0.30),
-                Tone(frequency: 659.25, duration: 0.09, amplitude: 0.32),
-                Tone(frequency: 783.99, duration: 0.16, amplitude: 0.36)
-            ], gap: 0.035)
+            let sound = FeedbackSettings.successSound
+            if let fileName = sound.fileName {
+                self.playFile(named: fileName)
+                return
+            }
+            switch sound {
+            case .sample1, .sample2:
+                break
+            case .posBeep:
+                self.play([
+                    Tone(frequency: 2_600, duration: 0.12, amplitude: 0.95, piercing: true)
+                ], gap: 0)
+            case .doubleBeep:
+                self.play([
+                    Tone(frequency: 2_600, duration: 0.08, amplitude: 0.95, piercing: true),
+                    Tone(frequency: 2_600, duration: 0.08, amplitude: 0.95, piercing: true)
+                ], gap: 0.06)
+            case .chime:
+                self.play([
+                    Tone(frequency: 523.25, duration: 0.09, amplitude: 0.80),
+                    Tone(frequency: 659.25, duration: 0.09, amplitude: 0.85),
+                    Tone(frequency: 783.99, duration: 0.18, amplitude: 0.90)
+                ], gap: 0.035)
+            }
         }
 
         if delay > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: playSuccessChime)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: playSound)
         } else {
-            playSuccessChime()
+            playSound()
         }
     }
 
     func failure() {
         UINotificationFeedbackGenerator().notificationOccurred(.error)
-        for index in 0..<4 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + (Double(index) * 0.20)) {
-                AudioServicesPlaySystemSound(1053)
-            }
+        let sound = FeedbackSettings.failureSound
+        if let fileName = sound.fileName {
+            playFile(named: fileName)
+            return
+        }
+        switch sound {
+        case .failSample:
+            break
+        case .buzzer:
+            play([
+                Tone(frequency: 165, duration: 0.16, amplitude: 0.95, piercing: true),
+                Tone(frequency: 165, duration: 0.42, amplitude: 0.95, piercing: true)
+            ], gap: 0.07)
+        case .alarm:
+            play([
+                Tone(frequency: 980, duration: 0.11, amplitude: 0.92, piercing: true),
+                Tone(frequency: 980, duration: 0.11, amplitude: 0.92, piercing: true),
+                Tone(frequency: 980, duration: 0.11, amplitude: 0.92, piercing: true),
+                Tone(frequency: 980, duration: 0.11, amplitude: 0.92, piercing: true)
+            ], gap: 0.09)
+        case .descend:
+            play([
+                Tone(frequency: 440, duration: 0.18, amplitude: 0.92, piercing: true),
+                Tone(frequency: 220, duration: 0.45, amplitude: 0.95, piercing: true)
+            ], gap: 0.04)
         }
     }
 
-    private func play(_ tones: [Tone], gap: TimeInterval) {
+    /// 設定画面のプレビュー再生用
+    func preview(success sound: SuccessSound) {
+        let saved = FeedbackSettings.successSound
+        UserDefaults.standard.set(sound.rawValue, forKey: FeedbackSettings.successSoundKey)
+        success()
+        if saved != sound {
+            UserDefaults.standard.set(saved.rawValue, forKey: FeedbackSettings.successSoundKey)
+        }
+    }
+
+    func preview(failure sound: FailureSound) {
+        let saved = FeedbackSettings.failureSound
+        UserDefaults.standard.set(sound.rawValue, forKey: FeedbackSettings.failureSoundKey)
+        failure()
+        if saved != sound {
+            UserDefaults.standard.set(saved.rawValue, forKey: FeedbackSettings.failureSoundKey)
+        }
+    }
+
+    /// バンドル内の音源ファイルを設定音量で再生する
+    private func playFile(named name: String) {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "mp3") else { return }
+        do {
+            let session = AVAudioSession.sharedInstance()
+            // 工場現場向け: マナーモード(サイレントスイッチ)でも判定音を再生する
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setActive(true)
+
+            let player: AVAudioPlayer
+            if let cached = filePlayers[name] {
+                player = cached
+            } else {
+                player = try AVAudioPlayer(contentsOf: url)
+                player.prepareToPlay()
+                filePlayers[name] = player
+            }
+            player.volume = Float(FeedbackSettings.volume)
+            player.currentTime = 0
+            player.play()
+        } catch {
+            // Haptic feedback still communicates the result if audio is unavailable.
+        }
+    }
+
+    private func play(_ tones: [Tone], gap: TimeInterval, volumeScale: Float = 1.0) {
         guard let buffer = makeBuffer(tones: tones, gap: gap) else { return }
 
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+            // 工場現場向け: マナーモード(サイレントスイッチ)でも判定音を再生する
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try session.setActive(true)
             if !audioEngine.isRunning {
                 try audioEngine.start()
             }
 
+            audioPlayer.volume = Float(FeedbackSettings.volume) * volumeScale
             audioPlayer.stop()
             audioPlayer.scheduleBuffer(buffer, at: nil, options: .interrupts)
             audioPlayer.play()
@@ -96,14 +260,21 @@ final class FeedbackPlayer {
 
         for (index, tone) in tones.enumerated() {
             let frameCount = toneFrames[index]
-            let edgeFrames = min(Int(0.008 * sampleRate), max(frameCount / 2, 1))
+            let edgeFrames = min(Int(0.006 * sampleRate), max(frameCount / 2, 1))
 
             for frame in 0..<frameCount {
                 let attack = min(Float(frame) / Float(edgeFrames), 1)
                 let release = min(Float(frameCount - frame - 1) / Float(edgeFrames), 1)
                 let envelope = max(min(attack, release), 0)
                 let phase = 2 * Double.pi * tone.frequency * Double(frame) / sampleRate
-                samples[frameOffset + frame] = Float(sin(phase)) * tone.amplitude * envelope
+
+                var sample = sin(phase)
+                if tone.piercing {
+                    // 奇数倍音を加えた擬似矩形波。小さなスピーカーでも通る音になる
+                    sample += sin(phase * 3) / 3 + sin(phase * 5) / 5
+                    sample *= 0.85
+                }
+                samples[frameOffset + frame] = Float(sample) * tone.amplitude * envelope
             }
 
             frameOffset += frameCount

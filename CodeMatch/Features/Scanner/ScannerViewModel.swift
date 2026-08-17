@@ -8,7 +8,7 @@ final class ScannerViewModel: ObservableObject {
     @Published private(set) var qrValue = ""
     @Published private(set) var barcodeValue = ""
     @Published private(set) var isCameraRunning = false
-    @Published private(set) var message = "まず、正方形のQRコードをカメラに映してください。"
+    @Published private(set) var message = "まず、納品書兼現品票のQRコードをカメラに映してください。"
     @Published private(set) var focusPoint: CGPoint?
 
     let camera = CameraScanner()
@@ -25,17 +25,34 @@ final class ScannerViewModel: ObservableObject {
         }
     }
 
+    /// 実ラベル由来のサンプルペイロード(品番 BCJH-52-81GG)。デモ判定に使用する。
+    static let sampleQRPayload = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
+    static let sampleBarcodePayload = "BCJH-52-81GG@1N5X0C"
+    static let sampleMismatchBarcodePayload = "BCJH-55-81GG@1KVV0C"
+
+    var qrPartNumber: String? {
+        CodeMatcher.partNumber(fromQR: qrValue)
+    }
+
+    var barcodePartNumber: String? {
+        CodeMatcher.partNumber(fromBarcode: barcodeValue)
+    }
+
     init(historyStore: HistoryStore) {
         self.historyStore = historyStore
         camera.delegate = self
 
         if ProcessInfo.processInfo.arguments.contains("-demoMatch") {
-            let reference = "GA141KR9PA02@092D10"
-            qrValue = reference
-            barcodeValue = reference
+            qrValue = Self.sampleQRPayload
+            barcodeValue = Self.sampleBarcodePayload
             step = .result(.match)
-            message = "2つのコードは一致しています。"
-            historyStore.recordMatch(code: reference)
+            message = "品目番号が一致しています。"
+            historyStore.recordMatch(code: recordedCode)
+        } else if ProcessInfo.processInfo.arguments.contains("-demoMismatch") {
+            qrValue = Self.sampleQRPayload
+            barcodeValue = Self.sampleMismatchBarcodePayload
+            step = .result(.mismatch)
+            message = "品目番号が一致しません。納品書と現品の取り違えを確認してください。"
         }
     }
 
@@ -52,9 +69,10 @@ final class ScannerViewModel: ObservableObject {
     }
 
     func startCamera() {
-        guard expectedCode != nil else { return }
+        guard let expectedCode else { return }
         isCameraRunning = true
         message = "カメラを準備しています…"
+        camera.setActiveType(expectedCode.metadataType)
         camera.requestAccessAndStart()
         message = expectedCode == .qr
             ? "QRコードを枠の中央に合わせてください。"
@@ -70,7 +88,7 @@ final class ScannerViewModel: ObservableObject {
         scanLocked = false
         barcodeCandidate = nil
         focusPoint = nil
-        message = "まず、正方形のQRコードをカメラに映してください。"
+        message = "まず、納品書兼現品票のQRコードをカメラに映してください。"
     }
 
     func focus(at point: CGPoint) {
@@ -85,9 +103,8 @@ final class ScannerViewModel: ObservableObject {
 
     func runDemo(shouldMatch: Bool) {
         camera.stop()
-        let reference = "GA141KR9PA02@092D10"
-        qrValue = reference
-        barcodeValue = shouldMatch ? reference : "GA141KR9PA02@092D11"
+        qrValue = Self.sampleQRPayload
+        barcodeValue = shouldMatch ? Self.sampleBarcodePayload : Self.sampleMismatchBarcodePayload
         finishComparison()
     }
 
@@ -95,7 +112,13 @@ final class ScannerViewModel: ObservableObject {
         scanLocked = true
         qrValue = value
         step = .barcode
-        message = "読取完了。続けて横長のCode 128バーコードを映してください。"
+        // 次のステップではCode 128だけを検出対象にして読み取りを速くする
+        camera.setActiveType(ExpectedCode.barcode.metadataType)
+        if let part = CodeMatcher.partNumber(fromQR: value) {
+            message = "品目番号 \(CodeMatcher.format(partNumber: part)) を読み取りました。続けて現品票のCode 128バーコードを映してください。"
+        } else {
+            message = "読取完了。続けて横長のCode 128バーコードを映してください。"
+        }
         feedback.scanAccepted()
         Task {
             try? await Task.sleep(for: .milliseconds(250))
@@ -107,7 +130,7 @@ final class ScannerViewModel: ObservableObject {
         let now = Date()
         if let candidate = barcodeCandidate,
            candidate.value == value,
-           now.timeIntervalSince(candidate.date) < 0.7 {
+           now.timeIntervalSince(candidate.date) < 1.5 {
             barcodeCandidate = (value, candidate.count + 1, now)
         } else {
             barcodeCandidate = (value, 1, now)
@@ -127,19 +150,25 @@ final class ScannerViewModel: ObservableObject {
     }
 
     private func finishComparison(resultSoundDelay: TimeInterval = 0) {
-        let result = CodeMatcher.compare(qrValue, barcodeValue)
+        let result = CodeMatcher.compare(qrPayload: qrValue, barcodePayload: barcodeValue)
         step = .result(result)
         message = result == .match
-            ? "2つのコードは一致しています。"
-            : "コードが一致しません。取り違えを確認してください。"
+            ? "品目番号が一致しています。"
+            : "品目番号が一致しません。納品書と現品の取り違えを確認してください。"
         if result == .match {
-            historyStore.recordMatch(code: qrValue)
-        }
-        if result == .match {
+            historyStore.recordMatch(code: recordedCode)
             feedback.success(after: resultSoundDelay)
         } else {
             feedback.failure()
         }
+    }
+
+    /// 履歴へ残す値。読み取れた品番を優先し、抽出できない場合はQRの生値を使う。
+    private var recordedCode: String {
+        if let part = barcodePartNumber ?? qrPartNumber {
+            return CodeMatcher.format(partNumber: part)
+        }
+        return qrValue
     }
 }
 

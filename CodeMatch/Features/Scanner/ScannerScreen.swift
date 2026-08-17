@@ -29,12 +29,24 @@ struct ScannerScreen: View {
                     }
                     .padding(.horizontal, 18)
                     .padding(.top, 18)
-                    .padding(.bottom, 30)
+                    .padding(.bottom, 84)
                 }
+            }
+        }
+        // フローティングタブバーに重ならないよう、結果表示中は主要操作を下端へ固定する
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if viewModel.step.progress == 3 {
+                nextActionBar
             }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active, viewModel.isCameraRunning {
+                viewModel.toggleCamera()
+            }
+        }
+        // 履歴からアクティブセッションが削除された場合など、画面が消えたらカメラを止める
+        .onDisappear {
+            if viewModel.isCameraRunning {
                 viewModel.toggleCamera()
             }
         }
@@ -105,14 +117,21 @@ struct ScannerScreen: View {
             Group {
                 switch viewModel.step {
                 case .result(let result):
-                    ResultView(result: result)
-                        .accessibilityIdentifier("resultView")
+                    ResultView(
+                        result: result,
+                        qrPartNumber: viewModel.qrPartNumber.map { CodeMatcher.format(partNumber: $0) },
+                        barcodePartNumber: viewModel.barcodePartNumber.map { CodeMatcher.format(partNumber: $0) }
+                    )
+                    .accessibilityIdentifier("resultView")
                 case .qr, .barcode:
                     cameraStage
                 }
             }
 
-            messagePanel
+            // 結果表示中はResultView内の文言と重複するため省き、品番ボックスを1画面に収める
+            if viewModel.step.progress != 3 {
+                messagePanel
+            }
 
             if !viewModel.qrValue.isEmpty || !viewModel.barcodeValue.isEmpty {
                 readouts
@@ -150,9 +169,12 @@ struct ScannerScreen: View {
         GeometryReader { proxy in
             ZStack {
                 if viewModel.isCameraRunning {
-                    CameraPreview(session: viewModel.camera.session) { point in
-                        viewModel.focus(at: point)
-                    }
+                    CameraPreview(
+                        session: viewModel.camera.session,
+                        expectedCode: viewModel.expectedCode,
+                        onTap: { point in viewModel.focus(at: point) },
+                        onRegionOfInterest: { rect in viewModel.camera.setRegionOfInterest(rect) }
+                    )
                     .transition(.opacity)
                 } else {
                     AppTheme.ink.opacity(0.06)
@@ -214,8 +236,16 @@ struct ScannerScreen: View {
 
     private var readouts: some View {
         VStack(spacing: 8) {
-            CodeReadout(label: "QR CODE", value: viewModel.qrValue)
-            CodeReadout(label: "BARCODE", value: viewModel.barcodeValue)
+            CodeReadout(
+                label: "QR・納品書の品目番号",
+                partNumber: viewModel.qrPartNumber.map { CodeMatcher.format(partNumber: $0) },
+                payload: viewModel.qrValue
+            )
+            CodeReadout(
+                label: "バーコード・現品票の品番",
+                partNumber: viewModel.barcodePartNumber.map { CodeMatcher.format(partNumber: $0) },
+                payload: viewModel.barcodeValue
+            )
         }
         .padding(.top, 12)
     }
@@ -228,27 +258,48 @@ struct ScannerScreen: View {
                         viewModel.isCameraRunning ? "カメラを停止" : startButtonTitle,
                         systemImage: viewModel.isCameraRunning ? "stop.fill" : "viewfinder"
                     )
-                    .font(.headline)
+                    .font(.title3.weight(.bold))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 15)
+                    .frame(minHeight: 62)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white)
-                .background(AppTheme.green, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(AppTheme.green, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .accessibilityIdentifier("cameraButton")
             }
 
-            if viewModel.step.progress == 3 || !viewModel.qrValue.isEmpty {
+            if viewModel.step.progress != 3, !viewModel.qrValue.isEmpty {
                 Button("次のコードを照合", action: viewModel.reset)
-                    .font(.subheadline.weight(.bold))
+                    .font(.headline)
                     .foregroundStyle(AppTheme.ink)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
-                    .background(AppTheme.ink.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+                    .frame(minHeight: 56)
+                    .background(AppTheme.ink.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
                     .accessibilityIdentifier("resetButton")
             }
         }
         .padding(.top, 16)
+    }
+
+    private var nextActionBar: some View {
+        Button(action: viewModel.reset) {
+            Label("次のコードを照合", systemImage: "qrcode.viewfinder")
+                .font(.title3.weight(.bold))
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 62)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.white)
+        .background(AppTheme.green, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityIdentifier("resetButton")
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .background {
+            Rectangle()
+                .fill(AppTheme.paper.opacity(0.92))
+                .ignoresSafeArea()
+        }
     }
 
     private var privacyNote: some View {
@@ -355,7 +406,8 @@ private struct StatusLabelStyle: LabelStyle {
 
 private struct CodeReadout: View {
     let label: String
-    let value: String
+    let partNumber: String?
+    let payload: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -363,45 +415,100 @@ private struct CodeReadout: View {
                 .font(.system(size: 9, weight: .black))
                 .tracking(1.5)
                 .foregroundStyle(AppTheme.muted)
-            Text(value.isEmpty ? "—" : value)
-                .font(.system(.caption, design: .monospaced, weight: .bold))
+            Text(primaryText)
+                .font(.system(.subheadline, design: .monospaced, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
                 .lineLimit(1)
+            if partNumber != nil, !payload.isEmpty {
+                Text(payload)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(AppTheme.muted)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .overlay(RoundedRectangle(cornerRadius: 11).stroke(AppTheme.line))
     }
+
+    private var primaryText: String {
+        if let partNumber { return partNumber }
+        return payload.isEmpty ? "—" : payload
+    }
 }
 
 private struct ResultView: View {
     let result: MatchResult
+    let qrPartNumber: String?
+    let barcodePartNumber: String?
 
     var body: some View {
-        VStack(spacing: 20) {
+        // 品番ボックス2つが同一画面に収まるよう、結果表示はコンパクトにまとめる
+        VStack(spacing: 12) {
             Image(systemName: result == .match ? "checkmark" : "exclamationmark")
-                .font(.system(size: 42, weight: .bold))
+                .font(.system(size: 27, weight: .bold))
                 .foregroundStyle(.white)
-                .frame(width: 88, height: 88)
+                .frame(width: 56, height: 56)
                 .background(result == .match ? AppTheme.green : AppTheme.red, in: Circle())
-                .background((result == .match ? AppTheme.green : AppTheme.red).opacity(0.12), in: Circle().inset(by: -12))
+                .background((result == .match ? AppTheme.green : AppTheme.red).opacity(0.12), in: Circle().inset(by: -7))
                 .symbolEffect(.bounce, value: result)
 
-            VStack(spacing: 7) {
+            VStack(spacing: 5) {
                 Text(result == .match ? "一致しました" : "一致しません")
-                    .font(.title2.weight(.bold))
+                    .font(.title3.weight(.bold))
                     .foregroundStyle(AppTheme.ink)
-                Text(result == .match
-                     ? "この組み合わせは正しいです。"
-                     : "対象を確認して、もう一度読み取ってください。")
+                Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(AppTheme.muted)
+                    .multilineTextAlignment(.center)
+            }
+
+            if result == .mismatch, qrPartNumber != nil || barcodePartNumber != nil {
+                VStack(spacing: 4) {
+                    PartNumberRow(label: "納品書", value: qrPartNumber)
+                    PartNumberRow(label: "現品票", value: barcodePartNumber)
+                }
+                .padding(.horizontal, 18)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 255)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
         .background((result == .match ? AppTheme.green : AppTheme.red).opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(result == .match ? "照合結果、一致しました" : "照合結果、一致しません")
+    }
+
+    private var subtitle: String {
+        switch result {
+        case .match:
+            if let part = barcodePartNumber ?? qrPartNumber {
+                return "品目番号 \(part) の組み合わせは正しいです。"
+            }
+            return "この組み合わせは正しいです。"
+        case .mismatch:
+            return "品目番号が一致しません。対象を確認して、もう一度読み取ってください。"
+        }
+    }
+}
+
+private struct PartNumberRow: View {
+    let label: String
+    let value: String?
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppTheme.muted)
+            Spacer()
+            Text(value ?? "読取不可")
+                .font(.system(.caption, design: .monospaced, weight: .bold))
+                .foregroundStyle(AppTheme.ink)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(.white.opacity(0.65), in: RoundedRectangle(cornerRadius: 9))
     }
 }
 
