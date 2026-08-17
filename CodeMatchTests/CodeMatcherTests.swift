@@ -65,6 +65,47 @@ final class CodeMatcherTests: XCTestCase {
         XCTAssertEqual(CodeMatcher.format(partNumber: "BCJH5281GG"), "BCJH-52-81GG")
         XCTAssertEqual(CodeMatcher.format(partNumber: "ABC"), "ABC")
     }
+
+    func testKanbanQRRecordParsesAllFields() {
+        let record = KanbanQRRecord.parse(qrPayload)
+        XCTAssertEqual(record?.cardNumber, "DCLP675300")
+        XCTAssertEqual(record?.partNumber, "BCJH5281GG")
+        XCTAssertEqual(record?.partSuffix, "02")
+        XCTAssertEqual(record?.deliveryQuantity, 12)
+        XCTAssertEqual(record?.instructedQuantity, 12)
+        XCTAssertEqual(record?.factoryCode, "L")
+        XCTAssertEqual(record?.warehouseCode, "BLBDI")
+        XCTAssertEqual(record?.supplyPointCode, "LLU92")
+    }
+
+    func testKanbanQRRecordHandlesBlankSuffix() {
+        let record = KanbanQRRecord.parse(
+            "DAYA005100DFR55581GA  0001000000010000Y      000000BYBYTLYB16   0*"
+        )
+        XCTAssertEqual(record?.partNumber, "DFR55581GA")
+        XCTAssertNil(record?.partSuffix)
+        XCTAssertEqual(record?.deliveryQuantity, 100)
+        XCTAssertEqual(record?.factoryCode, "Y")
+        XCTAssertEqual(record?.warehouseCode, "BYBYT")
+        XCTAssertEqual(record?.supplyPointCode, "LYB16")
+    }
+
+    func testKanbanQRRecordRejectsNonStandardPayload() {
+        XCTAssertNil(KanbanQRRecord.parse("PART:BCJH-52-81GG;QTY:12"))
+        XCTAssertNil(KanbanQRRecord.parse("SHORT"))
+    }
+
+    func testTagBarcodeRecordParsing() {
+        let record = TagBarcodeRecord.parse(barcodePayload)
+        XCTAssertEqual(record?.partNumber, "BCJH-52-81GG")
+        XCTAssertEqual(record?.managementCode, "1N5X0C")
+
+        let noCode = TagBarcodeRecord.parse("BCJH-52-81GG")
+        XCTAssertEqual(noCode?.partNumber, "BCJH-52-81GG")
+        XCTAssertNil(noCode?.managementCode)
+
+        XCTAssertNil(TagBarcodeRecord.parse("  "))
+    }
 }
 
 @MainActor
@@ -178,6 +219,7 @@ final class HistoryStoreTests: XCTestCase {
         store.recordMatch(code: "FIRST")
         store.endActiveSession()
         store.beginSession()
+        store.recordMatch(code: "SECOND")
         store.endActiveSession()
 
         store.deleteSessions(at: IndexSet(integer: 0))
@@ -187,6 +229,20 @@ final class HistoryStoreTests: XCTestCase {
 
         let restored = HistoryStore(storageURL: storageURL)
         XCTAssertEqual(restored.sessions.count, 1)
+    }
+
+    func testEndingSessionWithNoMatchesDiscardsIt() {
+        let storageURL = temporaryStorageURL()
+        defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
+        let store = HistoryStore(storageURL: storageURL)
+
+        store.beginSession(name: "空のセッション")
+        store.endActiveSession()
+
+        XCTAssertTrue(store.sessions.isEmpty)
+
+        let restored = HistoryStore(storageURL: storageURL)
+        XCTAssertTrue(restored.sessions.isEmpty)
     }
 
     private func temporaryStorageURL() -> URL {

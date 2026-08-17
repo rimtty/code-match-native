@@ -74,7 +74,12 @@ final class HistoryStore: ObservableObject {
 
     func endActiveSession(at date: Date = Date()) {
         guard let index = sessions.firstIndex(where: \.isActive) else { return }
-        sessions[index].endedAt = date
+        if sessions[index].entries.isEmpty {
+            // 照合0件のセッションは履歴に残さない
+            sessions.remove(at: index)
+        } else {
+            sessions[index].endedAt = date
+        }
         persist()
     }
 
@@ -108,7 +113,9 @@ final class HistoryStore: ObservableObject {
         guard let data = try? Data(contentsOf: url) else { return [] }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode([MatchSession].self, from: data)) ?? []
+        let sessions = (try? decoder.decode([MatchSession].self, from: data)) ?? []
+        // 旧バージョンで保存された照合0件の終了済みセッションは履歴に載せない
+        return sessions.filter { $0.isActive || !$0.entries.isEmpty }
     }
 
     private static var defaultStorageURL: URL {

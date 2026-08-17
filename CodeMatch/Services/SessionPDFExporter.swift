@@ -92,13 +92,46 @@ enum SessionPDFExporter {
                 draw("一致したコードはありません。", font: bodyFont, color: gray)
             }
 
+            func quantityText(_ value: Double?) -> String {
+                guard let value else { return "-" }
+                return value.truncatingRemainder(dividingBy: 1) == 0
+                    ? String(Int(value))
+                    : String(format: "%.2f", value)
+            }
+
             for (index, entry) in session.entries.enumerated() {
-                // 1エントリの見出し＋2ペイロードはまとめて改ページ判定する
-                ensureSpace(78)
+                // 1エントリの見出し＋詳細ブロックはまとめて改ページ判定する
+                ensureSpace(150)
                 draw("#\(index + 1)  \(entry.code)", font: monoBoldFont, spacing: 2)
                 draw("照合時刻: \(JPDate.dateTime(entry.matchedAt))", font: bodyFont, color: gray, spacing: 4)
-                draw("QRコード: \(entry.qrPayload ?? "記録なし（旧バージョンで照合）")", font: monoFont, color: gray, spacing: 2)
-                draw("Code 128: \(entry.barcodePayload ?? "記録なし（旧バージョンで照合）")", font: monoFont, color: gray, spacing: 6)
+
+                if let qr = entry.qrPayload.flatMap(KanbanQRRecord.parse) {
+                    let suffix = qr.partSuffix.map { "（枝番 \($0)）" } ?? ""
+                    draw("納品書情報", font: headFont, spacing: 2)
+                    draw(
+                        "品目番号: \(CodeMatcher.format(partNumber: qr.partNumber))\(suffix)　カード番号: \(qr.cardNumber)",
+                        font: bodyFont, spacing: 2
+                    )
+                    draw(
+                        "納入数量: \(quantityText(qr.deliveryQuantity))　指示数: \(quantityText(qr.instructedQuantity))",
+                        font: bodyFont, spacing: 2
+                    )
+                    draw(
+                        "工場: \(qr.factoryCode ?? "-")　受入部品庫: \(qr.warehouseCode ?? "-")　供給先: \(qr.supplyPointCode ?? "-")",
+                        font: bodyFont, spacing: 4
+                    )
+                }
+
+                if let tag = entry.barcodePayload.flatMap(TagBarcodeRecord.parse) {
+                    draw("現品票情報", font: headFont, spacing: 2)
+                    draw(
+                        "品番: \(tag.partNumber)　管理コード: \(tag.managementCode ?? "-")",
+                        font: bodyFont, spacing: 4
+                    )
+                }
+
+                draw("QR全文: \(entry.qrPayload ?? "記録なし（旧バージョンで照合）")", font: monoFont, color: gray, spacing: 2)
+                draw("Code 128全文: \(entry.barcodePayload ?? "記録なし（旧バージョンで照合）")", font: monoFont, color: gray, spacing: 6)
                 drawDivider()
             }
 

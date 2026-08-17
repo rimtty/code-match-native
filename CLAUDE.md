@@ -28,7 +28,7 @@ Regenerate the printable sample codes in `TestResources/Generated`:
 swift tools/generate_test_codes.swift TestResources/Generated
 ```
 
-Simulators have no rear camera, so `CameraScanner` always fails there. Use the on-screen demo buttons (`demoMatchButton` / `demoMismatchButton`, visible in the scanner card) to exercise match/mismatch UI, sound, and state transitions; real scanning must be verified on a device.
+Simulators have no rear camera, so `CameraScanner` always fails there. Use the on-screen demo buttons (`demoMatchButton` / `demoMismatchButton`, compiled into simulator builds only via `#if targetEnvironment(simulator)`) to exercise match/mismatch UI, sound, and state transitions; real scanning must be verified on a device. UI tests rely on these buttons and therefore run on simulator only.
 
 ## Architecture
 

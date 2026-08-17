@@ -240,6 +240,29 @@ private struct MatchEntryDetail: View {
                     .textSelection(.enabled)
             }
 
+            if let qr = entry.qrPayload.flatMap(KanbanQRRecord.parse) {
+                Section("納品書情報（QR解析）") {
+                    LabeledContent("カード番号", value: qr.cardNumber)
+                    LabeledContent(
+                        "品目番号",
+                        value: CodeMatcher.format(partNumber: qr.partNumber)
+                            + (qr.partSuffix.map { "（枝番 \($0)）" } ?? "")
+                    )
+                    LabeledContent("納入数量", value: quantityText(qr.deliveryQuantity))
+                    LabeledContent("指示数", value: quantityText(qr.instructedQuantity))
+                    LabeledContent("工場", value: qr.factoryCode ?? "-")
+                    LabeledContent("受入部品庫", value: qr.warehouseCode ?? "-")
+                    LabeledContent("供給先", value: qr.supplyPointCode ?? "-")
+                }
+            }
+
+            if let tag = entry.barcodePayload.flatMap(TagBarcodeRecord.parse) {
+                Section("現品票情報（バーコード解析）") {
+                    LabeledContent("品番", value: tag.partNumber)
+                    LabeledContent("管理コード", value: tag.managementCode ?? "-")
+                }
+            }
+
             Section("QRコード（納品書兼現品票）全文") {
                 PayloadText(payload: entry.qrPayload)
             }
@@ -250,6 +273,13 @@ private struct MatchEntryDetail: View {
         }
         .navigationTitle(entry.code)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func quantityText(_ value: Double?) -> String {
+        guard let value else { return "-" }
+        return value.truncatingRemainder(dividingBy: 1) == 0
+            ? String(Int(value))
+            : String(format: "%.2f", value)
     }
 }
 

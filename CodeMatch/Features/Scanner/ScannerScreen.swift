@@ -25,7 +25,10 @@ struct ScannerScreen: View {
                         progress
                         scannerCard
                         privacyNote
+                        // カメラのないシミュレーターでの動作確認・UIテスト専用。実機では表示しない
+                        #if targetEnvironment(simulator)
                         demoTools
+                        #endif
                     }
                     .padding(.horizontal, 18)
                     .padding(.top, 18)
@@ -59,7 +62,9 @@ struct ScannerScreen: View {
                 historyStore.endActiveSession()
             }
         } message: {
-            Text("一致した\(matchedCount)件は履歴に保存されます。")
+            Text(matchedCount > 0
+                 ? "一致した\(matchedCount)件は履歴に保存されます。"
+                 : "一致が0件のため、このセッションは履歴に保存されません。")
         }
     }
 
@@ -318,6 +323,7 @@ struct ScannerScreen: View {
             .padding(.horizontal, 6)
     }
 
+    #if targetEnvironment(simulator)
     private var demoTools: some View {
         DisclosureGroup("カメラなしで判定をテスト", isExpanded: $showsDemoTools) {
             HStack {
@@ -337,6 +343,7 @@ struct ScannerScreen: View {
         .padding(14)
         .background(.white.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
     }
+    #endif
 
     private var headerTitle: String {
         switch viewModel.step {

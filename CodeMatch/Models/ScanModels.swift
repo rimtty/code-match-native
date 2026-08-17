@@ -92,3 +92,72 @@ enum CodeMatcher {
         return "\(head)-\(mid)-\(tail)"
     }
 }
+
+/// 納品書兼現品票QR(66桁固定長レコード)の解析結果。
+/// フィールド位置は docs/qr-barcode-spec-analysis.html の実データ解析に基づく。
+struct KanbanQRRecord: Equatable {
+    let cardNumber: String        // 1-10桁: カード番号
+    let partNumber: String        // 11-20桁: 品目番号
+    let partSuffix: String?       // 21-22桁: 枝番(空白の場合あり)
+    let deliveryQuantity: Double? // 23-30桁: 納入数量(×100で記録)
+    let instructedQuantity: Double? // 31-38桁: 指示数(×100で記録)
+    let factoryCode: String?      // 39桁: 工場コード
+    let warehouseCode: String?    // 52-56桁: 受入部品庫
+    let supplyPointCode: String?  // 57-61桁: 供給先
+
+    static func parse(_ payload: String) -> KanbanQRRecord? {
+        let record = payload.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard record.count >= 20 else { return nil }
+
+        func slice(_ range: Range<Int>) -> String? {
+            guard record.count >= range.upperBound else { return nil }
+            let start = record.index(record.startIndex, offsetBy: range.lowerBound)
+            let end = record.index(record.startIndex, offsetBy: range.upperBound)
+            return String(record[start..<end])
+        }
+
+        func trimmedOrNil(_ value: String?) -> String? {
+            let trimmed = value?.trimmingCharacters(in: .whitespaces)
+            return (trimmed?.isEmpty ?? true) ? nil : trimmed
+        }
+
+        func quantity(_ value: String?) -> Double? {
+            guard let value, let raw = Double(value.trimmingCharacters(in: .whitespaces)) else { return nil }
+            return raw / 100
+        }
+
+        guard
+            let cardNumber = slice(0..<10),
+            cardNumber.range(of: "^[A-Z]{4}[0-9]{6}$", options: .regularExpression) != nil,
+            let partNumber = slice(10..<20),
+            partNumber.range(of: "^[A-Z0-9]{10}$", options: .regularExpression) != nil
+        else { return nil }
+
+        return KanbanQRRecord(
+            cardNumber: cardNumber,
+            partNumber: partNumber,
+            partSuffix: trimmedOrNil(slice(20..<22)),
+            deliveryQuantity: quantity(slice(22..<30)),
+            instructedQuantity: quantity(slice(30..<38)),
+            factoryCode: trimmedOrNil(slice(38..<39)),
+            warehouseCode: trimmedOrNil(slice(51..<56)),
+            supplyPointCode: trimmedOrNil(slice(56..<61))
+        )
+    }
+}
+
+/// 現品票Code 128(`品番@管理コード`)の解析結果。
+struct TagBarcodeRecord: Equatable {
+    let partNumber: String       // ハイフン付き品番
+    let managementCode: String?  // @以降の管理コード
+
+    static func parse(_ payload: String) -> TagBarcodeRecord? {
+        let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let parts = trimmed.split(separator: "@", maxSplits: 1, omittingEmptySubsequences: false)
+        let part = String(parts[0]).trimmingCharacters(in: .whitespaces)
+        guard !part.isEmpty else { return nil }
+        let code = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespaces) : nil
+        return TagBarcodeRecord(partNumber: part, managementCode: (code?.isEmpty ?? true) ? nil : code)
+    }
+}
