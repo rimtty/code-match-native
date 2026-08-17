@@ -5,3 +5,4 @@ xcuserdata/
 *.xcuserstate
 *.xcresult
 tmp/
+docs/qr-barcode-spec-analysis.html
