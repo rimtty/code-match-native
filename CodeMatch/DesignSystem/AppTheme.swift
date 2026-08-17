@@ -7,6 +7,7 @@ enum AppTheme {
     static let green = Color(red: 14 / 255, green: 124 / 255, blue: 88 / 255)
     static let lime = Color(red: 200 / 255, green: 243 / 255, blue: 106 / 255)
     static let red = Color(red: 212 / 255, green: 70 / 255, blue: 54 / 255)
+    static let amber = Color(red: 224 / 255, green: 150 / 255, blue: 32 / 255)
     static let line = Color(red: 216 / 255, green: 220 / 255, blue: 214 / 255)
 }
 

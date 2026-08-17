@@ -25,7 +25,10 @@ struct ScannerScreen: View {
                         progress
                         scannerCard
                         privacyNote
+                        // カメラのないシミュレーターでの動作確認・UIテスト専用。実機では表示しない
+                        #if targetEnvironment(simulator)
                         demoTools
+                        #endif
                     }
                     .padding(.horizontal, 18)
                     .padding(.top, 18)
@@ -59,16 +62,19 @@ struct ScannerScreen: View {
                 historyStore.endActiveSession()
             }
         } message: {
-            Text("一致した\(matchedCount)件は履歴に保存されます。")
+            Text(matchedCount > 0
+                 ? "一致した\(matchedCount)件は履歴に保存されます。"
+                 : "一致が0件のため、このセッションは履歴に保存されません。")
         }
     }
 
     private var sessionStatusBar: some View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("照合セッション")
+                Text(sessionTitle)
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.white.opacity(0.66))
+                    .lineLimit(1)
                 Text("\(matchedCount)件照合済み")
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
@@ -98,6 +104,11 @@ struct ScannerScreen: View {
         historyStore.sessions.first(where: { $0.id == sessionID })?.matchedCount ?? 0
     }
 
+    private var sessionTitle: String {
+        let name = historyStore.sessions.first(where: { $0.id == sessionID })?.displayName ?? ""
+        return name.isEmpty ? "照合セッション" : name
+    }
+
     private var progress: some View {
         HStack(spacing: 4) {
             ProgressItem(number: 1, label: "QR", isActive: viewModel.step.progress >= 1, isComplete: !viewModel.qrValue.isEmpty)
@@ -119,6 +130,7 @@ struct ScannerScreen: View {
                 case .result(let result):
                     ResultView(
                         result: result,
+                        isAlreadyVerified: viewModel.isAlreadyVerified,
                         qrPartNumber: viewModel.qrPartNumber.map { CodeMatcher.format(partNumber: $0) },
                         barcodePartNumber: viewModel.barcodePartNumber.map { CodeMatcher.format(partNumber: $0) }
                     )
@@ -311,6 +323,7 @@ struct ScannerScreen: View {
             .padding(.horizontal, 6)
     }
 
+    #if targetEnvironment(simulator)
     private var demoTools: some View {
         DisclosureGroup("カメラなしで判定をテスト", isExpanded: $showsDemoTools) {
             HStack {
@@ -330,12 +343,13 @@ struct ScannerScreen: View {
         .padding(14)
         .background(.white.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
     }
+    #endif
 
     private var headerTitle: String {
         switch viewModel.step {
         case .qr: "QRコードを読み取る"
         case .barcode: "バーコードを読み取る"
-        case .result(.match): "照合OK"
+        case .result(.match): viewModel.isAlreadyVerified ? "照合済み" : "照合OK"
         case .result(.mismatch): "不一致"
         }
     }
@@ -440,22 +454,23 @@ private struct CodeReadout: View {
 
 private struct ResultView: View {
     let result: MatchResult
+    let isAlreadyVerified: Bool
     let qrPartNumber: String?
     let barcodePartNumber: String?
 
     var body: some View {
         // 品番ボックス2つが同一画面に収まるよう、結果表示はコンパクトにまとめる
         VStack(spacing: 12) {
-            Image(systemName: result == .match ? "checkmark" : "exclamationmark")
+            Image(systemName: iconName)
                 .font(.system(size: 27, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 56, height: 56)
-                .background(result == .match ? AppTheme.green : AppTheme.red, in: Circle())
-                .background((result == .match ? AppTheme.green : AppTheme.red).opacity(0.12), in: Circle().inset(by: -7))
+                .background(accentColor, in: Circle())
+                .background(accentColor.opacity(0.12), in: Circle().inset(by: -7))
                 .symbolEffect(.bounce, value: result)
 
             VStack(spacing: 5) {
-                Text(result == .match ? "一致しました" : "一致しません")
+                Text(title)
                     .font(.title3.weight(.bold))
                     .foregroundStyle(AppTheme.ink)
                 Text(subtitle)
@@ -474,18 +489,42 @@ private struct ResultView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 20)
-        .background((result == .match ? AppTheme.green : AppTheme.red).opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
+        .background(accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(result == .match ? "照合結果、一致しました" : "照合結果、一致しません")
+        .accessibilityLabel("照合結果、\(title)")
+    }
+
+    private var isDuplicate: Bool { result == .match && isAlreadyVerified }
+
+    private var iconName: String {
+        switch result {
+        case .match: isDuplicate ? "clock.badge.checkmark" : "checkmark"
+        case .mismatch: "exclamationmark"
+        }
+    }
+
+    private var accentColor: Color {
+        switch result {
+        case .match: isDuplicate ? AppTheme.amber : AppTheme.green
+        case .mismatch: AppTheme.red
+        }
+    }
+
+    private var title: String {
+        switch result {
+        case .match: isDuplicate ? "すでに照合済みです" : "一致しました"
+        case .mismatch: "一致しません"
+        }
     }
 
     private var subtitle: String {
         switch result {
         case .match:
-            if let part = barcodePartNumber ?? qrPartNumber {
-                return "品目番号 \(part) の組み合わせは正しいです。"
+            let part = (barcodePartNumber ?? qrPartNumber).map { "品目番号 \($0) " } ?? ""
+            if isDuplicate {
+                return "\(part)はこのセッションで照合済みです。履歴には追加されません。"
             }
-            return "この組み合わせは正しいです。"
+            return part.isEmpty ? "この組み合わせは正しいです。" : "\(part)の組み合わせは正しいです。"
         case .mismatch:
             return "品目番号が一致しません。対象を確認して、もう一度読み取ってください。"
         }

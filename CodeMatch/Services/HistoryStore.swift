@@ -28,25 +28,58 @@ final class HistoryStore: ObservableObject {
     }
 
     @discardableResult
-    func beginSession(at date: Date = Date()) -> UUID {
+    func beginSession(name: String? = nil, at date: Date = Date()) -> UUID {
         if let activeSession { return activeSession.id }
 
-        let session = MatchSession(startedAt: date)
+        let trimmedName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let session = MatchSession(
+            startedAt: date,
+            name: (trimmedName?.isEmpty ?? true) ? nil : trimmedName
+        )
         sessions.insert(session, at: 0)
         persist()
         return session.id
     }
 
-    func recordMatch(code: String, at date: Date = Date()) {
+    func recordMatch(
+        code: String,
+        qrPayload: String? = nil,
+        barcodePayload: String? = nil,
+        at date: Date = Date()
+    ) {
         guard let index = sessions.firstIndex(where: \.isActive) else { return }
         let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        sessions[index].entries.append(MatchHistoryEntry(code: normalized, matchedAt: date))
+        sessions[index].entries.append(
+            MatchHistoryEntry(
+                code: normalized,
+                matchedAt: date,
+                qrPayload: qrPayload,
+                barcodePayload: barcodePayload
+            )
+        )
+        persist()
+    }
+
+    /// アクティブセッションでこの品番が照合済みかどうか。
+    func activeSessionHasMatch(code: String) -> Bool {
+        activeSession?.hasMatch(code: code.trimmingCharacters(in: .whitespacesAndNewlines)) ?? false
+    }
+
+    func renameSession(id: UUID, name: String?) {
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        sessions[index].name = (trimmed?.isEmpty ?? true) ? nil : trimmed
         persist()
     }
 
     func endActiveSession(at date: Date = Date()) {
         guard let index = sessions.firstIndex(where: \.isActive) else { return }
-        sessions[index].endedAt = date
+        if sessions[index].entries.isEmpty {
+            // 照合0件のセッションは履歴に残さない
+            sessions.remove(at: index)
+        } else {
+            sessions[index].endedAt = date
+        }
         persist()
     }
 
@@ -80,7 +113,9 @@ final class HistoryStore: ObservableObject {
         guard let data = try? Data(contentsOf: url) else { return [] }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode([MatchSession].self, from: data)) ?? []
+        let sessions = (try? decoder.decode([MatchSession].self, from: data)) ?? []
+        // 旧バージョンで保存された照合0件の終了済みセッションは履歴に載せない
+        return sessions.filter { $0.isActive || !$0.entries.isEmpty }
     }
 
     private static var defaultStorageURL: URL {

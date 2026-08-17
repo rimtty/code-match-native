@@ -10,6 +10,8 @@ final class ScannerViewModel: ObservableObject {
     @Published private(set) var isCameraRunning = false
     @Published private(set) var message = "まず、納品書兼現品票のQRコードをカメラに映してください。"
     @Published private(set) var focusPoint: CGPoint?
+    /// 一致した品番がこのセッションで照合済みだった場合にtrue。履歴には追加されない。
+    @Published private(set) var isAlreadyVerified = false
 
     let camera = CameraScanner()
     private let feedback = FeedbackPlayer()
@@ -47,7 +49,7 @@ final class ScannerViewModel: ObservableObject {
             barcodeValue = Self.sampleBarcodePayload
             step = .result(.match)
             message = "品目番号が一致しています。"
-            historyStore.recordMatch(code: recordedCode)
+            historyStore.recordMatch(code: recordedCode, qrPayload: qrValue, barcodePayload: barcodeValue)
         } else if ProcessInfo.processInfo.arguments.contains("-demoMismatch") {
             qrValue = Self.sampleQRPayload
             barcodeValue = Self.sampleMismatchBarcodePayload
@@ -88,6 +90,7 @@ final class ScannerViewModel: ObservableObject {
         scanLocked = false
         barcodeCandidate = nil
         focusPoint = nil
+        isAlreadyVerified = false
         message = "まず、納品書兼現品票のQRコードをカメラに映してください。"
     }
 
@@ -152,13 +155,27 @@ final class ScannerViewModel: ObservableObject {
     private func finishComparison(resultSoundDelay: TimeInterval = 0) {
         let result = CodeMatcher.compare(qrPayload: qrValue, barcodePayload: barcodeValue)
         step = .result(result)
-        message = result == .match
-            ? "品目番号が一致しています。"
-            : "品目番号が一致しません。納品書と現品の取り違えを確認してください。"
-        if result == .match {
-            historyStore.recordMatch(code: recordedCode)
-            feedback.success(after: resultSoundDelay)
-        } else {
+
+        switch result {
+        case .match:
+            if historyStore.activeSessionHasMatch(code: recordedCode) {
+                // 照合済みの品番は履歴へ重複記録しない
+                isAlreadyVerified = true
+                message = "この品目番号はこのセッションで照合済みです。履歴には追加されません。"
+                feedback.alreadyVerified(after: resultSoundDelay)
+            } else {
+                isAlreadyVerified = false
+                message = "品目番号が一致しています。"
+                historyStore.recordMatch(
+                    code: recordedCode,
+                    qrPayload: qrValue,
+                    barcodePayload: barcodeValue
+                )
+                feedback.success(after: resultSoundDelay)
+            }
+        case .mismatch:
+            isAlreadyVerified = false
+            message = "品目番号が一致しません。納品書と現品の取り違えを確認してください。"
             feedback.failure()
         }
     }
