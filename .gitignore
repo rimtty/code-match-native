@@ -7,3 +7,4 @@ xcuserdata/
 tmp/
 docs/qr-barcode-spec-analysis.html
 docs/qr-barcode-spec-analysis.pdf
+build/
