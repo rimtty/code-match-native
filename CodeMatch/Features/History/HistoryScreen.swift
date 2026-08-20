@@ -43,7 +43,7 @@ private struct SessionHistoryRow: View {
             VStack(spacing: 2) {
                 Text("\(session.matchedCount)")
                     .font(.title2.weight(.bold))
-                Text("件")
+                Text("箱")
                     .font(.caption2.weight(.bold))
             }
             .foregroundStyle(session.isActive ? AppTheme.green : AppTheme.ink)
@@ -70,7 +70,7 @@ private struct SessionHistoryRow: View {
         .padding(.vertical, 5)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(session.displayName.isEmpty ? "" : "\(session.displayName)、")\(JPDate.dateTime(session.startedAt))、\(session.matchedCount)件、\(session.isActive ? "照合中" : "終了済み")"
+            "\(session.displayName.isEmpty ? "" : "\(session.displayName)、")\(JPDate.dateTime(session.startedAt))、\(session.matchedCount)箱、\(session.isActive ? "照合中" : "終了済み")"
         )
         .accessibilityIdentifier("historySessionRow")
     }
@@ -115,7 +115,8 @@ private struct SessionHistoryDetail: View {
                             LabeledContent("状態", value: "照合中")
                                 .foregroundStyle(AppTheme.green)
                         }
-                        LabeledContent("一致件数", value: "\(session.matchedCount)件")
+                        LabeledContent("検査箱数", value: "\(session.matchedCount)箱")
+                        LabeledContent("品番数", value: "\(session.groupedEntries.count)品番")
                     }
 
                     Section {
@@ -162,9 +163,10 @@ private struct SessionHistoryDetail: View {
                                 description: Text("このセッションではまだ一致したコードがありません。")
                             )
                         } else {
-                            ForEach(Array(session.entries.enumerated()), id: \.element.id) { index, entry in
+                            // 同一品番のラベルが複数箱に貼られる運用のため、品番ごとにまとめて箱数を表示する
+                            ForEach(Array(session.groupedEntries.enumerated()), id: \.element.id) { index, group in
                                 NavigationLink {
-                                    MatchEntryDetail(entry: entry, number: index + 1)
+                                    GroupedMatchDetail(group: group, number: index + 1)
                                 } label: {
                                     VStack(alignment: .leading, spacing: 7) {
                                         HStack {
@@ -172,12 +174,21 @@ private struct SessionHistoryDetail: View {
                                                 .font(.caption.weight(.bold))
                                                 .foregroundStyle(AppTheme.green)
                                             Spacer()
-                                            Text(JPDate.time(entry.matchedAt))
+                                            Text(matchedTimeText(for: group))
                                                 .font(.caption)
                                                 .foregroundStyle(AppTheme.muted)
                                         }
-                                        Text(entry.code)
-                                            .font(.system(.body, design: .monospaced, weight: .semibold))
+                                        HStack {
+                                            Text(group.code)
+                                                .font(.system(.body, design: .monospaced, weight: .semibold))
+                                            Spacer()
+                                            Text("\(group.boxCount)箱")
+                                                .font(.caption.weight(.bold))
+                                                .foregroundStyle(AppTheme.green)
+                                                .padding(.horizontal, 9)
+                                                .padding(.vertical, 4)
+                                                .background(AppTheme.green.opacity(0.1), in: Capsule())
+                                        }
                                     }
                                     .padding(.vertical, 5)
                                 }
@@ -221,6 +232,59 @@ private struct SessionHistoryDetail: View {
         guard let session, session.displayName != editedName.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
         historyStore.renameSession(id: sessionID, name: editedName)
     }
+
+    private func matchedTimeText(for group: GroupedMatchEntry) -> String {
+        group.boxCount > 1
+            ? "\(JPDate.time(group.firstMatchedAt))〜\(JPDate.time(group.lastMatchedAt))"
+            : JPDate.time(group.firstMatchedAt)
+    }
+}
+
+/// 同一品番のグループ詳細。何箱検査したかと、各箱の照合記録を一覧する。
+private struct GroupedMatchDetail: View {
+    let group: GroupedMatchEntry
+    let number: Int
+
+    var body: some View {
+        List {
+            Section {
+                LabeledContent("番号", value: "#\(number)")
+                LabeledContent("検査箱数", value: "\(group.boxCount)箱")
+                LabeledContent("最初の照合", value: JPDate.dateTime(group.firstMatchedAt))
+                if group.boxCount > 1 {
+                    LabeledContent("最後の照合", value: JPDate.dateTime(group.lastMatchedAt))
+                }
+            }
+
+            Section("品目番号") {
+                Text(group.code)
+                    .font(.system(.title3, design: .monospaced, weight: .bold))
+                    .textSelection(.enabled)
+            }
+
+            Section("各箱の照合記録") {
+                ForEach(Array(group.entries.enumerated()), id: \.element.id) { index, entry in
+                    NavigationLink {
+                        MatchEntryDetail(entry: entry, number: index + 1)
+                    } label: {
+                        HStack {
+                            Text("\(index + 1)箱目")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(AppTheme.green)
+                            Spacer()
+                            Text(JPDate.time(entry.matchedAt))
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.muted)
+                        }
+                        .padding(.vertical, 3)
+                    }
+                    .accessibilityIdentifier("boxEntryRow")
+                }
+            }
+        }
+        .navigationTitle(group.code)
+        .navigationBarTitleDisplayMode(.inline)
+    }
 }
 
 private struct MatchEntryDetail: View {
@@ -230,7 +294,7 @@ private struct MatchEntryDetail: View {
     var body: some View {
         List {
             Section {
-                LabeledContent("番号", value: "#\(number)")
+                LabeledContent("箱", value: "\(number)箱目")
                 LabeledContent("照合時刻", value: JPDate.dateTime(entry.matchedAt))
             }
 

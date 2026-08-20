@@ -12,7 +12,7 @@ final class CodeMatchUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["一致しました"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
 
-        // 同じ品番を再照合すると「照合済み」になり件数は増えない
+        // 同じ品番を再照合すると2箱目としてそのまま記録され、件数も増える
         app.swipeUp()
         let demoToggle = app.staticTexts["カメラなしで判定をテスト"]
         XCTAssertTrue(demoToggle.waitForExistence(timeout: 3))
@@ -20,8 +20,12 @@ final class CodeMatchUITests: XCTestCase {
         let matchButton = app.buttons["demoMatchButton"]
         XCTAssertTrue(matchButton.waitForExistence(timeout: 3))
         matchButton.tap()
-        XCTAssertTrue(app.staticTexts["すでに照合済みです"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
+        XCTAssertTrue(app.staticTexts["一致しました"].waitForExistence(timeout: 5))
+        let countIncremented = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", "2件照合済み"),
+            object: app.staticTexts["sessionMatchCount"]
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [countIncremented], timeout: 5), .completed)
 
         // リセットでQR読み取りステップへ戻る
         let resetButton = app.buttons["resetButton"]
@@ -43,7 +47,7 @@ final class CodeMatchUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["一致しません"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["BCJH-52-81GG"].exists)
         XCTAssertTrue(app.staticTexts["BCJH-55-81GG"].exists)
-        XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
+        XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "2件照合済み")
     }
 
     func testSessionCanStartAndShowsMatchCount() {

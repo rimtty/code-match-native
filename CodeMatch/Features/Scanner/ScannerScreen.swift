@@ -130,7 +130,7 @@ struct ScannerScreen: View {
                 case .result(let result):
                     ResultView(
                         result: result,
-                        isAlreadyVerified: viewModel.isAlreadyVerified,
+                        sessionBoxNumber: viewModel.sessionBoxNumber,
                         qrPartNumber: viewModel.qrPartNumber.map { CodeMatcher.format(partNumber: $0) },
                         barcodePartNumber: viewModel.barcodePartNumber.map { CodeMatcher.format(partNumber: $0) }
                     )
@@ -349,7 +349,7 @@ struct ScannerScreen: View {
         switch viewModel.step {
         case .qr: "QRコードを読み取る"
         case .barcode: "バーコードを読み取る"
-        case .result(.match): viewModel.isAlreadyVerified ? "照合済み" : "照合OK"
+        case .result(.match): "照合OK"
         case .result(.mismatch): "不一致"
         }
     }
@@ -454,7 +454,8 @@ private struct CodeReadout: View {
 
 private struct ResultView: View {
     let result: MatchResult
-    let isAlreadyVerified: Bool
+    /// 一致した品番がこのセッションで何箱目か。2箱目以降のときだけ補足表示する。
+    let sessionBoxNumber: Int
     let qrPartNumber: String?
     let barcodePartNumber: String?
 
@@ -494,25 +495,23 @@ private struct ResultView: View {
         .accessibilityLabel("照合結果、\(title)")
     }
 
-    private var isDuplicate: Bool { result == .match && isAlreadyVerified }
-
     private var iconName: String {
         switch result {
-        case .match: isDuplicate ? "clock.badge.checkmark" : "checkmark"
+        case .match: "checkmark"
         case .mismatch: "exclamationmark"
         }
     }
 
     private var accentColor: Color {
         switch result {
-        case .match: isDuplicate ? AppTheme.amber : AppTheme.green
+        case .match: AppTheme.green
         case .mismatch: AppTheme.red
         }
     }
 
     private var title: String {
         switch result {
-        case .match: isDuplicate ? "すでに照合済みです" : "一致しました"
+        case .match: "一致しました"
         case .mismatch: "一致しません"
         }
     }
@@ -521,10 +520,8 @@ private struct ResultView: View {
         switch result {
         case .match:
             let part = (barcodePartNumber ?? qrPartNumber).map { "品目番号 \($0) " } ?? ""
-            if isDuplicate {
-                return "\(part)はこのセッションで照合済みです。履歴には追加されません。"
-            }
-            return part.isEmpty ? "この組み合わせは正しいです。" : "\(part)の組み合わせは正しいです。"
+            let base = part.isEmpty ? "この組み合わせは正しいです。" : "\(part)の組み合わせは正しいです。"
+            return sessionBoxNumber >= 2 ? "\(base)（このセッションで\(sessionBoxNumber)箱目）" : base
         case .mismatch:
             return "品目番号が一致しません。対象を確認して、もう一度読み取ってください。"
         }

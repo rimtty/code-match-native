@@ -60,9 +60,9 @@ final class HistoryStore: ObservableObject {
         persist()
     }
 
-    /// アクティブセッションでこの品番が照合済みかどうか。
-    func activeSessionHasMatch(code: String) -> Bool {
-        activeSession?.hasMatch(code: code.trimmingCharacters(in: .whitespacesAndNewlines)) ?? false
+    /// アクティブセッションでこの品番が照合された回数（=検査済みの箱数）。
+    func activeSessionMatchCount(code: String) -> Int {
+        activeSession?.matchCount(code: code.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
     }
 
     func renameSession(id: UUID, name: String?) {
