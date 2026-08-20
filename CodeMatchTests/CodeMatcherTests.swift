@@ -161,7 +161,7 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(store.sessions[1].entries.map(\.code), ["FIRST"])
     }
 
-    func testRecordMatchStoresPayloadsAndDetectsDuplicates() {
+    func testRecordMatchStoresPayloadsAndCountsMatches() {
         let storageURL = temporaryStorageURL()
         defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
         let store = HistoryStore(storageURL: storageURL)
@@ -173,13 +173,41 @@ final class HistoryStoreTests: XCTestCase {
             barcodePayload: "BCJH-52-81GG@1N5X0C"
         )
 
-        XCTAssertTrue(store.activeSessionHasMatch(code: "BCJH-52-81GG"))
-        XCTAssertFalse(store.activeSessionHasMatch(code: "BCJH-55-81GG"))
+        XCTAssertEqual(store.activeSessionMatchCount(code: "BCJH-52-81GG"), 1)
+        XCTAssertEqual(store.activeSessionMatchCount(code: "BCJH-55-81GG"), 0)
         XCTAssertEqual(store.activeSession?.entries.first?.qrPayload, "DCLP675300BCJH5281GG02...")
         XCTAssertEqual(store.activeSession?.entries.first?.barcodePayload, "BCJH-52-81GG@1N5X0C")
 
         let restored = HistoryStore(storageURL: storageURL)
         XCTAssertEqual(restored.sessions.first?.entries.first?.barcodePayload, "BCJH-52-81GG@1N5X0C")
+    }
+
+    /// 同一品番のラベルが複数箱に貼られる運用のため、重複した照合もそのまま記録される。
+    func testDuplicateMatchesAreRecordedAndGroupedAsBoxes() {
+        let storageURL = temporaryStorageURL()
+        defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
+        let store = HistoryStore(storageURL: storageURL)
+        store.beginSession()
+
+        store.recordMatch(code: "BCJH-52-81GG", barcodePayload: "BCJH-52-81GG@1N5X0C")
+        store.recordMatch(code: "BCJH-55-81GG", barcodePayload: "BCJH-55-81GG@1KVV0C")
+        store.recordMatch(code: "BCJH-52-81GG", barcodePayload: "BCJH-52-81GG@1N5X0D")
+        store.recordMatch(code: "BCJH-52-81GG", barcodePayload: "BCJH-52-81GG@1N5X0E")
+
+        XCTAssertEqual(store.activeSession?.matchedCount, 4)
+        XCTAssertEqual(store.activeSessionMatchCount(code: "BCJH-52-81GG"), 3)
+
+        let groups = store.activeSession?.groupedEntries ?? []
+        XCTAssertEqual(groups.count, 2)
+        // 最初に照合された順に並び、箱数は照合回数と一致する
+        XCTAssertEqual(groups.first?.code, "BCJH-52-81GG")
+        XCTAssertEqual(groups.first?.boxCount, 3)
+        XCTAssertEqual(
+            groups.first?.entries.map(\.barcodePayload),
+            ["BCJH-52-81GG@1N5X0C", "BCJH-52-81GG@1N5X0D", "BCJH-52-81GG@1N5X0E"]
+        )
+        XCTAssertEqual(groups.last?.code, "BCJH-55-81GG")
+        XCTAssertEqual(groups.last?.boxCount, 1)
     }
 
     func testSessionNameCanBeSetAtStartAndRenamed() {

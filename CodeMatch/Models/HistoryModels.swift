@@ -52,10 +52,33 @@ struct MatchSession: Identifiable, Codable, Equatable {
     /// 表示用のセッション名。未設定なら空文字。
     var displayName: String { name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
 
-    /// この品番がすでにこのセッションで照合済みかどうか。
-    func hasMatch(code: String) -> Bool {
-        entries.contains { $0.code == code }
+    /// この品番がこのセッションで照合された回数。1回の照合を1箱として数える。
+    func matchCount(code: String) -> Int {
+        entries.filter { $0.code == code }.count
     }
+
+    /// 同一品番の照合をまとめたグループ。最初に照合された順に並ぶ。
+    var groupedEntries: [GroupedMatchEntry] {
+        var order: [String] = []
+        var buckets: [String: [MatchHistoryEntry]] = [:]
+        for entry in entries {
+            if buckets[entry.code] == nil { order.append(entry.code) }
+            buckets[entry.code, default: []].append(entry)
+        }
+        return order.map { GroupedMatchEntry(code: $0, entries: buckets[$0] ?? []) }
+    }
+}
+
+/// 同一品番の照合履歴を1つにまとめた表示用グループ。1件の照合 = 1箱。
+struct GroupedMatchEntry: Identifiable, Equatable {
+    let code: String
+    /// 照合順（古い順）の個別記録。
+    let entries: [MatchHistoryEntry]
+
+    var id: String { code }
+    var boxCount: Int { entries.count }
+    var firstMatchedAt: Date { entries.first?.matchedAt ?? .distantPast }
+    var lastMatchedAt: Date { entries.last?.matchedAt ?? .distantPast }
 }
 
 /// 履歴表示用の曜日付き日時フォーマッタ (例: 2026/08/17(日) 21:35)

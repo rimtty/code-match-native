@@ -10,8 +10,8 @@ final class ScannerViewModel: ObservableObject {
     @Published private(set) var isCameraRunning = false
     @Published private(set) var message = "まず、納品書兼現品票のQRコードをカメラに映してください。"
     @Published private(set) var focusPoint: CGPoint?
-    /// 一致した品番がこのセッションで照合済みだった場合にtrue。履歴には追加されない。
-    @Published private(set) var isAlreadyVerified = false
+    /// 一致した品番がこのセッションで何箱目の照合かを示す通し番号。結果表示中以外は0。
+    @Published private(set) var sessionBoxNumber = 0
 
     let camera = CameraScanner()
     private let feedback = FeedbackPlayer()
@@ -50,6 +50,7 @@ final class ScannerViewModel: ObservableObject {
             step = .result(.match)
             message = "品目番号が一致しています。"
             historyStore.recordMatch(code: recordedCode, qrPayload: qrValue, barcodePayload: barcodeValue)
+            sessionBoxNumber = historyStore.activeSessionMatchCount(code: recordedCode)
         } else if ProcessInfo.processInfo.arguments.contains("-demoMismatch") {
             qrValue = Self.sampleQRPayload
             barcodeValue = Self.sampleMismatchBarcodePayload
@@ -90,7 +91,7 @@ final class ScannerViewModel: ObservableObject {
         scanLocked = false
         barcodeCandidate = nil
         focusPoint = nil
-        isAlreadyVerified = false
+        sessionBoxNumber = 0
         message = "まず、納品書兼現品票のQRコードをカメラに映してください。"
     }
 
@@ -158,23 +159,20 @@ final class ScannerViewModel: ObservableObject {
 
         switch result {
         case .match:
-            if historyStore.activeSessionHasMatch(code: recordedCode) {
-                // 照合済みの品番は履歴へ重複記録しない
-                isAlreadyVerified = true
-                message = "この品目番号はこのセッションで照合済みです。履歴には追加されません。"
-                feedback.alreadyVerified(after: resultSoundDelay)
-            } else {
-                isAlreadyVerified = false
-                message = "品目番号が一致しています。"
-                historyStore.recordMatch(
-                    code: recordedCode,
-                    qrPayload: qrValue,
-                    barcodePayload: barcodeValue
-                )
-                feedback.success(after: resultSoundDelay)
-            }
+            // 同一品番のラベルが複数箱に貼られる運用のため、重複でもそのまま記録する
+            historyStore.recordMatch(
+                code: recordedCode,
+                qrPayload: qrValue,
+                barcodePayload: barcodeValue
+            )
+            let boxNumber = historyStore.activeSessionMatchCount(code: recordedCode)
+            sessionBoxNumber = boxNumber
+            message = boxNumber >= 2
+                ? "品目番号が一致しています。この品番は本セッションで\(boxNumber)箱目です。"
+                : "品目番号が一致しています。"
+            feedback.success(after: resultSoundDelay)
         case .mismatch:
-            isAlreadyVerified = false
+            sessionBoxNumber = 0
             message = "品目番号が一致しません。納品書と現品の取り違えを確認してください。"
             feedback.failure()
         }

@@ -148,23 +148,6 @@ final class FeedbackPlayer {
         }
     }
 
-    /// 一致はしたが、同一セッションで照合済みだったときの通知。
-    /// 成功音と聞き分けられる控えめな2音で知らせる。
-    func alreadyVerified(after delay: TimeInterval = 0) {
-        UINotificationFeedbackGenerator().notificationOccurred(.warning)
-        let playSound: () -> Void = { [weak self] in
-            self?.play([
-                Tone(frequency: 1_318.51, duration: 0.09, amplitude: 0.85, piercing: true),
-                Tone(frequency: 1_046.50, duration: 0.14, amplitude: 0.85, piercing: true)
-            ], gap: 0.05)
-        }
-        if delay > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: playSound)
-        } else {
-            playSound()
-        }
-    }
-
     func failure() {
         UINotificationFeedbackGenerator().notificationOccurred(.error)
         let sound = FeedbackSettings.failureSound

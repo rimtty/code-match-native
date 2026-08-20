@@ -85,7 +85,10 @@ enum SessionPDFExporter {
             } else {
                 draw("状態: 照合中", font: bodyFont, color: gray, spacing: 2)
             }
-            draw("一致件数: \(session.matchedCount)件", font: bodyFont, color: gray, spacing: 8)
+            draw(
+                "検査箱数: \(session.matchedCount)箱（品番数: \(session.groupedEntries.count)）",
+                font: bodyFont, color: gray, spacing: 8
+            )
             drawDivider()
 
             if session.entries.isEmpty {
@@ -99,13 +102,21 @@ enum SessionPDFExporter {
                     : String(format: "%.2f", value)
             }
 
-            for (index, entry) in session.entries.enumerated() {
-                // 1エントリの見出し＋詳細ブロックはまとめて改ページ判定する
+            // 同一品番は1グループにまとめ、何箱検査したかがひと目でわかるようにする
+            for (index, group) in session.groupedEntries.enumerated() {
+                // 1グループの見出し＋詳細ブロックはまとめて改ページ判定する
                 ensureSpace(150)
-                draw("#\(index + 1)  \(entry.code)", font: monoBoldFont, spacing: 2)
-                draw("照合時刻: \(JPDate.dateTime(entry.matchedAt))", font: bodyFont, color: gray, spacing: 4)
+                draw("#\(index + 1)  \(group.code)　（\(group.boxCount)箱）", font: monoBoldFont, spacing: 2)
+                if group.boxCount > 1 {
+                    draw(
+                        "照合時刻: \(JPDate.dateTime(group.firstMatchedAt)) 〜 \(JPDate.dateTime(group.lastMatchedAt))",
+                        font: bodyFont, color: gray, spacing: 4
+                    )
+                } else {
+                    draw("照合時刻: \(JPDate.dateTime(group.firstMatchedAt))", font: bodyFont, color: gray, spacing: 4)
+                }
 
-                if let qr = entry.qrPayload.flatMap(KanbanQRRecord.parse) {
+                if let qr = group.entries.compactMap({ $0.qrPayload.flatMap(KanbanQRRecord.parse) }).first {
                     let suffix = qr.partSuffix.map { "（枝番 \($0)）" } ?? ""
                     draw("納品書情報", font: headFont, spacing: 2)
                     draw(
@@ -122,16 +133,18 @@ enum SessionPDFExporter {
                     )
                 }
 
-                if let tag = entry.barcodePayload.flatMap(TagBarcodeRecord.parse) {
-                    draw("現品票情報", font: headFont, spacing: 2)
+                draw("各箱の読み取り記録", font: headFont, spacing: 2)
+                for (boxIndex, entry) in group.entries.enumerated() {
+                    // 箱ごとの見出し＋全文2行はまとめて改ページ判定する
+                    ensureSpace(48)
+                    let managementCode = entry.barcodePayload.flatMap(TagBarcodeRecord.parse)?.managementCode
                     draw(
-                        "品番: \(tag.partNumber)　管理コード: \(tag.managementCode ?? "-")",
-                        font: bodyFont, spacing: 4
+                        "\(boxIndex + 1)箱目　照合時刻: \(JPDate.dateTime(entry.matchedAt))　管理コード: \(managementCode ?? "-")",
+                        font: bodyFont, spacing: 2
                     )
+                    draw("　QR全文: \(entry.qrPayload ?? "記録なし（旧バージョンで照合）")", font: monoFont, color: gray, spacing: 2)
+                    draw("　Code 128全文: \(entry.barcodePayload ?? "記録なし（旧バージョンで照合）")", font: monoFont, color: gray, spacing: 5)
                 }
-
-                draw("QR全文: \(entry.qrPayload ?? "記録なし（旧バージョンで照合）")", font: monoFont, color: gray, spacing: 2)
-                draw("Code 128全文: \(entry.barcodePayload ?? "記録なし（旧バージョンで照合）")", font: monoFont, color: gray, spacing: 6)
                 drawDivider()
             }
 
