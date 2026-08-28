@@ -28,6 +28,7 @@
 		A10000000000000000000013 /* success2.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* success2.mp3 */; };
 		A10000000000000000000014 /* Fail1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001A /* Fail1.mp3 */; };
 		A10000000000000000000015 /* SessionPDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* SessionPDFExporter.swift */; };
+		A10000000000000000000016 /* BluetoothScannerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001C /* BluetoothScannerService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -73,6 +74,7 @@
 		A20000000000000000000019 /* success2.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = success2.mp3; sourceTree = "<group>"; };
 		A2000000000000000000001A /* Fail1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Fail1.mp3; sourceTree = "<group>"; };
 		A2000000000000000000001B /* SessionPDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPDFExporter.swift; sourceTree = "<group>"; };
+		A2000000000000000000001C /* BluetoothScannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothScannerService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -156,6 +158,7 @@
 				A20000000000000000000005 /* CameraScanner.swift */,
 				A20000000000000000000015 /* HistoryStore.swift */,
 				A2000000000000000000001B /* SessionPDFExporter.swift */,
+				A2000000000000000000001C /* BluetoothScannerService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -391,6 +394,7 @@
 				A10000000000000000000010 /* HistoryScreen.swift in Sources */,
 				A10000000000000000000011 /* SettingsScreen.swift in Sources */,
 				A10000000000000000000015 /* SessionPDFExporter.swift in Sources */,
+				A10000000000000000000016 /* BluetoothScannerService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -437,16 +441,19 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CodeMatch/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = "$(PROJECT_DIR)/Vendor/Inateck";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = "$(inherited) -framework InateckScannerBleKit";
 				PRODUCT_BUNDLE_IDENTIFIER = jp.rimtty.CodeMatch;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos*]" = "$(inherited) INATECK_SDK";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -463,17 +470,20 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CodeMatch/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = "$(PROJECT_DIR)/Vendor/Inateck";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = "$(inherited) -framework InateckScannerBleKit";
 				PRODUCT_BUNDLE_IDENTIFIER = jp.rimtty.CodeMatch;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos*]" = "$(inherited) INATECK_SDK";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

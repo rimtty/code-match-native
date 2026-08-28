@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsScreen: View {
+    @ObservedObject var bluetoothScanner: BluetoothScannerService
     @AppStorage(FeedbackSettings.volumeKey) private var volume = FeedbackSettings.defaultVolume
     @AppStorage(FeedbackSettings.successSoundKey) private var successSound = SuccessSound.posBeep.rawValue
     @AppStorage(FeedbackSettings.failureSoundKey) private var failureSound = FailureSound.buzzer.rawValue
@@ -16,12 +17,13 @@ struct SettingsScreen: View {
                             .font(.caption2.weight(.black))
                             .tracking(2.2)
                             .foregroundStyle(AppTheme.green)
-                        Text("効果音の設定")
+                        Text("アプリの設定")
                             .font(.title2.weight(.bold))
                             .foregroundStyle(AppTheme.ink)
                     }
                     .padding(.horizontal, 4)
 
+                    bluetoothScannerCard
                     volumeCard
                     soundCard(
                         title: "成功音",
@@ -76,6 +78,126 @@ struct SettingsScreen: View {
         }
         .preferredColorScheme(.light)
         .accessibilityIdentifier("settingsScreen")
+    }
+
+    private var bluetoothScannerCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: "barcode.viewfinder")
+                    .font(.title3)
+                    .foregroundStyle(AppTheme.green)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Bluetoothスキャナ")
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.ink)
+                    Text(bluetoothScanner.state.statusText)
+                        .font(.caption2)
+                        .foregroundStyle(scannerStatusColor)
+                        .accessibilityIdentifier("bluetoothScannerStatus")
+                }
+                Spacer()
+                if case .searching = bluetoothScanner.state {
+                    ProgressView()
+                        .tint(AppTheme.green)
+                }
+            }
+
+            if bluetoothScanner.isConnected {
+                Button(role: .destructive) {
+                    bluetoothScanner.disconnect()
+                } label: {
+                    Label("スキャナを切断", systemImage: "xmark.circle")
+                        .font(.subheadline.weight(.bold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("disconnectBluetoothScannerButton")
+            } else {
+                Button {
+                    bluetoothScanner.startDiscovery()
+                } label: {
+                    Label(
+                        isSearching ? "検索中…" : "スキャナを検索",
+                        systemImage: "antenna.radiowaves.left.and.right"
+                    )
+                    .font(.subheadline.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.green)
+                .disabled(isSearching)
+                .accessibilityIdentifier("searchBluetoothScannerButton")
+
+                if !bluetoothScanner.devices.isEmpty {
+                    VStack(spacing: 8) {
+                        ForEach(bluetoothScanner.devices) { device in
+                            Button {
+                                bluetoothScanner.connect(device)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "barcode")
+                                        .foregroundStyle(AppTheme.green)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(device.name)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(AppTheme.ink)
+                                        Text("タップして接続")
+                                            .font(.caption2)
+                                            .foregroundStyle(AppTheme.muted)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(AppTheme.muted)
+                                }
+                                .padding(12)
+                                .background(AppTheme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isConnecting)
+                            .accessibilityIdentifier("bluetoothScannerDevice_\(device.id)")
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Label(
+                    "iPhoneの「設定 > Bluetooth」ではペアリングせず、この画面から接続してください。",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .foregroundStyle(AppTheme.amber)
+
+                Text("BCST-47をGATT／APPモードにして接続します。見つからない場合は、iOSに登録済みのBCST-47を解除してから本体の電源を入れ直してください。")
+                    .foregroundStyle(AppTheme.muted)
+            }
+            .font(.caption2)
+            .lineSpacing(3)
+            .accessibilityIdentifier("bluetoothScannerConnectionHelp")
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .scannerCard()
+    }
+
+    private var isSearching: Bool {
+        if case .searching = bluetoothScanner.state { return true }
+        return false
+    }
+
+    private var isConnecting: Bool {
+        if case .connecting = bluetoothScanner.state { return true }
+        return false
+    }
+
+    private var scannerStatusColor: Color {
+        switch bluetoothScanner.state {
+        case .connected: AppTheme.green
+        case .failed, .unavailable: AppTheme.red
+        default: AppTheme.muted
+        }
     }
 
     private var volumeCard: some View {
@@ -188,5 +310,5 @@ private struct SoundOptionRow: View {
 }
 
 #Preview {
-    SettingsScreen()
+    SettingsScreen(bluetoothScanner: BluetoothScannerService())
 }

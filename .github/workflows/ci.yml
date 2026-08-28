@@ -23,6 +23,17 @@ jobs:
           -destination 'generic/platform=iOS Simulator'
           CODE_SIGNING_ALLOWED=NO
 
+      - name: Install pinned Inateck SDK
+        run: ./scripts/bootstrap_inateck_sdk.sh
+
+      - name: Build generic iOS device
+        run: >
+          xcodebuild build
+          -project CodeMatch.xcodeproj
+          -scheme CodeMatch
+          -destination 'generic/platform=iOS'
+          CODE_SIGNING_ALLOWED=NO
+
       - name: Unit tests
         run: |
           DEVICE_ID=$(xcrun simctl list devices available --json | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(dev['udid'] for k,v in d.items() if 'iOS' in k for dev in v if dev['isAvailable'] and 'iPhone' in dev['name']))")
@@ -32,4 +43,15 @@ jobs:
             -scheme CodeMatch \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -only-testing:CodeMatchTests \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: UI tests
+        run: |
+          DEVICE_ID=$(xcrun simctl list devices available --json | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(dev['udid'] for k,v in d.items() if 'iOS' in k for dev in v if dev['isAvailable'] and 'iPhone' in dev['name']))")
+          echo "Using simulator $DEVICE_ID"
+          xcodebuild test \
+            -project CodeMatch.xcodeproj \
+            -scheme CodeMatch \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -only-testing:CodeMatchUITests \
             CODE_SIGNING_ALLOWED=NO

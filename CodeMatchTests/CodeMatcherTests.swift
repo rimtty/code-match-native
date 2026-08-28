@@ -109,6 +109,198 @@ final class CodeMatcherTests: XCTestCase {
 }
 
 @MainActor
+final class BluetoothScannerServiceTests: XCTestCase {
+    func testNormalizedPayloadRemovesOnlyTrailingTransportTerminators() {
+        XCTAssertEqual(
+            BluetoothScannerService.normalizedPayload("QR DATA   0*\r\n\0"),
+            "QR DATA   0*"
+        )
+        XCTAssertEqual(BluetoothScannerService.normalizedPayload("  KEEP  "), "  KEEP  ")
+    }
+
+    func testDecodedSDKScanPayloadUnwrapsPinnedIOSSDKJSON() throws {
+        let expected = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*\n"
+        let callback = """
+        {"code":"DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*\\n","source_code":"44434C5036373533303042434A483532383147473032303030303132303030303030313230304C303030303030303030303030424C4244494C4C553932202020302A0A","status":0}
+        """
+
+        XCTAssertEqual(BluetoothScannerService.decodedSDKScanPayload(callback), expected)
+    }
+
+    func testDecodedSDKScanPayloadUnwrapsScannerLibNotificationJSON() throws {
+        let expected = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*\n"
+        let jsonObject: [String: Any] = [
+            "notify_type": 1,
+            "notify_status": 1,
+            "notify_data": Array(expected.utf8)
+        ]
+        let data = try JSONSerialization.data(withJSONObject: jsonObject)
+        let callback = try XCTUnwrap(String(data: data, encoding: .utf8))
+
+        XCTAssertEqual(BluetoothScannerService.decodedSDKScanPayload(callback), expected)
+    }
+
+    func testDecodedSDKScanPayloadKeepsDirectTextAndRejectsNonScanNotifications() throws {
+        XCTAssertEqual(BluetoothScannerService.decodedSDKScanPayload("DIRECT-CODE"), "DIRECT-CODE")
+
+        let configuration = """
+        {"notify_type":0,"notify_status":1,"notify_data":[1,2,3]}
+        """
+        let incomplete = """
+        {"notify_type":1,"notify_status":0,"notify_data":[68,67]}
+        """
+        let failedCode = """
+        {"code":"BAD","source_code":"424144","status":1}
+        """
+        XCTAssertNil(BluetoothScannerService.decodedSDKScanPayload(configuration))
+        XCTAssertNil(BluetoothScannerService.decodedSDKScanPayload(incomplete))
+        XCTAssertNil(BluetoothScannerService.decodedSDKScanPayload(failedCode))
+    }
+
+    func testSimulatorDiscoveryConnectAndPreferredReconnect() {
+        let defaults = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let service = BluetoothScannerService(defaults: defaults)
+
+        service.startDiscovery()
+        XCTAssertEqual(service.devices.count, 1)
+        XCTAssertFalse(service.isConnected)
+
+        service.connect(service.devices[0])
+        XCTAssertTrue(service.isConnected)
+        XCTAssertEqual(
+            defaults.string(forKey: BluetoothScannerService.preferredDeviceIDKey),
+            service.devices[0].id
+        )
+
+        let restored = BluetoothScannerService(defaults: defaults)
+        restored.reconnectPreferredDevice()
+        XCTAssertTrue(restored.isConnected)
+        XCTAssertEqual(restored.connectedDevice?.id, service.devices[0].id)
+    }
+
+    func testDuplicateCallbackIsSuppressedInsideDebounceWindow() {
+        let defaults = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var currentDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let service = BluetoothScannerService(defaults: defaults, now: { currentDate })
+        service.startDiscovery()
+        service.connect(service.devices[0])
+        var received: [String] = []
+        service.onCode = { received.append($0) }
+
+        service.simulateScan("ABC\r")
+        currentDate.addTimeInterval(0.2)
+        service.simulateScan("ABC\n")
+        currentDate.addTimeInterval(0.8)
+        service.simulateScan("ABC")
+
+        XCTAssertEqual(received, ["ABC", "ABC"])
+    }
+
+    private let suiteName = "BluetoothScannerServiceTests"
+
+    private func isolatedDefaults() -> UserDefaults {
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
+}
+
+@MainActor
+final class BluetoothScannerFlowTests: XCTestCase {
+    func testBluetoothQRThenBarcodeCompletesMatchImmediately() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+        XCTAssertFalse(context.viewModel.isCameraRunning)
+
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload + "\r\n")
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertTrue(context.viewModel.qrValue.hasSuffix("   0*"))
+
+        // サービス側の短時間デバウンスを越えて同じQRが再通知されても、
+        // 次ステップのCode 128として誤確定しない。
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload + "\r\n")
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertTrue(context.viewModel.barcodeValue.isEmpty)
+
+        context.service.simulateScan(ScannerViewModel.sampleBarcodePayload + "\r")
+
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+    }
+
+    func testConnectedBluetoothBecomesDefaultButManualCameraSelectionIsPreserved() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+        XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+        XCTAssertTrue(context.viewModel.message.contains("BCST-47"))
+
+        context.viewModel.selectInputSource(.camera)
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+    }
+
+    func testBluetoothDisconnectKeepsCurrentStepAndFallsBackToCamera() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.selectInputSource(.bluetooth)
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+
+        context.service.disconnect()
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.viewModel.qrValue, ScannerViewModel.sampleQRPayload)
+        XCTAssertTrue(context.viewModel.message.contains("カメラへ切り替えました"))
+
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.viewModel.qrValue, ScannerViewModel.sampleQRPayload)
+    }
+
+    private func makeContext() -> (
+        service: BluetoothScannerService,
+        viewModel: ScannerViewModel,
+        store: HistoryStore,
+        cleanup: () -> Void
+    ) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let storageURL = directory.appendingPathComponent("history.json")
+        let defaultsName = "BluetoothScannerFlowTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: defaultsName)!
+        let service = BluetoothScannerService(defaults: defaults)
+        let store = HistoryStore(storageURL: storageURL)
+        store.beginSession()
+        let viewModel = ScannerViewModel(historyStore: store, bluetoothScanner: service)
+        return (service, viewModel, store, {
+            try? FileManager.default.removeItem(at: directory)
+            defaults.removePersistentDomain(forName: defaultsName)
+        })
+    }
+}
+
+@MainActor
 final class HistoryStoreTests: XCTestCase {
     func testSessionRecordsNormalizedMatchesAndEnds() {
         let storageURL = temporaryStorageURL()

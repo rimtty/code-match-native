@@ -5,6 +5,7 @@ import SwiftUI
 @MainActor
 final class ScannerViewModel: ObservableObject {
     @Published private(set) var step: ScanStep = .qr
+    @Published private(set) var inputSource: ScanInputSource = .camera
     @Published private(set) var qrValue = ""
     @Published private(set) var barcodeValue = ""
     @Published private(set) var isCameraRunning = false
@@ -16,8 +17,12 @@ final class ScannerViewModel: ObservableObject {
     let camera = CameraScanner()
     private let feedback = FeedbackPlayer()
     private let historyStore: HistoryStore
+    private let bluetoothScanner: BluetoothScannerService
     private var scanLocked = false
     private var barcodeCandidate: (value: String, count: Int, date: Date)?
+    /// 接続済みスキャナを初期入力にする一方、利用者がカメラを選んだ後は
+    /// 同じ照合セッション内で自動的にBluetoothへ戻さないためのフラグ。
+    private var cameraWasSelectedByUser = false
 
     var expectedCode: ExpectedCode? {
         switch step {
@@ -40,9 +45,13 @@ final class ScannerViewModel: ObservableObject {
         CodeMatcher.partNumber(fromBarcode: barcodeValue)
     }
 
-    init(historyStore: HistoryStore) {
+    init(historyStore: HistoryStore, bluetoothScanner: BluetoothScannerService) {
         self.historyStore = historyStore
+        self.bluetoothScanner = bluetoothScanner
         camera.delegate = self
+        bluetoothScanner.onCode = { [weak self] value in
+            self?.handleBluetoothScan(value)
+        }
 
         if ProcessInfo.processInfo.arguments.contains("-demoMatch") {
             qrValue = Self.sampleQRPayload
@@ -60,6 +69,7 @@ final class ScannerViewModel: ObservableObject {
     }
 
     func toggleCamera() {
+        guard inputSource == .camera else { return }
         if isCameraRunning {
             camera.stop()
             isCameraRunning = false
@@ -73,6 +83,7 @@ final class ScannerViewModel: ObservableObject {
 
     func startCamera() {
         guard let expectedCode else { return }
+        inputSource = .camera
         isCameraRunning = true
         message = "カメラを準備しています…"
         camera.setActiveType(expectedCode.metadataType)
@@ -92,7 +103,42 @@ final class ScannerViewModel: ObservableObject {
         barcodeCandidate = nil
         focusPoint = nil
         sessionBoxNumber = 0
-        message = "まず、納品書兼現品票のQRコードをカメラに映してください。"
+        if inputSource == .bluetooth, bluetoothScanner.isConnected {
+            message = "BCST-47で納品書兼現品票のQRコードを読み取ってください。"
+        } else {
+            inputSource = .camera
+            message = "まず、納品書兼現品票のQRコードをカメラに映してください。"
+        }
+    }
+
+    func selectInputSource(_ source: ScanInputSource) {
+        guard expectedCode != nil else { return }
+
+        switch source {
+        case .camera:
+            cameraWasSelectedByUser = true
+            activateCamera()
+        case .bluetooth:
+            cameraWasSelectedByUser = false
+            guard bluetoothScanner.isConnected else {
+                inputSource = .camera
+                message = "Bluetoothスキャナが未接続です。設定画面で接続してください。"
+                return
+            }
+            activateBluetooth()
+        }
+    }
+
+    func handleBluetoothConnectionState(_ state: BluetoothScannerConnectionState) {
+        if state.connectedDevice != nil {
+            guard expectedCode != nil, !cameraWasSelectedByUser else { return }
+            activateBluetooth()
+            return
+        }
+
+        guard inputSource == .bluetooth else { return }
+        activateCamera()
+        message = "Bluetoothスキャナとの接続が切れたため、現在の読取ステップを維持してカメラへ切り替えました。"
     }
 
     func focus(at point: CGPoint) {
@@ -107,6 +153,7 @@ final class ScannerViewModel: ObservableObject {
 
     func runDemo(shouldMatch: Bool) {
         camera.stop()
+        isCameraRunning = false
         qrValue = Self.sampleQRPayload
         barcodeValue = shouldMatch ? Self.sampleBarcodePayload : Self.sampleMismatchBarcodePayload
         finishComparison()
@@ -117,11 +164,18 @@ final class ScannerViewModel: ObservableObject {
         qrValue = value
         step = .barcode
         // 次のステップではCode 128だけを検出対象にして読み取りを速くする
-        camera.setActiveType(ExpectedCode.barcode.metadataType)
+        if inputSource == .camera {
+            camera.setActiveType(ExpectedCode.barcode.metadataType)
+        }
         if let part = CodeMatcher.partNumber(fromQR: value) {
-            message = "品目番号 \(CodeMatcher.format(partNumber: part)) を読み取りました。続けて現品票のCode 128バーコードを映してください。"
+            let instruction = inputSource == .bluetooth
+                ? "続けてBCST-47で現品票のCode 128バーコードを読み取ってください。"
+                : "続けて現品票のCode 128バーコードを映してください。"
+            message = "品目番号 \(CodeMatcher.format(partNumber: part)) を読み取りました。\(instruction)"
         } else {
-            message = "読取完了。続けて横長のCode 128バーコードを映してください。"
+            message = inputSource == .bluetooth
+                ? "読取完了。続けてBCST-47でCode 128バーコードを読み取ってください。"
+                : "読取完了。続けて横長のCode 128バーコードを映してください。"
         }
         feedback.scanAccepted()
         Task {
@@ -145,12 +199,53 @@ final class ScannerViewModel: ObservableObject {
             return
         }
 
+        acceptBarcode(value, resultSoundDelay: 0.28)
+    }
+
+    private func acceptBarcode(_ value: String, resultSoundDelay: TimeInterval = 0) {
         scanLocked = true
         barcodeValue = value
         feedback.scanAccepted()
         camera.stop()
         isCameraRunning = false
-        finishComparison(resultSoundDelay: 0.28)
+        finishComparison(resultSoundDelay: resultSoundDelay)
+    }
+
+    private func handleBluetoothScan(_ value: String) {
+        guard inputSource == .bluetooth, bluetoothScanner.isConnected,
+              !scanLocked, let expectedCode else { return }
+
+        switch expectedCode {
+        case .qr:
+            acceptQR(value)
+        case .barcode:
+            // BCST-47は1回の読取結果を複数回通知することがある。
+            // QR確定後に同じペイロードが再通知されてもバーコードとして扱わない。
+            guard value != qrValue else { return }
+            // 外部スキャナはトリガー操作そのものを確定操作として扱う。
+            acceptBarcode(value)
+        }
+    }
+
+    private func updateBluetoothInstruction() {
+        message = expectedCode == .qr
+            ? "BCST-47で納品書兼現品票のQRコードを読み取ってください。"
+            : "BCST-47で現品票のCode 128バーコードを読み取ってください。"
+    }
+
+    private func activateCamera() {
+        inputSource = .camera
+        barcodeCandidate = nil
+        startCamera()
+    }
+
+    private func activateBluetooth() {
+        camera.stop()
+        isCameraRunning = false
+        focusPoint = nil
+        barcodeCandidate = nil
+        inputSource = .bluetooth
+        updateBluetoothInstruction()
     }
 
     private func finishComparison(resultSoundDelay: TimeInterval = 0) {
@@ -193,7 +288,7 @@ extension ScannerViewModel: CameraScannerDelegate {
         didRead value: String,
         type: AVMetadataObject.ObjectType
     ) {
-        guard !scanLocked, let expectedCode else { return }
+        guard inputSource == .camera, !scanLocked, let expectedCode else { return }
 
         switch (expectedCode, type) {
         case (.qr, .qr):
