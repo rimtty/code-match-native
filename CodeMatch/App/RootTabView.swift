@@ -2,6 +2,8 @@ import SwiftUI
 
 struct RootTabView: View {
     @StateObject private var historyStore: HistoryStore
+    @StateObject private var bluetoothScanner: BluetoothScannerService
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         let store = HistoryStore()
@@ -10,11 +12,15 @@ struct RootTabView: View {
             store.beginSession()
         }
         _historyStore = StateObject(wrappedValue: store)
+        _bluetoothScanner = StateObject(wrappedValue: BluetoothScannerService())
     }
 
     var body: some View {
         TabView {
-            ScannerFlowView(historyStore: historyStore)
+            ScannerFlowView(
+                historyStore: historyStore,
+                bluetoothScanner: bluetoothScanner
+            )
                 .tabItem {
                     Label("照合", systemImage: "barcode.viewfinder")
                 }
@@ -24,23 +30,34 @@ struct RootTabView: View {
                     Label("履歴", systemImage: "clock.arrow.circlepath")
                 }
 
-            SettingsScreen()
+            SettingsScreen(bluetoothScanner: bluetoothScanner)
                 .tabItem {
                     Label("設定", systemImage: "gearshape.fill")
                 }
         }
         .tint(AppTheme.green)
         .preferredColorScheme(.light)
+        .task {
+            bluetoothScanner.setApplicationActive(scenePhase == .active)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            bluetoothScanner.setApplicationActive(phase == .active)
+        }
     }
 }
 
 private struct ScannerFlowView: View {
     @ObservedObject var historyStore: HistoryStore
+    @ObservedObject var bluetoothScanner: BluetoothScannerService
 
     var body: some View {
         Group {
             if let session = historyStore.activeSession {
-                ScannerScreen(historyStore: historyStore, sessionID: session.id)
+                ScannerScreen(
+                    historyStore: historyStore,
+                    bluetoothScanner: bluetoothScanner,
+                    sessionID: session.id
+                )
                     .id(session.id)
             } else {
                 SessionStartView(historyStore: historyStore)

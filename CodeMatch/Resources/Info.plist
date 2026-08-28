@@ -24,6 +24,8 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>QRコードとバーコードを読み取り、内容を端末内で照合するためにカメラを使用します。</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Inateckバーコードスキャナを検索・接続し、読み取ったコードを端末内で照合するためにBluetoothを使用します。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

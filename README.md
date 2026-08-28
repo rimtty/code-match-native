@@ -1,13 +1,14 @@
 # Code Match for iOS
 
-`code-match` SPAの基本機能を、SwiftUIとAVFoundationで再実装したiOSネイティブアプリです。納品書兼現品票のQRコードを先に、現品票のCode 128バーコードを次に読み取り、QRの固定長レコードから抽出した品目番号(10桁)とバーコードの`@`より前の品番を照合します（データ仕様は [docs/qr-barcode-spec-analysis.html](docs/qr-barcode-spec-analysis.html) を参照）。一致したコードは作業セッション単位の履歴として端末内だけに保存され、端末外へ送信しません。
+`code-match` SPAの基本機能を、SwiftUIとAVFoundationで再実装したiOSネイティブアプリです。iOSカメラまたはInateck BCST-47 Bluetoothスキャナで、納品書兼現品票のQRコードを先に、現品票のCode 128バーコードを次に読み取ります。QRの固定長レコードから抽出した品目番号(10桁)とバーコードの`@`より前の品番を照合します（データ仕様は [docs/qr-barcode-spec-analysis.html](docs/qr-barcode-spec-analysis.html) を参照）。一致したコードは作業セッション単位の履歴として端末内だけに保存され、端末外へ送信しません。
 
 ## すぐに実行する
 
 1. [CodeMatch.xcodeproj](CodeMatch.xcodeproj) をXcodeで開く。
 2. Schemeに `CodeMatch`、実行先にiOS 17以降の端末またはiOS 26.5シミュレーターを選ぶ。
-3. 実機へ入れる場合は、Target `CodeMatch` の Signing & Capabilities でTeamを選ぶ。
-4. `⌘R` で起動する。
+3. Bluetoothスキャナを使う実機ビルドでは、先に `./scripts/bootstrap_inateck_sdk.sh` を実行する。
+4. 実機へ入れる場合は、Target `CodeMatch` の Signing & Capabilities でTeamを選ぶ。
+5. `⌘R` で起動する。
 
 シミュレーターには利用可能な背面カメラがないため、画面下部の「カメラなしで判定をテスト」から一致・不一致のUI、音声、状態遷移を確認できます。実際の読み取りはカメラ搭載のiPhone/iPadで確認してください。
 
@@ -28,6 +29,8 @@
 - 過去のセッション一覧と、一致コードを確認・コピーできる詳細画面
 - QR → Code 128 → 自動照合の迷いにくい2スキャンフロー
 - `AVCaptureMetadataOutput` による完全ローカル読み取り
+- Inateck BCST-47の検索・接続・自動再接続と、BluetoothによるQR／Code 128読み取り
+- カメラ／Bluetooth入力切替、切断時の読取状態維持とカメラ復帰
 - Code 128の同一値2フレーム確認による誤検出抑制
 - タップフォーカス、連続オートフォーカス
 - 一致時の成功音・触覚、不一致時の4回警告音・触覚
@@ -53,5 +56,7 @@ swift tools/generate_test_codes.swift TestResources/Generated
 ```
 
 設計判断、実装手順、受け入れ基準は [docs/IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md) を参照してください。
+
+BCST-47のSDK準備、Simulatorモック、iPhone実機での検証手順は [docs/BLUETOOTH_SCANNER_TEST.md](docs/BLUETOOTH_SCANNER_TEST.md) を参照してください。
 
 シミュレーターで確認済みの画面は [初期画面](docs/screenshots/initial-screen.png) と [一致結果](docs/screenshots/match-result.png) に保存しています。App Store Connect用画像を作る際の構成確認にも利用できます。

@@ -1,6 +1,47 @@
 import XCTest
 
 final class CodeMatchUITests: XCTestCase {
+    func testMockBluetoothScannerConnectsAndCompletesMatch() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-resetHistory", "-demoBluetoothConnected"]
+        app.launch()
+
+        app.buttons["startSessionButton"].tap()
+        let inputPicker = app.segmentedControls["scanInputSourcePicker"]
+        XCTAssertTrue(inputPicker.waitForExistence(timeout: 5))
+        XCTAssertTrue(inputPicker.buttons["Bluetooth"].isSelected)
+        XCTAssertTrue(app.staticTexts["BCST-47 (Simulator)"].waitForExistence(timeout: 3))
+
+        app.swipeUp()
+        let demoToggle = app.staticTexts["カメラなしで判定をテスト"]
+        XCTAssertTrue(demoToggle.waitForExistence(timeout: 3))
+        demoToggle.tap()
+        app.buttons["demoBluetoothQRButton"].tap()
+        XCTAssertTrue(app.staticTexts["バーコードを読み取る"].waitForExistence(timeout: 3))
+        app.buttons["demoBluetoothBarcodeButton"].tap()
+
+        XCTAssertTrue(app.staticTexts["一致しました"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
+    }
+
+    func testSettingsDiscoversAndConnectsMockScanner() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-resetHistory", "-resetBluetoothScanner"]
+        app.launch()
+
+        app.tabBars.buttons["設定"].tap()
+        let searchButton = app.buttons["searchBluetoothScannerButton"]
+        XCTAssertTrue(searchButton.waitForExistence(timeout: 5))
+        searchButton.tap()
+        let device = app.buttons["bluetoothScannerDevice_SIMULATOR-BCST-47"]
+        XCTAssertTrue(device.waitForExistence(timeout: 3))
+        device.tap()
+
+        XCTAssertTrue(app.staticTexts["bluetoothScannerStatus"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["bluetoothScannerStatus"].label, "BCST-47 (Simulator) 接続済み")
+        XCTAssertTrue(app.buttons["disconnectBluetoothScannerButton"].exists)
+    }
+
     /// スキャナーの主要フローを1回のアプリ起動でまとめて検証する。
     /// 起動が最も時間を要するため、一致→重複→リセット→不一致を連続で確認する。
     func testScannerFlowMatchDuplicateResetAndMismatch() {

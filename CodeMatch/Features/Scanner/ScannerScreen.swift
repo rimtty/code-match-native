@@ -2,16 +2,27 @@ import SwiftUI
 
 struct ScannerScreen: View {
     @ObservedObject var historyStore: HistoryStore
+    @ObservedObject var bluetoothScanner: BluetoothScannerService
     let sessionID: UUID
     @StateObject private var viewModel: ScannerViewModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var showsDemoTools = false
     @State private var showsEndConfirmation = false
 
-    init(historyStore: HistoryStore, sessionID: UUID) {
+    init(
+        historyStore: HistoryStore,
+        bluetoothScanner: BluetoothScannerService,
+        sessionID: UUID
+    ) {
         self.historyStore = historyStore
+        self.bluetoothScanner = bluetoothScanner
         self.sessionID = sessionID
-        _viewModel = StateObject(wrappedValue: ScannerViewModel(historyStore: historyStore))
+        _viewModel = StateObject(
+            wrappedValue: ScannerViewModel(
+                historyStore: historyStore,
+                bluetoothScanner: bluetoothScanner
+            )
+        )
     }
 
     var body: some View {
@@ -46,6 +57,13 @@ struct ScannerScreen: View {
             if phase != .active, viewModel.isCameraRunning {
                 viewModel.toggleCamera()
             }
+        }
+        .onChange(of: bluetoothScanner.state) { _, state in
+            viewModel.handleBluetoothConnectionState(state)
+        }
+        .onAppear {
+            // 画面表示前から接続済みの場合にもBluetoothを初期入力として反映する。
+            viewModel.handleBluetoothConnectionState(bluetoothScanner.state)
         }
         // 履歴からアクティブセッションが削除された場合など、画面が消えたらカメラを止める
         .onDisappear {
@@ -125,6 +143,10 @@ struct ScannerScreen: View {
         VStack(spacing: 0) {
             scannerHeader
 
+            if bluetoothScanner.isConnected, viewModel.expectedCode != nil {
+                inputSourcePicker
+            }
+
             Group {
                 switch viewModel.step {
                 case .result(let result):
@@ -136,7 +158,11 @@ struct ScannerScreen: View {
                     )
                     .accessibilityIdentifier("resultView")
                 case .qr, .barcode:
-                    cameraStage
+                    if viewModel.inputSource == .bluetooth {
+                        bluetoothStage
+                    } else {
+                        cameraStage
+                    }
                 }
             }
 
@@ -170,11 +196,54 @@ struct ScannerScreen: View {
             }
             Spacer()
             if viewModel.expectedCode != nil {
-                Label(viewModel.isCameraRunning ? "読取中" : "待機中", systemImage: "circle.fill")
-                    .labelStyle(StatusLabelStyle(isRunning: viewModel.isCameraRunning))
+                Label(isReading ? "読取中" : "待機中", systemImage: "circle.fill")
+                    .labelStyle(StatusLabelStyle(isRunning: isReading))
             }
         }
         .padding(.bottom, 16)
+    }
+
+    private var inputSourcePicker: some View {
+        Picker("入力元", selection: Binding(
+            get: { viewModel.inputSource },
+            set: { viewModel.selectInputSource($0) }
+        )) {
+            ForEach(ScanInputSource.allCases) { source in
+                Label(
+                    source.label,
+                    systemImage: source == .camera ? "camera.fill" : "barcode.viewfinder"
+                )
+                .tag(source)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(.bottom, 14)
+        .accessibilityIdentifier("scanInputSourcePicker")
+    }
+
+    private var bluetoothStage: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "barcode.viewfinder")
+                .font(.system(size: 48, weight: .medium))
+                .foregroundStyle(AppTheme.green)
+            Text(bluetoothScanner.connectedDevice?.name ?? "Bluetoothスキャナ")
+                .font(.headline)
+                .foregroundStyle(AppTheme.ink)
+            Text(viewModel.expectedCode == .qr
+                 ? "トリガーを押してQRコードを読み取ってください"
+                 : "トリガーを押してCode 128を読み取ってください")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.muted)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(4 / 3, contentMode: .fit)
+        .background(AppTheme.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(AppTheme.green.opacity(0.28), lineWidth: 1.5)
+        }
+        .accessibilityIdentifier("bluetoothScannerStage")
     }
 
     private var cameraStage: some View {
@@ -264,7 +333,7 @@ struct ScannerScreen: View {
 
     private var actionButtons: some View {
         VStack(spacing: 10) {
-            if viewModel.expectedCode != nil {
+            if viewModel.expectedCode != nil, viewModel.inputSource == .camera {
                 Button(action: viewModel.toggleCamera) {
                     Label(
                         viewModel.isCameraRunning ? "カメラを停止" : startButtonTitle,
@@ -298,15 +367,16 @@ struct ScannerScreen: View {
             Label("次のコードを照合", systemImage: "qrcode.viewfinder")
                 .font(.title3.weight(.bold))
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: 62)
+                .frame(minHeight: 78)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(.white)
-        .background(AppTheme.green, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(AppTheme.green, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .accessibilityIdentifier("resetButton")
         .padding(.horizontal, 18)
-        .padding(.top, 10)
-        .padding(.bottom, 8)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
         .background {
             Rectangle()
                 .fill(AppTheme.paper.opacity(0.92))
@@ -315,7 +385,7 @@ struct ScannerScreen: View {
     }
 
     private var privacyNote: some View {
-        Label("カメラ映像とコード内容は端末内だけで処理され、外部へ送信されません。", systemImage: "lock.shield.fill")
+        Label("カメラ映像とBluetoothで読み取ったコード内容は端末内だけで処理され、外部へ送信されません。", systemImage: "lock.shield.fill")
             .font(.caption)
             .foregroundStyle(AppTheme.muted)
             .lineSpacing(3)
@@ -326,12 +396,27 @@ struct ScannerScreen: View {
     #if targetEnvironment(simulator)
     private var demoTools: some View {
         DisclosureGroup("カメラなしで判定をテスト", isExpanded: $showsDemoTools) {
-            HStack {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
                 Button("一致をテスト") { viewModel.runDemo(shouldMatch: true) }
                     .accessibilityIdentifier("demoMatchButton")
                 Button("不一致をテスト") { viewModel.runDemo(shouldMatch: false) }
                     .tint(AppTheme.red)
                     .accessibilityIdentifier("demoMismatchButton")
+                }
+
+                if bluetoothScanner.isConnected, viewModel.inputSource == .bluetooth {
+                    HStack {
+                        Button("モックQR") {
+                            bluetoothScanner.simulateScan(ScannerViewModel.sampleQRPayload)
+                        }
+                        .accessibilityIdentifier("demoBluetoothQRButton")
+                        Button("モックCode 128") {
+                            bluetoothScanner.simulateScan(ScannerViewModel.sampleBarcodePayload)
+                        }
+                        .accessibilityIdentifier("demoBluetoothBarcodeButton")
+                    }
+                }
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
@@ -356,6 +441,12 @@ struct ScannerScreen: View {
 
     private var startButtonTitle: String {
         viewModel.expectedCode == .qr ? "QRコードを読み取る" : "バーコードを読み取る"
+    }
+
+    private var isReading: Bool {
+        viewModel.inputSource == .bluetooth
+            ? bluetoothScanner.isConnected
+            : viewModel.isCameraRunning
     }
 }
 
