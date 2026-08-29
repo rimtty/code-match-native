@@ -74,26 +74,17 @@ jobs:
       - name: Wait for simulator boot
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.id }}" -b
 
-      - name: Unit tests
-        run: >
-          xcodebuild test-without-building
-          -project CodeMatch.xcodeproj
-          -scheme CodeMatch
-          -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}"
-          -only-testing:CodeMatchTests
-          -derivedDataPath DerivedData
-          CODE_SIGNING_ALLOWED=NO
-
+      # One invocation for unit + UI tests: xcodebuild startup costs ~40s on
+      # these runners, so paying it once instead of twice is a real saving.
       # Per-test execution-time allowances kill a stalled XCTest session instead
-      # of letting it eat the whole job, and failed UI tests get retried once
+      # of letting it eat the whole job, and failed tests get retried once
       # before the job is marked red.
-      - name: UI tests
+      - name: Unit & UI tests
         run: >
           xcodebuild test-without-building
           -project CodeMatch.xcodeproj
           -scheme CodeMatch
           -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}"
-          -only-testing:CodeMatchUITests
           -derivedDataPath DerivedData
           -test-timeouts-enabled YES
           -default-test-execution-time-allowance 180
