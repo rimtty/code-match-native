@@ -17,12 +17,15 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         UserDefaults.standard.removeObject(forKey: storageKey)
     }
 
-    private static let englishLocalizationBundle: Bundle? = {
-        guard let path = Bundle.main.path(forResource: AppLanguage.english.rawValue, ofType: "lproj") else {
+    private static let japaneseLocalizationBundle = localizationBundle(for: .japanese)
+    private static let englishLocalizationBundle = localizationBundle(for: .english)
+
+    private static func localizationBundle(for language: AppLanguage) -> Bundle? {
+        guard let path = Bundle.main.path(forResource: language.rawValue, ofType: "lproj") else {
             return nil
         }
         return Bundle(path: path)
-    }()
+    }
 
     static var current: AppLanguage {
         AppLanguage(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? fallback.rawValue) ?? fallback
@@ -50,9 +53,9 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     var localizationBundle: Bundle {
         switch self {
         case .japanese:
-            // The string catalog's source language is Japanese, so its source
-            // values are resolved directly from the main bundle.
-            return .main
+            // Resolve through ja.lproj so Japanese remains the app default even
+            // when the device or CI host uses English as its preferred language.
+            return Self.japaneseLocalizationBundle ?? .main
         case .english:
             return Self.englishLocalizationBundle ?? .main
         }
