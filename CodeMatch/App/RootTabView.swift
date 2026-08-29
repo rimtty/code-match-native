@@ -6,16 +6,24 @@ struct RootTabView: View {
     @StateObject private var cameraScanner: CameraScanner
     @Environment(\.scenePhase) private var scenePhase
 
-    init(cameraScanner: CameraScanner = CameraScanner()) {
+    init(cameraScanner: @autoclosure @escaping () -> CameraScanner = CameraScanner()) {
+        // このinitはCodeMatchApp.bodyの再評価ごとに呼ばれる。ストア生成・
+        // AVCaptureSessionのセットアップ・UIテスト用リセットの副作用を
+        // 毎回実行するとUIが再描画ループへ陥るため、@StateObjectの
+        // autoclosureへ包んで最初のレンダリング時の一度きりに限定する。
+        _historyStore = StateObject(wrappedValue: Self.makeHistoryStore())
+        _bluetoothScanner = StateObject(wrappedValue: BluetoothScannerService())
+        _cameraScanner = StateObject(wrappedValue: cameraScanner())
+    }
+
+    private static func makeHistoryStore() -> HistoryStore {
         let arguments = ProcessInfo.processInfo.arguments
         AutoAdvanceSettings.resetForUITestingIfRequested(arguments: arguments)
         let store = HistoryStore()
         if arguments.contains("-demoMatch") || arguments.contains("-demoMismatch") {
             store.beginSession()
         }
-        _historyStore = StateObject(wrappedValue: store)
-        _bluetoothScanner = StateObject(wrappedValue: BluetoothScannerService())
-        _cameraScanner = StateObject(wrappedValue: cameraScanner)
+        return store
     }
 
     var body: some View {
@@ -26,17 +34,17 @@ struct RootTabView: View {
                 cameraScanner: cameraScanner
             )
                 .tabItem {
-                    Label("照合", systemImage: "barcode.viewfinder")
+                    Label(AppLocalization.string("照合"), systemImage: "barcode.viewfinder")
                 }
 
             HistoryScreen(historyStore: historyStore)
                 .tabItem {
-                    Label("履歴", systemImage: "clock.arrow.circlepath")
+                    Label(AppLocalization.string("履歴"), systemImage: "clock.arrow.circlepath")
                 }
 
             SettingsScreen(bluetoothScanner: bluetoothScanner)
                 .tabItem {
-                    Label("設定", systemImage: "gearshape.fill")
+                    Label(AppLocalization.string("設定"), systemImage: "gearshape.fill")
                 }
         }
         .tint(AppTheme.green)
@@ -75,6 +83,7 @@ private struct ScannerFlowView: View {
 private struct SessionStartView: View {
     @ObservedObject var historyStore: HistoryStore
     @State private var sessionName = ""
+    @Environment(\.locale) private var locale
 
     var body: some View {
         ZStack {
@@ -82,17 +91,21 @@ private struct SessionStartView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 26) {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("SCAN & VERIFY")
+                        Text(AppLocalization.string("SCAN & VERIFY"))
                             .font(.caption2.weight(.black))
                             .tracking(2.2)
                             .foregroundStyle(AppTheme.green)
 
-                        Text("照合作業を、\n記録して始める。")
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
-                            .tracking(-1.2)
-                            .foregroundStyle(AppTheme.ink)
+                        Text(AppLocalization.string("照合作業を、\n記録して始める。"))
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .tracking(-1.2)
+                        .foregroundStyle(AppTheme.ink)
 
-                        Text("作業単位ごとにセッションを開始します。一致したコードと時刻が端末内の履歴へ記録されます。")
+                        Text(
+                            AppLocalization.string(
+                                "作業単位ごとにセッションを開始します。一致したコードと時刻が端末内の履歴へ記録されます。"
+                            )
+                        )
                             .font(.subheadline)
                             .foregroundStyle(AppTheme.muted)
                             .lineSpacing(5)
@@ -106,14 +119,14 @@ private struct SessionStartView: View {
                             .background(AppTheme.green.opacity(0.10), in: Circle())
 
                         VStack(spacing: 6) {
-                            Text("新しい照合セッション")
-                                .font(.title3.weight(.bold))
-                            Text("開始後は照合済み件数を常に確認できます")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.muted)
-                        }
+                        Text(AppLocalization.string("新しい照合セッション"))
+                            .font(.title3.weight(.bold))
+                        Text(AppLocalization.string("開始後は照合済み件数を常に確認できます"))
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.muted)
+                    }
 
-                        TextField("セッション名（任意）", text: $sessionName)
+                        TextField(AppLocalization.string("セッション名（任意）"), text: $sessionName)
                             .font(.subheadline)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 12)
@@ -129,7 +142,7 @@ private struct SessionStartView: View {
                             historyStore.beginSession(name: sessionName)
                             sessionName = ""
                         } label: {
-                            Label("記録を開始する", systemImage: "play.fill")
+                            Label(AppLocalization.string("記録を開始する"), systemImage: "play.fill")
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
                                 .frame(minHeight: 68)
@@ -150,7 +163,7 @@ private struct SessionStartView: View {
 
                     if !historyStore.sessions.isEmpty {
                         Label(
-                            "これまでに\(historyStore.sessions.count)セッションを端末内へ保存しています",
+                            AppLocalization.string("これまでに\(historyStore.sessions.count)セッションを端末内へ保存しています"),
                             systemImage: "clock.arrow.circlepath"
                         )
                         .font(.caption)

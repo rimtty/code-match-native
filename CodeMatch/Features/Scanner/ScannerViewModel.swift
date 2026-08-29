@@ -11,7 +11,7 @@ final class ScannerViewModel: ObservableObject {
     @Published private(set) var isCameraRunning = false
     @Published private(set) var isCameraStarting = false
     @Published private(set) var isEndingSession = false
-    @Published private(set) var message = "まず、納品書兼現品票のQRコードをカメラに映してください。"
+    @Published private(set) var message = ""
     @Published private(set) var focusPoint: CGPoint?
     /// 一致した品番がこのセッションで何箱目の照合かを示す通し番号。結果表示中以外は0。
     @Published private(set) var sessionBoxNumber = 0
@@ -20,7 +20,7 @@ final class ScannerViewModel: ObservableObject {
     @Published private(set) var autoAdvanceSecondsRemaining: Int?
 
     let camera: CameraScanner
-    private let feedback = FeedbackPlayer()
+    private let feedback = FeedbackPlayer.shared
     private let historyStore: HistoryStore
     private let bluetoothScanner: BluetoothScannerService
     private var scanLocked = false
@@ -30,12 +30,25 @@ final class ScannerViewModel: ObservableObject {
     /// 接続済みスキャナを初期入力にする一方、利用者がカメラを選んだ後は
     /// 同じ照合セッション内で自動的にBluetoothへ戻さないためのフラグ。
     private var cameraWasSelectedByUser = false
+    private var localizedMessageBuilder: (() -> String)?
 
     var expectedCode: ExpectedCode? {
         switch step {
         case .qr: .qr
         case .barcode: .barcode
         case .result: nil
+        }
+    }
+
+    private func setLocalizedMessage(_ builder: @escaping () -> String) {
+        let localizedMessage = builder()
+        message = localizedMessage
+        localizedMessageBuilder = builder
+    }
+
+    func refreshLocalizedMessage() {
+        if let builder = localizedMessageBuilder {
+            message = builder()
         }
     }
 
@@ -70,19 +83,24 @@ final class ScannerViewModel: ObservableObject {
         bluetoothScanner.onCode = { [weak self] value in
             self?.handleBluetoothScan(value)
         }
+        setLocalizedMessage {
+            AppLocalization.string("まず、納品書兼現品票のQRコードをカメラに映してください。")
+        }
 
         if ProcessInfo.processInfo.arguments.contains("-demoMatch") {
             qrValue = Self.sampleQRPayload
             barcodeValue = Self.sampleBarcodePayload
             step = .result(.match)
-            message = "品目番号が一致しています。"
+            setLocalizedMessage { AppLocalization.string("品目番号が一致しています。") }
             historyStore.recordMatch(code: recordedCode, qrPayload: qrValue, barcodePayload: barcodeValue)
             sessionBoxNumber = historyStore.activeSessionMatchCount(code: recordedCode)
         } else if ProcessInfo.processInfo.arguments.contains("-demoMismatch") {
             qrValue = Self.sampleQRPayload
             barcodeValue = Self.sampleMismatchBarcodePayload
             step = .result(.mismatch)
-            message = "品目番号が一致しません。納品書と現品の取り違えを確認してください。"
+            setLocalizedMessage {
+                AppLocalization.string("品目番号が一致しません。納品書と現品の取り違えを確認してください。")
+            }
         }
     }
 
@@ -107,7 +125,7 @@ final class ScannerViewModel: ObservableObject {
         inputSource = .camera
         isCameraStarting = true
         isCameraRunning = false
-        message = "カメラを準備しています…"
+        setLocalizedMessage { AppLocalization.string("カメラを準備しています…") }
         camera.setActiveType(expectedCode.metadataType)
         camera.requestAccessAndStart()
     }
@@ -119,9 +137,12 @@ final class ScannerViewModel: ObservableObject {
             self.isCameraStarting = false
             self.isCameraRunning = false
             if showMessage {
-                self.message = self.expectedCode == .qr
-                    ? "カメラを停止しました。「QRコードを読み取る」で再開できます。"
-                    : "カメラを停止しました。「バーコードを読み取る」で再開できます。"
+                let isQr = self.expectedCode == .qr
+                self.setLocalizedMessage {
+                    isQr
+                    ? AppLocalization.string("カメラを停止しました。「QRコードを読み取る」で再開できます。")
+                    : AppLocalization.string("カメラを停止しました。「バーコードを読み取る」で再開できます。")
+                }
             }
         }
     }
@@ -140,11 +161,11 @@ final class ScannerViewModel: ObservableObject {
         sessionBoxNumber = 0
         if inputSource == .bluetooth, bluetoothScanner.isConnected {
             bluetoothScanner.setExpectedCode(.qr)
-            message = "BCST-47で納品書兼現品票のQRコードを読み取ってください。"
+            setLocalizedMessage { AppLocalization.string("BCST-47で納品書兼現品票のQRコードを読み取ってください。") }
         } else {
             bluetoothScanner.setExpectedCode(nil)
             inputSource = .camera
-            message = "まず、納品書兼現品票のQRコードをカメラに映してください。"
+            setLocalizedMessage { AppLocalization.string("まず、納品書兼現品票のQRコードをカメラに映してください。") }
             if automaticallyStartScanning {
                 startCamera()
             }
@@ -166,14 +187,14 @@ final class ScannerViewModel: ObservableObject {
 
         if inputSource == .bluetooth, bluetoothScanner.isConnected {
             bluetoothScanner.setExpectedCode(.qr)
-            message = "BCST-47で別の納品書兼現品票のQRコードを読み取ってください。"
+            setLocalizedMessage { AppLocalization.string("BCST-47で別の納品書兼現品票のQRコードを読み取ってください。") }
             return
         }
 
         bluetoothScanner.setExpectedCode(nil)
         inputSource = .camera
         camera.setActiveType(ExpectedCode.qr.metadataType)
-        message = "別の納品書兼現品票のQRコードを枠の中央に合わせてください。"
+        setLocalizedMessage { AppLocalization.string("別の納品書兼現品票のQRコードを枠の中央に合わせてください。") }
         if !isCameraRunning, !isCameraStarting {
             startCamera()
         }
@@ -206,9 +227,12 @@ final class ScannerViewModel: ObservableObject {
             cameraWasSelectedByUser = false
             guard bluetoothScanner.isReadyForScanning else {
                 inputSource = .camera
-                message = bluetoothScanner.isConnected
-                    ? "Bluetoothスキャナの読み取り設定を準備しています。少し待ってからもう一度選択してください。"
-                    : "Bluetoothスキャナが未接続です。設定画面で接続してください。"
+                let isConnected = bluetoothScanner.isConnected
+                setLocalizedMessage {
+                    isConnected
+                        ? AppLocalization.string("Bluetoothスキャナの読み取り設定を準備しています。少し待ってからもう一度選択してください。")
+                        : AppLocalization.string("Bluetoothスキャナが未接続です。設定画面で接続してください。")
+                }
                 return
             }
             activateBluetooth()
@@ -232,7 +256,9 @@ final class ScannerViewModel: ObservableObject {
 
         guard inputSource == .bluetooth else { return }
         activateCamera()
-        message = "Bluetoothスキャナとの接続が切れたため、現在の読取ステップを維持してカメラへ切り替えました。"
+        setLocalizedMessage {
+            AppLocalization.string("Bluetoothスキャナとの接続が切れたため、現在の読取ステップを維持してカメラへ切り替えました。")
+        }
     }
 
     func handleBluetoothConfigurationState(_ state: BluetoothScannerConfigurationState) {
@@ -244,10 +270,14 @@ final class ScannerViewModel: ObservableObject {
             guard inputSource == .bluetooth else { return }
             cameraWasSelectedByUser = true
             activateCamera()
-            message = reason + " 現在の読取ステップを維持してカメラへ切り替えました。"
+            setLocalizedMessage {
+                AppLocalization.string("\(reason) 現在の読取ステップを維持してカメラへ切り替えました。")
+            }
         case .configuring:
             if inputSource == .bluetooth {
-                message = "BCST-47の読み取り対象を設定しています。完了するまでお待ちください。"
+                setLocalizedMessage {
+                    AppLocalization.string("BCST-47の読み取り対象を設定しています。完了するまでお待ちください。")
+                }
             }
         case .unavailable:
             break
@@ -329,14 +359,20 @@ final class ScannerViewModel: ObservableObject {
             camera.setActiveType(ExpectedCode.barcode.metadataType)
         }
         if let part = CodeMatcher.partNumber(fromQR: value) {
-            let instruction = inputSource == .bluetooth
-                ? "続けてBCST-47で現品票のCode 128バーコードを読み取ってください。"
-                : "続けて現品票のCode 128バーコードを映してください。"
-            message = "品目番号 \(CodeMatcher.format(partNumber: part)) を読み取りました。\(instruction)"
+            let partNumber = CodeMatcher.format(partNumber: part)
+            let isBluetooth = inputSource == .bluetooth
+            setLocalizedMessage {
+                let instruction = isBluetooth
+                    ? AppLocalization.string("続けてBCST-47で現品票のCode 128バーコードを読み取ってください。")
+                    : AppLocalization.string("続けて現品票のCode 128バーコードを映してください。")
+                return AppLocalization.string("品目番号 \(partNumber) を読み取りました。\(instruction)")
+            }
         } else {
-            message = inputSource == .bluetooth
-                ? "読取完了。続けてBCST-47でCode 128バーコードを読み取ってください。"
-                : "読取完了。続けて横長のCode 128バーコードを映してください。"
+            setLocalizedMessage {
+                self.inputSource == .bluetooth
+                    ? AppLocalization.string("読取完了。続けてBCST-47でCode 128バーコードを読み取ってください。")
+                    : AppLocalization.string("読取完了。続けて横長のCode 128バーコードを映してください。")
+            }
         }
         feedback.scanAccepted()
         Task {
@@ -356,7 +392,9 @@ final class ScannerViewModel: ObservableObject {
         }
 
         guard barcodeCandidate?.count ?? 0 >= 2 else {
-            message = "コードを確認中です。そのまま一瞬だけ保持してください。"
+            setLocalizedMessage {
+                AppLocalization.string("コードを確認中です。そのまま一瞬だけ保持してください。")
+            }
             return
         }
 
@@ -412,15 +450,19 @@ final class ScannerViewModel: ObservableObject {
         }
     }
 
-    private func rejectBluetoothScan(_ reason: String) {
-        message = reason + " 読み取った値は照合に使用していません。"
+    private func rejectBluetoothScan(_ reason: String.LocalizationValue) {
+        setLocalizedMessage {
+            "\(AppLocalization.string(reason)) " + AppLocalization.string("読み取った値は照合に使用していません。")
+        }
         feedback.invalidScan()
     }
 
     private func updateBluetoothInstruction() {
-        message = expectedCode == .qr
-            ? "BCST-47で納品書兼現品票のQRコードを読み取ってください。"
-            : "BCST-47で現品票のCode 128バーコードを読み取ってください。"
+        setLocalizedMessage {
+            self.expectedCode == .qr
+                ? AppLocalization.string("BCST-47で納品書兼現品票のQRコードを読み取ってください。")
+                : AppLocalization.string("BCST-47で現品票のCode 128バーコードを読み取ってください。")
+        }
     }
 
     private func activateCamera() {
@@ -446,7 +488,9 @@ final class ScannerViewModel: ObservableObject {
 
         // 表示はすぐBluetoothへ切り替えるが、非表示になったCameraPreviewは
         // stopRunning完了までセッションへ接続したまま保持する。
-        message = "カメラを停止してBluetoothスキャナへ切り替えています…"
+        setLocalizedMessage {
+            AppLocalization.string("カメラを停止してBluetoothスキャナへ切り替えています…")
+        }
         camera.stop { [weak self] in
             guard let self, self.inputSource == .bluetooth else { return }
             self.isCameraRunning = false
@@ -472,14 +516,18 @@ final class ScannerViewModel: ObservableObject {
             )
             let boxNumber = historyStore.activeSessionMatchCount(code: recordedCode)
             sessionBoxNumber = boxNumber
-            message = boxNumber >= 2
-                ? "品目番号が一致しています。この品番は本セッションで\(boxNumber)箱目です。"
-                : "品目番号が一致しています。"
+            setLocalizedMessage {
+                boxNumber >= 2
+                    ? AppLocalization.string("品目番号が一致しています。この品番は本セッションで\(boxNumber)箱目です。")
+                    : AppLocalization.string("品目番号が一致しています。")
+            }
             feedback.success(after: resultSoundDelay)
             startAutoAdvanceCountdownIfNeeded()
         case .mismatch:
             sessionBoxNumber = 0
-            message = "品目番号が一致しません。納品書と現品の取り違えを確認してください。"
+            setLocalizedMessage {
+                AppLocalization.string("品目番号が一致しません。納品書と現品の取り違えを確認してください。")
+            }
             feedback.failure()
         }
     }
@@ -537,9 +585,11 @@ extension ScannerViewModel: CameraScannerDelegate {
         }
         isCameraStarting = false
         isCameraRunning = true
-        message = expectedCode == .qr
-            ? "QRコードを枠の中央に合わせてください。"
-            : "横長のCode 128バーコード全体を枠に合わせてください。"
+        setLocalizedMessage {
+            self.expectedCode == .qr
+                ? AppLocalization.string("QRコードを枠の中央に合わせてください。")
+                : AppLocalization.string("横長のCode 128バーコード全体を枠に合わせてください。")
+        }
     }
 
     func cameraScannerDidStop(_ scanner: CameraScanner) {
@@ -560,15 +610,17 @@ extension ScannerViewModel: CameraScannerDelegate {
         case (.barcode, .code128):
             acceptBarcodeCandidate(value)
         default:
-            message = expectedCode == .qr
-                ? "正方形のQRコードを枠に合わせてください。"
-                : "横長のCode 128バーコードを枠に合わせてください。"
+            setLocalizedMessage {
+                expectedCode == .qr
+                    ? AppLocalization.string("正方形のQRコードを枠に合わせてください。")
+                    : AppLocalization.string("横長のCode 128バーコードを枠に合わせてください。")
+            }
         }
     }
 
     func cameraScanner(_ scanner: CameraScanner, didFail message: String) {
         isCameraStarting = false
         isCameraRunning = false
-        self.message = message
+        setLocalizedMessage { message }
     }
 }

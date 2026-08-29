@@ -1,0 +1,2 @@
+NSCameraUsageDescription = "Access the camera to scan QR/barcode stickers and match codes within this device.";
+NSBluetoothAlwaysUsageDescription = "Use Bluetooth to connect to the BCST-47 barcode scanner and match the scanned codes on this device.";

@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 struct ScannerScreen: View {
@@ -10,6 +11,7 @@ struct ScannerScreen: View {
     @State private var showsEndConfirmation = false
     @AppStorage(AutoAdvanceSettings.enabledKey) private var autoAdvanceEnabled = AutoAdvanceSettings.defaultEnabled
     @AppStorage(AutoAdvanceSettings.delaySecondsKey) private var autoAdvanceDelaySeconds = AutoAdvanceSettings.defaultDelay.rawValue
+    @AppStorage(AppLanguage.storageKey) private var selectedAppLanguageRawValue = AppLanguage.fallback.rawValue
 
     init(
         historyStore: HistoryStore,
@@ -79,6 +81,9 @@ struct ScannerScreen: View {
             guard let delay = AutoAdvanceDelay(rawValue: seconds) else { return }
             viewModel.setAutoAdvanceDelay(delay)
         }
+        .onChange(of: selectedAppLanguageRawValue) { _, _ in
+            viewModel.refreshLocalizedMessage()
+        }
         .onAppear {
             viewModel.setAutoAdvanceEnabled(autoAdvanceEnabled)
             if let delay = AutoAdvanceDelay(rawValue: autoAdvanceDelaySeconds) {
@@ -87,6 +92,7 @@ struct ScannerScreen: View {
             // 画面表示前から接続済みの場合にもBluetoothを初期入力として反映する。
             viewModel.handleBluetoothConnectionState(bluetoothScanner.state)
             viewModel.handleBluetoothConfigurationState(bluetoothScanner.configurationState)
+            viewModel.refreshLocalizedMessage()
         }
         // 履歴からアクティブセッションが削除された場合など、画面が消えたらカメラを止める
         .onDisappear {
@@ -95,9 +101,9 @@ struct ScannerScreen: View {
         }
         .tint(AppTheme.green)
         .preferredColorScheme(.light)
-        .alert("このセッションを終了しますか？", isPresented: $showsEndConfirmation) {
-            Button("キャンセル", role: .cancel) {}
-            Button("終了する", role: .destructive) {
+        .alert(AppLocalization.string("このセッションを終了しますか？"), isPresented: $showsEndConfirmation) {
+            Button(AppLocalization.string("キャンセル"), role: .cancel) {}
+            Button(AppLocalization.string("終了する"), role: .destructive) {
                 // stopRunningは完全停止まで待つ同期APIのため、CameraScannerの
                 // 専用キューで停止が完了してから画面を閉じる。セッション自体は
                 // アプリ内で再利用し、短時間の破棄・再生成を繰り返さない。
@@ -106,9 +112,11 @@ struct ScannerScreen: View {
                 }
             }
         } message: {
-            Text(matchedCount > 0
-                 ? "一致した\(matchedCount)件は履歴に保存されます。"
-                 : "一致が0件のため、このセッションは履歴に保存されません。")
+            Text(
+                matchedCount > 0
+                ? AppLocalization.string("一致した\(matchedCount)件は履歴に保存されます。")
+                : AppLocalization.string("一致が0件のため、このセッションは履歴に保存されません。")
+            )
         }
     }
 
@@ -120,7 +128,7 @@ struct ScannerScreen: View {
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.white.opacity(0.66))
                         .lineLimit(1)
-                    Text("\(matchedCount)件照合済み")
+                Text(AppLocalization.string("\(matchedCount)件照合済み"))
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.white)
                         .contentTransition(.numericText())
@@ -129,7 +137,7 @@ struct ScannerScreen: View {
 
                 Spacer()
 
-                Button(viewModel.isEndingSession ? "終了中…" : "終了") {
+                Button(viewModel.isEndingSession ? AppLocalization.string("終了中…") : AppLocalization.string("終了")) {
                     showsEndConfirmation = true
                 }
                 .disabled(viewModel.isEndingSession)
@@ -147,7 +155,7 @@ struct ScannerScreen: View {
                 .overlay(.white.opacity(0.14))
 
             HStack(spacing: 10) {
-                Label("成功時 自動で次へ", systemImage: "forward.end.fill")
+                Label(AppLocalization.string("成功時 自動で次へ"), systemImage: "forward.end.fill")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -168,7 +176,7 @@ struct ScannerScreen: View {
                             }
                         }
                     } label: {
-                        Text("\(autoAdvanceDelaySeconds)秒")
+                        Text(AppLocalization.string("\(autoAdvanceDelaySeconds)秒"))
                             .font(.caption.weight(.bold))
                             .foregroundStyle(AppTheme.lime)
                             .padding(.horizontal, 10)
@@ -177,12 +185,12 @@ struct ScannerScreen: View {
                     }
                     .accessibilityIdentifier("sessionAutoAdvanceDelayMenu")
                 } else {
-                    Text("OFF")
+                    Text(AppLocalization.string("OFF"))
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.white.opacity(0.56))
                 }
 
-                Toggle("成功時に自動で次の照合へ進む", isOn: $autoAdvanceEnabled)
+                Toggle(AppLocalization.string("成功時に自動で次の照合へ進む"), isOn: $autoAdvanceEnabled)
                     .labelsHidden()
                     .tint(AppTheme.lime)
                     .accessibilityIdentifier("sessionAutoAdvanceToggle")
@@ -200,19 +208,19 @@ struct ScannerScreen: View {
 
     private var sessionTitle: String {
         let name = historyStore.sessions.first(where: { $0.id == sessionID })?.displayName ?? ""
-        return name.isEmpty ? "照合セッション" : name
+        return name.isEmpty ? AppLocalization.string("照合セッション") : name
     }
 
     private var progress: some View {
-        HStack(spacing: 4) {
-            ProgressItem(number: 1, label: "QR", isActive: viewModel.step.progress >= 1, isComplete: !viewModel.qrValue.isEmpty)
+            HStack(spacing: 4) {
+            ProgressItem(number: 1, label: AppLocalization.string("QR"), isActive: viewModel.step.progress >= 1, isComplete: !viewModel.qrValue.isEmpty)
             ProgressConnector(isActive: viewModel.step.progress >= 2)
-            ProgressItem(number: 2, label: "バーコード", isActive: viewModel.step.progress >= 2, isComplete: !viewModel.barcodeValue.isEmpty)
+            ProgressItem(number: 2, label: AppLocalization.string("バーコード"), isActive: viewModel.step.progress >= 2, isComplete: !viewModel.barcodeValue.isEmpty)
             ProgressConnector(isActive: viewModel.step.progress >= 3)
-            ProgressItem(number: 3, label: "照合", isActive: viewModel.step.progress >= 3, isComplete: viewModel.step.progress >= 3)
+            ProgressItem(number: 3, label: AppLocalization.string("照合"), isActive: viewModel.step.progress >= 3, isComplete: viewModel.step.progress >= 3)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("照合の進行状況、ステップ\(viewModel.step.progress)／3")
+        .accessibilityLabel(AppLocalization.string("照合の進行状況、ステップ\(viewModel.step.progress)／3"))
     }
 
     private var scannerCard: some View {
@@ -268,7 +276,11 @@ struct ScannerScreen: View {
     private var scannerHeader: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(viewModel.step.progress == 3 ? "RESULT" : "STEP \(viewModel.step.progress) / 2")
+                    Text(
+                        viewModel.step.progress == 3
+                            ? AppLocalization.string("結果")
+                            : AppLocalization.string("ステップ \(viewModel.step.progress) / 2")
+                    )
                     .font(.caption2.weight(.black))
                     .tracking(1.8)
                     .foregroundStyle(AppTheme.green)
@@ -279,7 +291,10 @@ struct ScannerScreen: View {
             }
             Spacer()
             if viewModel.expectedCode != nil {
-                Label(isReading ? "読取中" : "待機中", systemImage: "circle.fill")
+                Label(
+                    isReading ? AppLocalization.string("読取中") : AppLocalization.string("待機中"),
+                    systemImage: "circle.fill"
+                )
                     .labelStyle(StatusLabelStyle(isRunning: isReading))
             }
         }
@@ -287,7 +302,7 @@ struct ScannerScreen: View {
     }
 
     private var inputSourcePicker: some View {
-        Picker("入力元", selection: Binding(
+        Picker(AppLocalization.string("入力元"), selection: Binding(
             get: { viewModel.inputSource },
             set: { viewModel.selectInputSource($0) }
         )) {
@@ -307,7 +322,7 @@ struct ScannerScreen: View {
     private var bluetoothStage: some View {
         BluetoothScanGuide(
             expectedCode: viewModel.expectedCode ?? .qr,
-            deviceName: bluetoothScanner.connectedDevice?.name ?? "Bluetoothスキャナ",
+            deviceName: bluetoothScanner.connectedDevice?.name ?? AppLocalization.string("Bluetoothスキャナ"),
             isConfiguring: bluetoothScanner.configurationState == .configuring
         )
         .frame(maxWidth: .infinity)
@@ -345,9 +360,17 @@ struct ScannerScreen: View {
                     VStack(spacing: 10) {
                         Image(systemName: "camera.viewfinder")
                             .font(.system(size: 34, weight: .medium))
-                        Text(viewModel.isCameraStarting ? "カメラを準備中です" : "カメラは停止中です")
+                        Text(
+                            viewModel.isCameraStarting
+                                ? AppLocalization.string("カメラを準備中です")
+                                : AppLocalization.string("カメラは停止中です")
+                        )
                             .font(.subheadline.weight(.semibold))
-                        Text(viewModel.isCameraStarting ? "映像の開始を待っています" : "開始すると映像がここに表示されます")
+                        Text(
+                            viewModel.isCameraStarting
+                                ? AppLocalization.string("映像の開始を待っています")
+                                : AppLocalization.string("開始すると映像がここに表示されます")
+                        )
                             .font(.caption2)
                     }
                     .foregroundStyle(AppTheme.muted)
@@ -357,7 +380,7 @@ struct ScannerScreen: View {
                     .padding(viewModel.expectedCode == .qr ? 22 : 14)
 
                 if viewModel.isCameraRunning {
-                    Text("タップでピント合わせ")
+                        Text(AppLocalization.string("タップでピント合わせ"))
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10)
@@ -401,12 +424,12 @@ struct ScannerScreen: View {
     private var readouts: some View {
         VStack(spacing: 8) {
             CodeReadout(
-                label: "QR・納品書の品目番号",
+                label: AppLocalization.string("QR・納品書の品目番号"),
                 partNumber: viewModel.qrPartNumber.map { CodeMatcher.format(partNumber: $0) },
                 payload: viewModel.qrValue
             )
             CodeReadout(
-                label: "バーコード・現品票の品番",
+                label: AppLocalization.string("バーコード・現品票の品番"),
                 partNumber: viewModel.barcodePartNumber.map { CodeMatcher.format(partNumber: $0) },
                 payload: viewModel.barcodeValue
             )
@@ -419,7 +442,9 @@ struct ScannerScreen: View {
             if viewModel.expectedCode != nil, viewModel.inputSource == .camera {
                 Button(action: viewModel.toggleCamera) {
                     Label(
-                        viewModel.isCameraRunning || viewModel.isCameraStarting ? "カメラを停止" : startButtonTitle,
+                        viewModel.isCameraRunning || viewModel.isCameraStarting
+                            ? AppLocalization.string("カメラを停止")
+                            : startButtonTitle,
                         systemImage: viewModel.isCameraRunning || viewModel.isCameraStarting ? "stop.fill" : "viewfinder"
                     )
                     .font(.title3.weight(.bold))
@@ -443,7 +468,7 @@ struct ScannerScreen: View {
                 Button {
                     viewModel.rereadQR()
                 } label: {
-                    Label("QRを読み取りなおす", systemImage: "arrow.counterclockwise")
+                    Label(AppLocalization.string("QRを読み取りなおす"), systemImage: "arrow.counterclockwise")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 56)
@@ -461,7 +486,7 @@ struct ScannerScreen: View {
                 }
                 .accessibilityIdentifier("rereadQRButton")
 
-                Button("次のコードを照合") { viewModel.reset() }
+                Button(AppLocalization.string("次のコードを照合")) { viewModel.reset() }
                     .font(.headline)
                     .foregroundStyle(AppTheme.ink)
                     .frame(maxWidth: .infinity)
@@ -495,10 +520,10 @@ struct ScannerScreen: View {
                     .frame(width: 52, height: 52)
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("自動で次の照合へ進みます")
+                    Text(AppLocalization.string("自動で次の照合へ進みます"))
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(AppTheme.ink)
-                        Text("あと\(remaining)秒・下のボタンで今すぐ進めます")
+                        Text(AppLocalization.string("あと\(remaining)秒・下のボタンで今すぐ進めます"))
                             .font(.caption)
                             .foregroundStyle(AppTheme.muted)
                             .contentTransition(.numericText(countsDown: true))
@@ -508,7 +533,7 @@ struct ScannerScreen: View {
                 .padding(12)
                 .background(AppTheme.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("自動で次の照合へ進みます。あと\(remaining)秒")
+                .accessibilityLabel(AppLocalization.string("自動で次の照合へ進みます。あと\(remaining)秒"))
                 .accessibilityIdentifier("autoAdvanceCountdown")
             }
 
@@ -516,7 +541,9 @@ struct ScannerScreen: View {
                 viewModel.reset()
             } label: {
                 Label(
-                    viewModel.autoAdvanceSecondsRemaining == nil ? "次のコードを照合" : "今すぐ次の照合へ",
+                    viewModel.autoAdvanceSecondsRemaining == nil
+                    ? AppLocalization.string("次のコードを照合")
+                    : AppLocalization.string("今すぐ次の照合へ"),
                     systemImage: "qrcode.viewfinder"
                 )
                     .font(.title3.weight(.bold))
@@ -540,7 +567,12 @@ struct ScannerScreen: View {
     }
 
     private var privacyNote: some View {
-        Label("カメラ映像とBluetoothで読み取ったコード内容は端末内だけで処理され、外部へ送信されません。", systemImage: "lock.shield.fill")
+        Label(
+            AppLocalization.string(
+                "カメラ映像とBluetoothで読み取ったコード内容は端末内だけで処理され、外部へ送信されません。"
+            ),
+            systemImage: "lock.shield.fill"
+        )
             .font(.caption)
             .foregroundStyle(AppTheme.muted)
             .lineSpacing(3)
@@ -550,23 +582,23 @@ struct ScannerScreen: View {
 
     #if targetEnvironment(simulator)
     private var demoTools: some View {
-        DisclosureGroup("カメラなしで判定をテスト", isExpanded: $showsDemoTools) {
+        DisclosureGroup(AppLocalization.string("カメラなしで判定をテスト"), isExpanded: $showsDemoTools) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                Button("一致をテスト") { viewModel.runDemo(shouldMatch: true) }
+                Button(AppLocalization.string("一致をテスト")) { viewModel.runDemo(shouldMatch: true) }
                     .accessibilityIdentifier("demoMatchButton")
-                Button("不一致をテスト") { viewModel.runDemo(shouldMatch: false) }
+                Button(AppLocalization.string("不一致をテスト")) { viewModel.runDemo(shouldMatch: false) }
                     .tint(AppTheme.red)
                     .accessibilityIdentifier("demoMismatchButton")
                 }
 
                 if bluetoothScanner.isConnected, viewModel.inputSource == .bluetooth {
                     HStack {
-                        Button("モックQR") {
+                        Button(AppLocalization.string("モックQR")) {
                             bluetoothScanner.simulateScan(ScannerViewModel.sampleQRPayload)
                         }
                         .accessibilityIdentifier("demoBluetoothQRButton")
-                        Button("モックCode 128") {
+                        Button(AppLocalization.string("モックCode 128")) {
                             bluetoothScanner.simulateScan(ScannerViewModel.sampleBarcodePayload)
                         }
                         .accessibilityIdentifier("demoBluetoothBarcodeButton")
@@ -587,15 +619,15 @@ struct ScannerScreen: View {
 
     private var headerTitle: String {
         switch viewModel.step {
-        case .qr: "QRコードを読み取る"
-        case .barcode: "バーコードを読み取る"
-        case .result(.match): "照合OK"
-        case .result(.mismatch): "不一致"
+        case .qr: AppLocalization.string("QRコードを読み取る")
+        case .barcode: AppLocalization.string("バーコードを読み取る")
+        case .result(.match): AppLocalization.string("照合OK")
+        case .result(.mismatch): AppLocalization.string("不一致")
         }
     }
 
     private var startButtonTitle: String {
-        viewModel.expectedCode == .qr ? "QRコードを読み取る" : "バーコードを読み取る"
+        viewModel.expectedCode == .qr ? AppLocalization.string("QRコードを読み取る") : AppLocalization.string("バーコードを読み取る")
     }
 
     private var isReading: Bool {
@@ -612,7 +644,7 @@ private struct BluetoothScanGuide: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Text(isConfiguring ? "読み取り対象を設定中" : "いま読み取るコード")
+            Text(isConfiguring ? AppLocalization.string("読み取り対象を設定中") : AppLocalization.string("いま読み取るコード"))
                 .font(.caption2.weight(.black))
                 .tracking(1.4)
                 .foregroundStyle(AppTheme.green)
@@ -620,19 +652,23 @@ private struct BluetoothScanGuide: View {
             codeSample
 
             VStack(spacing: 5) {
-                Text(expectedCode == .qr ? "1  四角いQRコード" : "2  横長のCode 128")
+                Text(expectedCode == .qr
+                     ? AppLocalization.string("1  四角いQRコード")
+                     : AppLocalization.string("2  横長のCode 128"))
                     .font(.title3.weight(.bold))
                     .foregroundStyle(AppTheme.ink)
                 Text(expectedCode == .qr
-                     ? "納品書兼現品票にある四角いコードへ向けます"
-                     : "現品票にある縦線が並んだ横長コードへ向けます")
+                     ? AppLocalization.string("納品書兼現品票にある四角いコードへ向けます")
+                     : AppLocalization.string("現品票にある縦線が並んだ横長コードへ向けます"))
                     .font(.caption)
                     .foregroundStyle(AppTheme.muted)
                     .multilineTextAlignment(.center)
-            }
+                }
 
             Label(
-                isConfiguring ? "設定が完了するまでお待ちください" : "トリガーを1回押して読み取る",
+                isConfiguring
+                    ? AppLocalization.string("設定が完了するまでお待ちください")
+                    : AppLocalization.string("トリガーを1回押して読み取る"),
                 systemImage: isConfiguring ? "gearshape.2.fill" : "hand.tap.fill"
             )
             .font(.subheadline.weight(.bold))
@@ -676,11 +712,11 @@ private struct BluetoothScanGuide: View {
 
     private var accessibilityText: String {
         if isConfiguring {
-            return "Bluetoothスキャナーの読み取り対象を設定中です"
+            return AppLocalization.string("Bluetoothスキャナーの読み取り対象を設定中です")
         }
         return expectedCode == .qr
-            ? "ステップ1、納品書兼現品票の四角いQRコードを読み取ってください"
-            : "ステップ2、現品票の縦線が並んだ横長のCode 128を読み取ってください"
+            ? AppLocalization.string("ステップ1、納品書兼現品票の四角いQRコードを読み取ってください")
+            : AppLocalization.string("ステップ2、現品票の縦線が並んだ横長のCode 128を読み取ってください")
     }
 }
 
@@ -823,8 +859,8 @@ private struct ResultView: View {
 
             if result == .mismatch, qrPartNumber != nil || barcodePartNumber != nil {
                 VStack(spacing: 4) {
-                    PartNumberRow(label: "納品書", value: qrPartNumber)
-                    PartNumberRow(label: "現品票", value: barcodePartNumber)
+                    PartNumberRow(label: AppLocalization.string("納品書"), value: qrPartNumber)
+                    PartNumberRow(label: AppLocalization.string("現品票"), value: barcodePartNumber)
                 }
                 .padding(.horizontal, 18)
             }
@@ -833,7 +869,7 @@ private struct ResultView: View {
         .padding(.vertical, 20)
         .background(accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("照合結果、\(title)")
+        .accessibilityLabel(AppLocalization.string("照合結果、\(title)"))
     }
 
     private var iconName: String {
@@ -852,19 +888,20 @@ private struct ResultView: View {
 
     private var title: String {
         switch result {
-        case .match: "一致しました"
-        case .mismatch: "一致しません"
+        case .match: AppLocalization.string("一致しました")
+        case .mismatch: AppLocalization.string("一致しません")
         }
     }
 
     private var subtitle: String {
         switch result {
         case .match:
-            let part = (barcodePartNumber ?? qrPartNumber).map { "品目番号 \($0) " } ?? ""
-            let base = part.isEmpty ? "この組み合わせは正しいです。" : "\(part)の組み合わせは正しいです。"
-            return sessionBoxNumber >= 2 ? "\(base)（このセッションで\(sessionBoxNumber)箱目）" : base
+            let base = (barcodePartNumber ?? qrPartNumber).map {
+                AppLocalization.string("品目番号 \($0) の組み合わせは正しいです。")
+            } ?? AppLocalization.string("この組み合わせは正しいです。")
+            return sessionBoxNumber >= 2 ? AppLocalization.string("\(base)（このセッションで\(sessionBoxNumber)箱目）") : base
         case .mismatch:
-            return "品目番号が一致しません。対象を確認して、もう一度読み取ってください。"
+            return AppLocalization.string("品目番号が一致しません。対象を確認して、もう一度読み取ってください。")
         }
     }
 }
@@ -879,7 +916,7 @@ private struct PartNumberRow: View {
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(AppTheme.muted)
             Spacer()
-            Text(value ?? "読取不可")
+            Text(value ?? AppLocalization.string("読取不可"))
                 .font(.system(.caption, design: .monospaced, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
         }

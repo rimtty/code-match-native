@@ -83,25 +83,18 @@ struct GroupedMatchEntry: Identifiable, Equatable {
 
 /// 履歴表示用の曜日付き日時フォーマッタ (例: 2026/08/17(日) 21:35)
 enum JPDate {
-    private static let dateTimeFormatter: DateFormatter = {
+    static func dateTime(_ date: Date, locale: Locale) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "yyyy/MM/dd(E) HH:mm"
-        return formatter
-    }()
-
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
-
-    static func dateTime(_ date: Date) -> String {
-        dateTimeFormatter.string(from: date)
+        formatter.locale = locale
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 
-    static func time(_ date: Date) -> String {
-        timeFormatter.string(from: date)
+    static func time(_ date: Date, locale: Locale) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 }

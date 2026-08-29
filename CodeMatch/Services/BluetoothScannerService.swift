@@ -15,8 +15,8 @@ enum ScanInputSource: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .camera: "カメラ"
-        case .bluetooth: "Bluetooth"
+        case .camera: AppLocalization.string("カメラ")
+        case .bluetooth: AppLocalization.string("Bluetooth")
         }
     }
 }
@@ -41,10 +41,10 @@ enum BluetoothScannerConnectionState: Equatable {
 
     var statusText: String {
         switch self {
-        case .idle: "未接続"
-        case .searching: "スキャナを検索中…"
-        case .connecting(let device): "\(device.name)へ接続中…"
-        case .connected(let device): "\(device.name) 接続済み"
+        case .idle: AppLocalization.string("未接続")
+        case .searching: AppLocalization.string("スキャナを検索中…")
+        case .connecting(let device): AppLocalization.string("\(device.name)へ接続中…")
+        case .connected(let device): AppLocalization.string("\(device.name) 接続済み")
         case .unavailable(let message), .failed(let message): message
         }
     }
@@ -74,13 +74,13 @@ enum BluetoothScannerSymbologyMode: String, Equatable {
     var statusText: String {
         switch self {
         case .unrestricted:
-            "読取対象：接続前の設定へ復元済み"
+            AppLocalization.string("読取対象：接続前の設定へ復元済み")
         case .sessionCodes:
-            "読取対象：QR・Code 128（照合セッション）"
+            AppLocalization.string("読取対象：QR・Code 128（照合セッション）")
         case .qrOnly:
-            "読取対象：QRのみ（旧設定から復旧中）"
+            AppLocalization.string("読取対象：QRのみ（旧設定から復旧中）")
         case .code128Only:
-            "読取対象：Code 128のみ（旧設定から復旧中）"
+            AppLocalization.string("読取対象：Code 128のみ（旧設定から復旧中）")
         }
     }
 }
@@ -242,19 +242,19 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             pendingDiscovery = true
             switch availabilityMonitor?.state {
             case .poweredOff:
-                state = .unavailable("Bluetoothがオフです。")
+                state = .unavailable(AppLocalization.string("Bluetoothがオフです。"))
             case .unauthorized:
-                state = .unavailable("Bluetoothの利用が許可されていません。")
+                state = .unavailable(AppLocalization.string("Bluetoothの利用が許可されていません。"))
             case .unsupported:
-                state = .unavailable("この端末ではBluetoothを利用できません。")
+                state = .unavailable(AppLocalization.string("この端末ではBluetoothを利用できません。"))
             case .resetting:
-                state = .unavailable("Bluetoothを再準備しています…")
+                state = .unavailable(AppLocalization.string("Bluetoothを再準備しています…"))
             case .unknown, .none:
                 state = .searching
             case .poweredOn:
                 break
             @unknown default:
-                state = .unavailable("Bluetoothの状態を取得できません。")
+                state = .unavailable(AppLocalization.string("Bluetoothの状態を取得できません。"))
             }
             trace("Discovery deferred until Core Bluetooth is ready")
             return
@@ -355,7 +355,9 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                 case .failure(let error):
                     self.connectedSDKDevice = nil
                     self.configurationState = .unavailable
-                    self.state = .failed("接続できませんでした: \(error.localizedDescription)")
+                    self.state = .failed(
+                        AppLocalization.string("接続できませんでした: \(error.localizedDescription)")
+                    )
                     self.trace("Connection failed: \(error.localizedDescription)")
                     self.scheduleAutomaticReconnect(reason: "connection failure")
                 }
@@ -439,7 +441,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     func reconnectKnownDevice() {
         guard !isConnected, let device = reconnectableDevice else {
             if !isConnected {
-                state = .failed("再接続できるスキャナがありません。スキャナを検索してください。")
+                state = .failed(AppLocalization.string("再接続できるスキャナがありません。スキャナを検索してください。"))
             }
             return
         }
@@ -661,12 +663,14 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     private var bluetoothIsAuthorized: Bool {
         switch CBManager.authorization {
         case .denied, .restricted:
-            state = .unavailable("Bluetoothの利用が許可されていません。設定アプリで許可してください。")
+            state = .unavailable(
+                AppLocalization.string("Bluetoothの利用が許可されていません。設定アプリで許可してください。")
+            )
             return false
         case .allowedAlways, .notDetermined:
             return true
         @unknown default:
-            state = .unavailable("Bluetoothを利用できません。")
+            state = .unavailable(AppLocalization.string("Bluetoothを利用できません。"))
             return false
         }
     }
@@ -707,7 +711,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             }
         @unknown default:
             sdkDiscoveryIsRunning = false
-            state = .failed("Bluetoothスキャナの検索状態を取得できませんでした。")
+            state = .failed(AppLocalization.string("Bluetoothスキャナの検索状態を取得できませんでした。"))
             reconnectDeviceID = nil
             scheduleAutomaticReconnect(reason: "unknown discovery state")
         }
@@ -738,7 +742,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             trace("Disconnected while applying GATT mode; reconnecting: \(sdkDevice.uuid)")
             scheduleAutomaticReconnect(reason: "GATT mode applied")
         } else {
-            state = .failed("Bluetoothスキャナとの接続が切れました。")
+            state = .failed(AppLocalization.string("Bluetoothスキャナとの接続が切れました。"))
             trace("Unexpected disconnect: \(sdkDevice.uuid)")
             scheduleAutomaticReconnect(reason: "unexpected disconnect")
         }
@@ -801,7 +805,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                 )
             } else {
                 configurationState = .failed(
-                    "スキャナーの全バーコード設定を取得できませんでした。電源を入れ直してください。"
+                    AppLocalization.string("スキャナーの全バーコード設定を取得できませんでした。電源を入れ直してください。")
                 )
                 trace("Scanner settings unavailable after \(attempt + 1) attempts")
             }
@@ -885,8 +889,9 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                             case .failure(let error):
                                 self.gattModeChangeInProgress = false
                                 self.state = .failed(
-                                    "GATT設定後にスキャナを再起動できませんでした: "
-                                        + error.localizedDescription
+                                    AppLocalization.string(
+                                        "GATT設定後にスキャナを再起動できませんでした: \(error.localizedDescription)"
+                                    )
                                 )
                                 self.trace(
                                     "Scanner restart after GATT mode change failed: "
@@ -897,9 +902,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                     }
                 case .failure(let error):
                     self.gattModeChangeInProgress = false
-                    self.state = .failed(
-                        "GATTモードへ切り替えられませんでした: \(error.localizedDescription)"
-                    )
+                    self.state = .failed(AppLocalization.string("GATTモードへ切り替えられませんでした: \(error.localizedDescription)"))
                     self.trace("GATT mode setting failed: \(error.localizedDescription)")
                 }
             }
@@ -1155,7 +1158,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                     self.state = .idle
                     self.trace("Disconnected")
                 case .failure(let error):
-                    self.state = .failed("切断に失敗しました: \(error.localizedDescription)")
+                    self.state = .failed(AppLocalization.string("切断に失敗しました: \(error.localizedDescription)"))
                     self.trace("Disconnect failed: \(error.localizedDescription)")
                 }
             }
@@ -1189,7 +1192,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         if let persisted = persistedSymbologySnapshot {
             guard persisted.deviceID == sdkDevice.uuid else {
                 configurationState = .failed(
-                    "別のスキャナーの読み取り設定が復元待ちです。元のスキャナーへ再接続してください。"
+                    AppLocalization.string("別のスキャナーの読み取り設定が復元待ちです。元のスキャナーへ再接続してください。")
                 )
                 trace("Saved symbology snapshot belongs to another scanner")
                 return
@@ -1201,7 +1204,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                   let currentValues = connectedSymbologyValues,
                   Self.hasRequiredSymbologyValues(currentValues) else {
                 configurationState = .failed(
-                    "スキャナーの現在の読み取り設定を保存できませんでした。電源を入れ直してください。"
+                    AppLocalization.string("スキャナーの現在の読み取り設定を保存できませんでした。電源を入れ直してください。")
                 )
                 trace("Fresh symbology settings are required before applying a restriction")
                 return
@@ -1217,7 +1220,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
               let command = Self.symbologySettingCommand(values: values, settings: settings) else {
             trace("Symbology configuration skipped because the complete setting set is unavailable")
             configurationState = .failed(
-                "スキャナーから全バーコード種類の設定を取得できませんでした。カメラを使用してください。"
+                AppLocalization.string("スキャナーから全バーコード種類の設定を取得できませんでした。カメラを使用してください。")
             )
             return
         }
@@ -1276,7 +1279,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                     )
                 case .failure(let error):
                     self.configurationState = .failed(
-                        "スキャナーの読み取り設定を変更できませんでした。カメラを使用してください。"
+                        AppLocalization.string("スキャナーの読み取り設定を変更できませんでした。カメラを使用してください。")
                     )
                     self.trace("Scanner symbology configuration failed: \(error.localizedDescription)")
                 }
@@ -1332,7 +1335,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             self.connectedScannerSettingsAreFresh = false
             self.configurationState = .unavailable
             self.state = .failed(
-                "スキャナーの読み取り設定通信が完了しませんでした。安全のためカメラへ切り替え、再接続します。"
+                AppLocalization.string("スキャナーの読み取り設定通信が完了しませんでした。安全のためカメラへ切り替え、再接続します。")
             )
             self.trace(
                 "Scanner mode \(mode.rawValue) timed out "
@@ -1595,20 +1598,20 @@ extension BluetoothScannerService: CBCentralManagerDelegate {
                     self.state = .idle
                 }
             case .poweredOff:
-                self.state = .unavailable("Bluetoothがオフです。")
+                self.state = .unavailable(AppLocalization.string("Bluetoothがオフです。"))
                 self.trace("Core Bluetooth powered off")
             case .unauthorized:
-                self.state = .unavailable("Bluetoothの利用が許可されていません。")
+                self.state = .unavailable(AppLocalization.string("Bluetoothの利用が許可されていません。"))
                 self.trace("Core Bluetooth unauthorized")
             case .unsupported:
-                self.state = .unavailable("この端末ではBluetoothを利用できません。")
+                self.state = .unavailable(AppLocalization.string("この端末ではBluetoothを利用できません。"))
                 self.trace("Core Bluetooth unsupported")
             case .resetting:
-                self.state = .unavailable("Bluetoothを再準備しています…")
+                self.state = .unavailable(AppLocalization.string("Bluetoothを再準備しています…"))
             case .unknown:
                 break
             @unknown default:
-                self.state = .unavailable("Bluetoothの状態を取得できません。")
+                self.state = .unavailable(AppLocalization.string("Bluetoothの状態を取得できません。"))
             }
         }
     }

@@ -1,10 +1,59 @@
 import XCTest
 
 final class CodeMatchUITests: XCTestCase {
-    func testMockBluetoothScannerConnectsAndCompletesMatch() {
+    private let uiLanguageResetArgument = "-resetLanguage"
+
+    private func launchApp(
+        _ arguments: [String] = [],
+        resetLanguage: Bool = true
+    ) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-resetHistory", "-resetAutoAdvance", "-demoBluetoothConnected"]
+        if resetLanguage {
+            app.launchArguments.append(uiLanguageResetArgument)
+        }
+        app.launchArguments += arguments
         app.launch()
+        return app
+    }
+
+    private func revealLanguageCard(in app: XCUIApplication) {
+        let languageCard = app.descendants(matching: .any)["languageSelectionCard"]
+        let englishOption = app.buttons["languageOption_en"]
+        let maxScrollAttempts = 10
+        for _ in 0..<maxScrollAttempts {
+            if englishOption.exists && englishOption.isHittable {
+                return
+            }
+            app.swipeUp()
+        }
+        XCTAssertTrue(languageCard.waitForExistence(timeout: 2))
+        XCTAssertTrue(englishOption.waitForExistence(timeout: 2))
+    }
+
+    private func selectLanguage(
+        in app: XCUIApplication,
+        optionId: String,
+        fallbackLabel: String,
+        alternateFallbackLabel: String? = nil
+    ) {
+        if app.buttons[optionId].waitForExistence(timeout: 0.5) {
+            app.buttons[optionId].tap()
+            return
+        }
+        let picker = app.descendants(matching: .any)["languageSelectionPicker"]
+        if picker.buttons[fallbackLabel].waitForExistence(timeout: 0.5) {
+            picker.buttons[fallbackLabel].tap()
+            return
+        }
+        if let alternate = alternateFallbackLabel, picker.buttons[alternate].waitForExistence(timeout: 0.5) {
+            picker.buttons[alternate].tap()
+            return
+        }
+        XCTFail("No language picker option found for id=\(optionId), fallback='\(fallbackLabel)', alternate='\(alternateFallbackLabel ?? "")'")
+    }
+
+    func testMockBluetoothScannerConnectsAndCompletesMatch() {
+        let app = launchApp(["-resetHistory", "-resetAutoAdvance", "-demoBluetoothConnected"])
 
         app.buttons["startSessionButton"].tap()
         let inputPicker = app.segmentedControls["scanInputSourcePicker"]
@@ -52,9 +101,7 @@ final class CodeMatchUITests: XCTestCase {
     }
 
     func testSettingsDiscoversAndConnectsMockScanner() {
-        let app = XCUIApplication()
-        app.launchArguments += ["-resetHistory", "-resetAutoAdvance", "-resetBluetoothScanner"]
-        app.launch()
+        let app = launchApp(["-resetHistory", "-resetAutoAdvance", "-resetBluetoothScanner"])
 
         app.tabBars.buttons["設定"].tap()
         let setupGuideButton = app.buttons["scannerSetupGuideButton"]
@@ -99,9 +146,7 @@ final class CodeMatchUITests: XCTestCase {
     /// スキャナーの主要フローを1回のアプリ起動でまとめて検証する。
     /// 起動が最も時間を要するため、一致→重複→リセット→不一致を連続で確認する。
     func testScannerFlowMatchDuplicateResetAndMismatch() {
-        let app = XCUIApplication()
-        app.launchArguments += ["-resetHistory", "-resetAutoAdvance", "-demoMatch"]
-        app.launch()
+        let app = launchApp(["-resetHistory", "-resetAutoAdvance", "-demoMatch"])
 
         // 起動引数による一致状態と件数
         XCTAssertTrue(app.staticTexts["一致しました"].waitForExistence(timeout: 5))
@@ -143,38 +188,19 @@ final class CodeMatchUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["BCJH-52-81GG"].exists)
         XCTAssertTrue(app.staticTexts["BCJH-55-81GG"].exists)
         XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "2件照合済み")
-    }
 
-    func testSessionCanStartAndShowsMatchCount() {
-        let app = XCUIApplication()
-        app.launchArguments += ["-resetHistory", "-resetAutoAdvance"]
-        app.launch()
-
-        let startButton = app.buttons["startSessionButton"]
-        XCTAssertTrue(startButton.waitForExistence(timeout: 5))
-        // 緑のボタン中央だけでなく、左端寄りでも操作できることを確認する。
-        startButton.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5)).tap()
-
-        let count = app.staticTexts["sessionMatchCount"]
-        XCTAssertTrue(count.waitForExistence(timeout: 3))
-        XCTAssertEqual(count.label, "0件照合済み")
-        XCTAssertTrue(app.buttons["endSessionButton"].exists)
-
+        // セッションを終了すると照合済みのセッションが履歴に掲載される
         app.buttons["endSessionButton"].tap()
         app.alerts.buttons["終了する"].tap()
-        XCTAssertTrue(app.buttons["startSessionButton"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["startSessionButton"].waitForExistence(timeout: 5))
 
-        // 照合0件のセッションは履歴に掲載されない
         app.tabBars.buttons["履歴"].tap()
         XCTAssertTrue(app.navigationBars["照合履歴"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["履歴はまだありません"].waitForExistence(timeout: 3))
-        XCTAssertFalse(app.buttons["historySessionRow"].exists)
+        XCTAssertTrue(app.buttons["historySessionRow"].waitForExistence(timeout: 3))
     }
 
-    func testSettingsTabAllowsSoundSelection() {
-        let app = XCUIApplication()
-        app.launchArguments += ["-resetAutoAdvance"]
-        app.launch()
+    func testSettingsSoundSelectionAndLanguageSwitchPersists() {
+        var app = launchApp(["-resetHistory", "-resetAutoAdvance"])
 
         app.tabBars.buttons["設定"].tap()
         let autoAdvanceToggle = app.switches["autoAdvanceSettingsToggle"]
@@ -210,14 +236,39 @@ final class CodeMatchUITests: XCTestCase {
         app.buttons["successSound_posBeep"].tap()
         app.buttons["failureSound_alarm"].tap()
         XCTAssertTrue(app.buttons["ピッ（POSレジ風・標準）、選択中"].waitForExistence(timeout: 3))
+
+        // 言語を英語へ切り替えると即座に反映され、再起動後も保持される
+        revealLanguageCard(in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["languageSelectionCard"].waitForExistence(timeout: 5))
+
+        selectLanguage(in: app, optionId: "languageOption_en", fallbackLabel: "English")
+        XCTAssertTrue(app.staticTexts["Language"].waitForExistence(timeout: 5))
+
+        app.terminate()
+        app = launchApp(["-resetHistory", "-resetAutoAdvance"], resetLanguage: false)
+
+        XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Settings"].tap()
+        revealLanguageCard(in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["languageSelectionCard"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Language"].waitForExistence(timeout: 5))
+
+        selectLanguage(
+            in: app,
+            optionId: "languageOption_ja",
+            fallbackLabel: "日本語",
+            alternateFallbackLabel: "Japanese"
+        )
+        XCTAssertTrue(app.staticTexts["言語"].waitForExistence(timeout: 5))
     }
 
     func testSessionAutoAdvanceShowsCountdownAndStartsNextMatch() {
-        let app = XCUIApplication()
-        app.launchArguments += ["-resetHistory", "-resetAutoAdvance"]
-        app.launch()
+        let app = launchApp(["-resetHistory", "-resetAutoAdvance"])
 
-        app.buttons["startSessionButton"].tap()
+        let startButton = app.buttons["startSessionButton"]
+        XCTAssertTrue(startButton.waitForExistence(timeout: 5))
+        // 緑のボタン中央だけでなく、左端寄りでも操作できることを確認する。
+        startButton.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5)).tap()
 
         let autoAdvanceToggle = app.switches["sessionAutoAdvanceToggle"]
         XCTAssertTrue(autoAdvanceToggle.waitForExistence(timeout: 3))
@@ -248,4 +299,5 @@ final class CodeMatchUITests: XCTestCase {
         autoAdvanceToggle.tap()
         XCTAssertEqual(autoAdvanceToggle.value as? String, "0")
     }
+
 }

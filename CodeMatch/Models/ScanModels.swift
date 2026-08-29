@@ -6,7 +6,7 @@ enum AutoAdvanceDelay: Int, CaseIterable, Identifiable {
     case fiveSeconds = 5
 
     var id: Int { rawValue }
-    var label: String { "\(rawValue)秒" }
+    var label: String { AppLocalization.string("\(rawValue)秒") }
 }
 
 /// 一致結果の表示後に次の照合へ進む動作を、設定画面と照合画面で共有する。
