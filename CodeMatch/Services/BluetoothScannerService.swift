@@ -70,27 +70,21 @@ enum BluetoothScannerSymbologyMode: String, Equatable {
         }
     }
 
-    var settingValues: [String: Int] {
-        switch self {
-        case .unrestricted:
-            ["qrcode_on": 1, "code128_on": 1]
-        case .qrOnly:
-            ["qrcode_on": 1, "code128_on": 0]
-        case .code128Only:
-            ["qrcode_on": 0, "code128_on": 1]
-        }
-    }
-
     var statusText: String {
         switch self {
         case .unrestricted:
-            "読取対象：QR／Code 128（安全状態）"
+            "読取対象：接続前の設定へ復元済み"
         case .qrOnly:
             "読取対象：QRのみ（照合ステップ1）"
         case .code128Only:
             "読取対象：Code 128のみ（照合ステップ2）"
         }
     }
+}
+
+struct BluetoothScannerSymbologySnapshot: Codable, Equatable {
+    let deviceID: String
+    let values: [String: Int]
 }
 
 struct BluetoothScannerDiagnosticEvent: Identifiable, Equatable, Codable {
@@ -105,6 +99,7 @@ struct BluetoothScannerDiagnosticEvent: Identifiable, Equatable, Codable {
 final class BluetoothScannerService: NSObject, ObservableObject {
     static let preferredDeviceIDKey = "bluetoothScanner.preferredDeviceID"
     static let symbologyRecoveryModeKey = "bluetoothScanner.symbologyRecoveryMode"
+    static let symbologySnapshotKey = "bluetoothScanner.symbologySnapshot"
     static let diagnosticEventsKey = "bluetoothScanner.diagnosticEvents"
     static let cachedScannerSettingsKey = "bluetoothScanner.cachedScannerSettings"
     static let lastKnownDeviceIDKey = "bluetoothScanner.lastKnownDeviceID"
@@ -146,7 +141,11 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     private var sdkOutputConfigurationInProgress = false
     private var sdkOutputConfigurationCompleted = false
     private var connectedScannerSettings: String?
+    private var connectedSymbologyValues: [String: Int]?
+    private var connectedScannerSettingsAreFresh = false
     private var symbologyConfigurationRevision = 0
+    private var symbologyCommandInFlight = false
+    private var symbologyCommandGeneration = 0
     private var manualDisconnectInProgress = false
 #endif
 
@@ -172,6 +171,11 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         return mode
     }
 
+    var persistedSymbologySnapshot: BluetoothScannerSymbologySnapshot? {
+        guard let data = defaults.data(forKey: Self.symbologySnapshotKey) else { return nil }
+        return try? JSONDecoder().decode(BluetoothScannerSymbologySnapshot.self, from: data)
+    }
+
     init(
         defaults: UserDefaults = .standard,
         now: @escaping () -> Date = Date.init
@@ -183,6 +187,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("-resetBluetoothScanner") {
             defaults.removeObject(forKey: Self.preferredDeviceIDKey)
             defaults.removeObject(forKey: Self.symbologyRecoveryModeKey)
+            defaults.removeObject(forKey: Self.symbologySnapshotKey)
             defaults.removeObject(forKey: Self.diagnosticEventsKey)
             defaults.removeObject(forKey: Self.cachedScannerSettingsKey)
             defaults.removeObject(forKey: Self.lastKnownDeviceIDKey)
@@ -212,6 +217,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             devices = [device]
             state = .connected(device)
             configurationState = .ready
+            clearPersistedSymbologySnapshot()
             recordAppliedSymbologyMode(.unrestricted)
             defaults.set(device.id, forKey: Self.preferredDeviceIDKey)
             rememberDevice(device)
@@ -327,6 +333,11 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                     self.connectedSDKDevice = sdkDevice
                     self.sdkOutputConfigurationCompleted = false
                     self.connectedScannerSettings = nil
+                    self.connectedSymbologyValues = nil
+                    self.connectedScannerSettingsAreFresh = false
+                    self.symbologyCommandGeneration += 1
+                    self.symbologyCommandInFlight = false
+                    self.manualDisconnectInProgress = false
                     self.configurationState = .configuring
                     self.defaults.set(device.id, forKey: Self.preferredDeviceIDKey)
                     self.rememberDevice(device)
@@ -351,7 +362,14 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         rememberDevice(device)
         state = .connected(device)
         configurationState = .ready
-        recordAppliedSymbologyMode(BluetoothScannerSymbologyMode(expectedCode: expectedCode))
+        let mode = BluetoothScannerSymbologyMode(expectedCode: expectedCode)
+        if mode == .unrestricted {
+            clearPersistedSymbologySnapshot()
+        } else {
+            persistSimulatorSymbologySnapshotIfNeeded()
+            recordPendingSymbologyMode(mode)
+        }
+        recordAppliedSymbologyMode(mode)
 #endif
     }
 
@@ -373,8 +391,10 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             state = .idle
             return
         }
+        manualDisconnectInProgress = true
         restoreSafeBaselineBeforeDisconnect(sdkDevice)
 #else
+        clearPersistedSymbologySnapshot()
         recordAppliedSymbologyMode(.unrestricted)
         configurationState = .unavailable
         state = .idle
@@ -440,10 +460,16 @@ final class BluetoothScannerService: NSObject, ObservableObject {
 #endif
     }
 
-    /// 現在の業務工程に合わせてBCST-47のQR／Code 128読取を切り替える。
-    /// `nil`では、アプリ外でもスキャナを使用できる安全状態として両方を有効にする。
+    /// 現在の業務工程に合わせ、実機が報告した全バーコード種別から
+    /// 対象の1種類だけを有効にする。`nil`では接続前の設定を正確に復元する。
     func setExpectedCode(_ expectedCode: ExpectedCode?) {
         let mode = BluetoothScannerSymbologyMode(expectedCode: expectedCode)
+
+#if INATECK_SDK
+        // 同じ要求のSDKコマンドが実行中ならrevisionを進めない。画面更新による
+        // 再通知で、正常なコマンドを不要に「旧要求」扱いしないため。
+        if self.expectedCode == expectedCode, symbologyCommandInFlight { return }
+#endif
 
         // `configurationState = .ready`を受けた画面が同じ入力元を再選択しても、
         // 既に適用済みの設定をSDKへ再送しない。再送すると
@@ -453,7 +479,6 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                 || persistedSymbologyMode != mode else { return }
 
         self.expectedCode = expectedCode
-        recordPendingSymbologyMode(mode)
 #if INATECK_SDK
         symbologyConfigurationRevision += 1
         guard connectedSDKDevice != nil else {
@@ -467,6 +492,12 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         guard isConnected else {
             configurationState = .unavailable
             return
+        }
+        if mode == .unrestricted {
+            clearPersistedSymbologySnapshot()
+        } else {
+            persistSimulatorSymbologySnapshotIfNeeded()
+            recordPendingSymbologyMode(mode)
         }
         recordAppliedSymbologyMode(mode)
         configurationState = .ready
@@ -672,6 +703,10 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         connectedSDKDevice = nil
         sdkOutputConfigurationCompleted = false
         connectedScannerSettings = nil
+        connectedSymbologyValues = nil
+        connectedScannerSettingsAreFresh = false
+        symbologyCommandGeneration += 1
+        symbologyCommandInFlight = false
         configurationState = .unavailable
         if manualDisconnectInProgress {
             state = .idle
@@ -713,7 +748,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                     self.continueScannerConfiguration(
                         with: settings,
                         sdkDevice: sdkDevice,
-                        appDevice: appDevice
+                        appDevice: appDevice,
+                        settingsAreFresh: true
                     )
                 case .failure(let error):
                     self.trace("Bluetooth mode query failed: \(error.localizedDescription)")
@@ -741,11 +777,12 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                 continueScannerConfiguration(
                     with: cachedSettings,
                     sdkDevice: sdkDevice,
-                    appDevice: appDevice
+                    appDevice: appDevice,
+                    settingsAreFresh: false
                 )
             } else {
                 configurationState = .failed(
-                    "スキャナーのQR／Code 128設定を取得できませんでした。電源を入れ直してください。"
+                    "スキャナーの全バーコード設定を取得できませんでした。電源を入れ直してください。"
                 )
                 trace("Scanner settings unavailable after \(attempt + 1) attempts")
             }
@@ -769,9 +806,20 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     private func continueScannerConfiguration(
         with settings: String,
         sdkDevice: BLEDevice,
-        appDevice: BluetoothScannerDevice
+        appDevice: BluetoothScannerDevice,
+        settingsAreFresh: Bool
     ) {
         connectedScannerSettings = settings
+        connectedSymbologyValues = Self.symbologySettingValues(from: settings)
+        connectedScannerSettingsAreFresh = settingsAreFresh
+        migrateLegacySymbologyRecoveryIfNeeded(
+            deviceID: sdkDevice.uuid,
+            settingsAreFresh: settingsAreFresh
+        )
+        trace(
+            "Scanner reported \(connectedSymbologyValues?.count ?? 0) barcode types"
+                + (settingsAreFresh ? "" : " (cached metadata)")
+        )
         let inventoryMode = Self.settingValue(named: "inventory_mode", from: settings)
         let automaticCacheUpload = Self.settingValue(named: "auto_upload_cache", from: settings)
         let clearCacheAtStartup = Self.settingValue(named: "start_up_clean_cache", from: settings)
@@ -1008,27 +1056,44 @@ final class BluetoothScannerService: NSObject, ObservableObject {
 
     private func restoreSafeBaselineBeforeDisconnect(_ sdkDevice: BLEDevice) {
         configurationState = .configuring
-        guard let settings = connectedScannerSettings,
-              let command = Self.symbologySettingCommand(
-                values: BluetoothScannerSymbologyMode.unrestricted.settingValues,
-                settings: settings
-              ) else {
-            trace("Safe symbology restore skipped because scanner settings are unavailable")
+        guard !symbologyCommandInFlight else {
+            trace("Original symbology restore deferred until the current setting command completes")
+            return
+        }
+        guard let snapshot = persistedSymbologySnapshot else {
+            recordAppliedSymbologyMode(.unrestricted)
+            performManualDisconnect(sdkDevice)
+            return
+        }
+        guard snapshot.deviceID == sdkDevice.uuid,
+              let settings = connectedScannerSettings,
+              let command = Self.symbologySettingCommand(values: snapshot.values, settings: settings) else {
+            trace("Original symbology restore skipped because the saved settings do not match")
             performManualDisconnect(sdkDevice)
             return
         }
 
+        symbologyCommandGeneration += 1
+        let commandGeneration = symbologyCommandGeneration
+        symbologyCommandInFlight = true
         sdkDevice.messageManager.setSettingInfo(with: command) { [weak self] result in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self,
+                      commandGeneration == self.symbologyCommandGeneration else { return }
+                self.symbologyCommandInFlight = false
                 switch result {
                 case .success:
+                    self.connectedSymbologyValues = snapshot.values
+                    self.connectedScannerSettingsAreFresh = true
+                    self.clearPersistedSymbologySnapshot()
                     self.recordAppliedSymbologyMode(.unrestricted)
-                    self.trace("Scanner symbology restored to safe baseline before disconnect")
-                case .failure(let error):
-                    // 制限中の記録は消さず、次回接続時の復旧を必ず再試行する。
                     self.trace(
-                        "Safe symbology restore before disconnect failed: "
+                        "Restored \(snapshot.values.count) original barcode settings before disconnect"
+                    )
+                case .failure(let error):
+                    // 元設定と制限中の記録は消さず、次回接続時の復旧を必ず再試行する。
+                    self.trace(
+                        "Original symbology restore before disconnect failed: "
                             + error.localizedDescription
                     )
                 }
@@ -1046,6 +1111,10 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                 self.connectedSDKDevice = nil
                 self.sdkOutputConfigurationCompleted = false
                 self.connectedScannerSettings = nil
+                self.connectedSymbologyValues = nil
+                self.connectedScannerSettingsAreFresh = false
+                self.symbologyCommandGeneration += 1
+                self.symbologyCommandInFlight = false
                 self.configurationState = .unavailable
                 self.manualDisconnectInProgress = false
                 switch result {
@@ -1069,33 +1138,98 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             }
             return
         }
+        guard !symbologyCommandInFlight else {
+            trace("Symbology configuration deferred until the current setting command completes")
+            return
+        }
 
         let mode = BluetoothScannerSymbologyMode(expectedCode: expectedCode)
-        let values = mode.settingValues
 
-        guard let command = Self.symbologySettingCommand(values: values, settings: settings) else {
-            trace("Symbology configuration skipped because QR/Code 128 settings were not reported")
+        if mode == .unrestricted, persistedSymbologySnapshot == nil {
+            recordAppliedSymbologyMode(.unrestricted)
+            configurationState = .ready
+            trace("Scanner barcode settings already match the pre-session state")
+            return
+        }
+
+        let snapshot: BluetoothScannerSymbologySnapshot
+        if let persisted = persistedSymbologySnapshot {
+            guard persisted.deviceID == sdkDevice.uuid else {
+                configurationState = .failed(
+                    "別のスキャナーの読み取り設定が復元待ちです。元のスキャナーへ再接続してください。"
+                )
+                trace("Saved symbology snapshot belongs to another scanner")
+                return
+            }
+            snapshot = persisted
+        } else {
+            guard mode != .unrestricted,
+                  connectedScannerSettingsAreFresh,
+                  let currentValues = connectedSymbologyValues,
+                  Self.hasRequiredSymbologyValues(currentValues) else {
+                configurationState = .failed(
+                    "スキャナーの現在の読み取り設定を保存できませんでした。電源を入れ直してください。"
+                )
+                trace("Fresh symbology settings are required before applying a restriction")
+                return
+            }
+            snapshot = BluetoothScannerSymbologySnapshot(
+                deviceID: sdkDevice.uuid,
+                values: currentValues
+            )
+            persistSymbologySnapshot(snapshot)
+        }
+
+        guard let values = Self.symbologySettingValues(for: mode, original: snapshot.values),
+              let command = Self.symbologySettingCommand(values: values, settings: settings) else {
+            trace("Symbology configuration skipped because the complete setting set is unavailable")
             configurationState = .failed(
-                "スキャナーからQR／Code 128の設定を取得できませんでした。カメラを使用してください。"
+                "スキャナーから全バーコード種類の設定を取得できませんでした。カメラを使用してください。"
             )
             return
         }
 
+        if mode != .unrestricted {
+            recordPendingSymbologyMode(mode)
+        }
+        symbologyCommandGeneration += 1
+        let commandGeneration = symbologyCommandGeneration
+        symbologyCommandInFlight = true
         let requestedAt = ProcessInfo.processInfo.systemUptime
         sdkDevice.messageManager.setSettingInfo(with: command) { [weak self] result in
             let callbackDelay = ProcessInfo.processInfo.systemUptime - requestedAt
             Task { @MainActor in
-                guard let self, revision == self.symbologyConfigurationRevision,
-                      self.connectedSDKDevice?.uuid == sdkDevice.uuid else { return }
+                guard let self,
+                      commandGeneration == self.symbologyCommandGeneration else { return }
+                self.symbologyCommandInFlight = false
+                guard self.connectedSDKDevice?.uuid == sdkDevice.uuid else { return }
+                if self.manualDisconnectInProgress {
+                    self.restoreSafeBaselineBeforeDisconnect(sdkDevice)
+                    return
+                }
+                guard revision == self.symbologyConfigurationRevision else {
+                    self.trace("Applying the latest symbology request after a superseded command")
+                    self.applyExpectedCodeConfiguration(
+                        revision: self.symbologyConfigurationRevision
+                    )
+                    return
+                }
                 print(
                     "[BluetoothScanner] Symbology SDK callback after "
                         + "\(String(format: "%.3f", callbackDelay))s"
                 )
                 switch result {
                 case .success:
+                    self.connectedSymbologyValues = values
+                    self.connectedScannerSettingsAreFresh = true
+                    if mode == .unrestricted {
+                        self.clearPersistedSymbologySnapshot()
+                    }
                     self.recordAppliedSymbologyMode(mode)
                     self.configurationState = .ready
-                    self.trace("Scanner symbology configured for \(mode.rawValue)")
+                    self.trace(
+                        "Scanner configured for \(mode.rawValue) across \(values.count) barcode types"
+                    )
                 case .failure(let error):
                     self.configurationState = .failed(
                         "スキャナーの読み取り設定を変更できませんでした。カメラを使用してください。"
@@ -1111,15 +1245,43 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         )
     }
 
+    /// 旧版はQR／Code 128の制限状態だけを記録し、変更前スナップショットを
+    /// 持っていなかった。旧版が変更したのはこの2項目だけなので、初回の最新取得値を
+    /// 基に両方をONへ戻す復旧値を作り、アップデート直後にも制限を残さない。
+    private func migrateLegacySymbologyRecoveryIfNeeded(
+        deviceID: String,
+        settingsAreFresh: Bool
+    ) {
+        guard settingsAreFresh,
+              persistedSymbologySnapshot == nil,
+              persistedSymbologyMode != .unrestricted,
+              var values = connectedSymbologyValues,
+              Self.hasRequiredSymbologyValues(values) else { return }
+
+        values["qrcode_on"] = 1
+        values["code128_on"] = 1
+        persistSymbologySnapshot(
+            BluetoothScannerSymbologySnapshot(deviceID: deviceID, values: values)
+        )
+        trace("Migrated legacy QR/Code 128 recovery state to a full barcode snapshot")
+    }
+
 #else
     private static let simulatorDevice = BluetoothScannerDevice(
         id: "SIMULATOR-BCST-47",
         name: "BCST-47 (Simulator)"
     )
+    private static let simulatorSymbologyValues = [
+        "code39_on": 1,
+        "code128_on": 1,
+        "ean_13_on": 1,
+        "qrcode_on": 1,
+        "datamatrix_on": 1
+    ]
 #endif
 
     /// 制限を適用する前に記録し、プロセスが途中終了しても次回接続で復旧できるようにする。
-    /// 安全状態への変更では、SDKの成功応答を受けるまで既存の制限記録を残す。
+    /// 元設定への復元では、SDKの成功応答を受けるまで既存の制限記録を残す。
     private func recordPendingSymbologyMode(_ mode: BluetoothScannerSymbologyMode) {
         guard mode != .unrestricted else { return }
         defaults.set(mode.rawValue, forKey: Self.symbologyRecoveryModeKey)
@@ -1133,26 +1295,75 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         }
     }
 
+    private func persistSymbologySnapshot(_ snapshot: BluetoothScannerSymbologySnapshot) {
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        defaults.set(data, forKey: Self.symbologySnapshotKey)
+    }
+
+    private func clearPersistedSymbologySnapshot() {
+        defaults.removeObject(forKey: Self.symbologySnapshotKey)
+    }
+
+#if !INATECK_SDK
+    private func persistSimulatorSymbologySnapshotIfNeeded() {
+        guard persistedSymbologySnapshot == nil, let deviceID = connectedDevice?.id else { return }
+        persistSymbologySnapshot(
+            BluetoothScannerSymbologySnapshot(
+                deviceID: deviceID,
+                values: Self.simulatorSymbologyValues
+            )
+        )
+    }
+#endif
+
     /// 固定している公式iOS SDKは、取得した設定の`area`と`name`を
     /// `setSettingInfo`へ返す形式を使う。機種固有のareaはハードコードしない。
     static func hasRequiredSymbologySettings(_ settings: String) -> Bool {
-        symbologySettingCommand(
-            values: BluetoothScannerSymbologyMode.unrestricted.settingValues,
-            settings: settings
-        ) != nil
+        guard let values = symbologySettingValues(from: settings) else { return false }
+        return hasRequiredSymbologyValues(values)
+    }
+
+    static func hasRequiredSymbologyValues(_ values: [String: Int]) -> Bool {
+        values["qrcode_on"] != nil && values["code128_on"] != nil
+    }
+
+    static func symbologySettingValues(from settings: String) -> [String: Int]? {
+        guard let items = scannerSettingItems(from: settings) else { return nil }
+
+        var values: [String: Int] = [:]
+        for item in items where isSymbologySetting(item) {
+            guard let name = item["name"] as? String,
+                  let value = integerSettingValue(item["value"]),
+                  value == 0 || value == 1 else { continue }
+            values[name] = value
+        }
+        return values.isEmpty ? nil : values
+    }
+
+    static func symbologySettingValues(
+        for mode: BluetoothScannerSymbologyMode,
+        original: [String: Int]
+    ) -> [String: Int]? {
+        guard hasRequiredSymbologyValues(original) else { return nil }
+        switch mode {
+        case .unrestricted:
+            return original
+        case .qrOnly, .code128Only:
+            var restricted = original.mapValues { _ in 0 }
+            restricted[mode == .qrOnly ? "qrcode_on" : "code128_on"] = 1
+            return restricted
+        }
     }
 
     static func symbologySettingCommand(values: [String: Int], settings: String) -> String? {
-        guard let data = settings.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data),
-              let root = object as? [String: Any],
-              let items = root["data"] as? [[String: Any]] else { return nil }
+        guard !values.isEmpty,
+              let items = scannerSettingItems(from: settings) else { return nil }
 
         var commands: [[String: String]] = []
-        for name in ["qrcode_on", "code128_on"] {
-            guard let value = values[name],
-                  let item = items.first(where: { $0["name"] as? String == name }),
-                  let areaValue = item["area"] else { return nil }
+        for item in items {
+            guard let name = item["name"] as? String,
+                  let value = values[name] else { continue }
+            guard let areaValue = item["area"] else { return nil }
 
             let area: String
             if let string = areaValue as? String {
@@ -1165,10 +1376,43 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             commands.append(["area": area, "value": String(value), "name": name])
         }
 
+        guard commands.count == values.count else { return nil }
+
         guard let commandData = try? JSONSerialization.data(withJSONObject: commands),
               let command = String(data: commandData, encoding: .utf8) else { return nil }
         return command
     }
+
+    private static func scannerSettingItems(from settings: String) -> [[String: Any]]? {
+        guard let data = settings.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let root = object as? [String: Any] else { return nil }
+        return root["data"] as? [[String: Any]] ?? root["info"] as? [[String: Any]]
+    }
+
+    private static func integerSettingValue(_ value: Any?) -> Int? {
+        if let string = value as? String { return Int(string) }
+        if let number = value as? NSNumber { return number.intValue }
+        return nil
+    }
+
+    private static func isSymbologySetting(_ item: [String: Any]) -> Bool {
+        if let flag = integerSettingValue(item["flag"]), (2001...2028).contains(flag) {
+            return true
+        }
+        guard let name = item["name"] as? String else { return false }
+        return legacySymbologySettingNames.contains(name.lowercased())
+    }
+
+    private static let legacySymbologySettingNames: Set<String> = [
+        "codabar_on", "iata25_on", "interleaved25_on", "matrix25_on", "standard25_on",
+        "code39_on", "code93_on", "code128_on", "ean_8_on", "ean_13_on", "upc_a_on",
+        "upc_e0_on", "msi_on", "code11_on", "chinese_post_on", "upc_e1_on",
+        "aztec_on", "maxicode_on", "hanxin_on", "datamatrix_on", "qrcode_on",
+        "pdf417_on", "gs1_128", "rss14_composite_on", "rss_14_composite_on", "plessey_on",
+        "telepen_on", "rss_14_on", "rss_expanded_on", "rss_limited_on", "symb_128_on",
+        "usps_on", "usps_fedex"
+    ]
 
     private func trace(_ message: String) {
         logger.info("\(message, privacy: .public)")
