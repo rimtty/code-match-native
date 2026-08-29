@@ -8,6 +8,12 @@
             "state" : "translated",
             "value" : " (sub-number %@)"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（枝番 %@）"
+          }
         }
       }
     },
@@ -19,12 +25,24 @@
             "state" : "translated",
             "value" : "#"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
         }
       }
     },
     "#%lld" : {
       "localizations" : {
         "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%lld"
+          }
+        },
+        "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "#%lld"
@@ -43,7 +61,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "#%1$lld %2$@（%3$lld箱）"
           }
         }
@@ -56,6 +74,12 @@
             "state" : "translated",
             "value" : "Box #%lld"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%lld箱目"
+          }
         }
       }
     },
@@ -65,6 +89,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Reconnect to %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ に再接続"
           }
         }
       }
@@ -76,6 +106,12 @@
             "state" : "translated",
             "value" : "%@ connected"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 接続済み"
+          }
         }
       }
     },
@@ -85,6 +121,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ switched to camera while keeping the current read step."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 現在の読取ステップを維持してカメラへ切り替えました。"
           }
         }
       }
@@ -99,7 +141,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$@、%2$@、%3$@"
           }
         }
@@ -115,7 +157,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$@、%2$@、%3$@、%4$@"
           }
         }
@@ -127,6 +169,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@, selected"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@、選択中"
           }
         }
       }
@@ -141,7 +189,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$@（このセッションで%2$lld箱目）"
           }
         }
@@ -158,7 +206,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$@%2$@"
           }
         }
@@ -175,7 +223,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$@%2$@、%3$@、%4$@"
           }
         }
@@ -192,7 +240,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$@%2$@、%3$@%4$@、%5$@"
           }
         }
@@ -205,6 +253,12 @@
             "state" : "translated",
             "value" : "Code 128 config code for %@"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@のCode 128設定コード"
+          }
         }
       }
     },
@@ -216,6 +270,12 @@
             "state" : "translated",
             "value" : "The combination with %@ is correct."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@の組み合わせは正しいです。"
+          }
         }
       }
     },
@@ -226,12 +286,24 @@
             "state" : "translated",
             "value" : "Connecting to %@..."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@へ接続中…"
+          }
         }
       }
     },
     "%lld" : {
       "localizations" : {
         "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld"
+          }
+        },
+        "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld"
@@ -246,6 +318,12 @@
             "state" : "translated",
             "value" : "%lld%%"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld%%"
+          }
         }
       }
     },
@@ -255,6 +333,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld matched"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld件照合済み"
           }
         }
       }
@@ -278,6 +362,12 @@
               }
             }
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld品番"
+          }
         }
       }
     },
@@ -287,6 +377,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld sec"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld秒"
           }
         }
       }
@@ -310,6 +406,12 @@
               }
             }
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld箱"
+          }
         }
       }
     },
@@ -319,6 +421,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Box %lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld箱目"
           }
         }
       }
@@ -333,7 +441,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$lld箱目　照合時刻: %2$@　管理コード: %3$@"
           }
         }
@@ -346,6 +454,12 @@
             "state" : "translated",
             "value" : "1  Square QR code"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1  四角いQRコード"
+          }
         }
       }
     },
@@ -355,6 +469,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "2  Horizontal Code 128"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2  横長のCode 128"
           }
         }
       }
@@ -366,6 +486,12 @@
             "state" : "translated",
             "value" : "BCST-47 first connection"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BCST-47 初回接続"
+          }
         }
       }
     },
@@ -375,6 +501,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scan the code below once with BCST-47."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BCST-47で下のコードを1回読み取ります"
           }
         }
       }
@@ -386,6 +518,12 @@
             "state" : "translated",
             "value" : "Please scan a different delivery note + item label QR code with BCST-47."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BCST-47で別の納品書兼現品票のQRコードを読み取ってください。"
+          }
         }
       }
     },
@@ -395,6 +533,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Please scan the item-label Code 128 barcode with BCST-47."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BCST-47で現品票のCode 128バーコードを読み取ってください。"
           }
         }
       }
@@ -406,6 +550,12 @@
             "state" : "translated",
             "value" : "Please scan the delivery note + item-label QR code with BCST-47."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BCST-47で納品書兼現品票のQRコードを読み取ってください。"
+          }
         }
       }
     },
@@ -415,6 +565,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Setting BCST-47 scan targets. Please wait until complete."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BCST-47の読み取り対象を設定しています。完了するまでお待ちください。"
           }
         }
       }
@@ -426,12 +582,24 @@
             "state" : "translated",
             "value" : "Turn on the BCST-47."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BCST-47の電源を入れます"
+          }
         }
       }
     },
     "BLE_GATT" : {
       "localizations" : {
         "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BLE_GATT"
+          }
+        },
+        "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "BLE_GATT"
@@ -446,6 +614,12 @@
             "state" : "translated",
             "value" : "Bluetooth"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetooth"
+          }
         }
       }
     },
@@ -455,6 +629,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bluetooth is off."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetoothがオフです。"
           }
         }
       }
@@ -466,6 +646,12 @@
             "state" : "translated",
             "value" : "Bluetooth scanner"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetoothスキャナ"
+          }
         }
       }
     },
@@ -475,6 +661,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Setting scan target on Bluetooth scanner…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetoothスキャナーの読み取り対象を設定中です"
           }
         }
       }
@@ -486,6 +678,12 @@
             "state" : "translated",
             "value" : "Bluetooth scanner is not connected. Connect it from settings."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetoothスキャナが未接続です。設定画面で接続してください。"
+          }
         }
       }
     },
@@ -495,6 +693,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The Bluetooth scanner disconnected, so we switched to camera while keeping the current read step."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetoothスキャナとの接続が切れたため、現在の読取ステップを維持してカメラへ切り替えました。"
           }
         }
       }
@@ -506,6 +710,12 @@
             "state" : "translated",
             "value" : "Connection to the Bluetooth scanner has been lost."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetoothスキャナとの接続が切れました。"
+          }
         }
       }
     },
@@ -515,6 +725,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Could not get Bluetooth scanner discovery state."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetoothスキャナの検索状態を取得できませんでした。"
           }
         }
       }
@@ -526,6 +742,12 @@
             "state" : "translated",
             "value" : "Preparing Bluetooth scanner read settings. Please wait a moment and select again."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetoothスキャナの読み取り設定を準備しています。少し待ってからもう一度選択してください。"
+          }
         }
       }
     },
@@ -535,6 +757,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bluetooth access is denied."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetoothの利用が許可されていません。"
           }
         }
       }
@@ -546,6 +774,12 @@
             "state" : "translated",
             "value" : "Bluetooth permission is not allowed. Please enable it in Settings."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetoothの利用が許可されていません。設定アプリで許可してください。"
+          }
         }
       }
     },
@@ -555,6 +789,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unable to get Bluetooth state."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetoothの状態を取得できません。"
           }
         }
       }
@@ -566,6 +806,12 @@
             "state" : "translated",
             "value" : "Preparing Bluetooth…"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetoothを再準備しています…"
+          }
         }
       }
     },
@@ -576,6 +822,12 @@
             "state" : "translated",
             "value" : "Bluetooth cannot be used."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetoothを利用できません。"
+          }
         }
       }
     },
@@ -585,6 +837,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Full Code 128 (item tag)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code 128（現品票）全文"
           }
         }
       }
@@ -597,6 +855,12 @@
             "state" : "translated",
             "value" : "Full Code 128"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code 128全文"
+          }
         }
       }
     },
@@ -606,6 +870,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Full Code 128: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code 128全文: %@"
           }
         }
       }
@@ -617,6 +887,12 @@
             "state" : "translated",
             "value" : "Generated by CodeMatch. This report is created from on-device data only."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CodeMatch により生成 — このレポートは端末内のデータから作成されています。"
+          }
         }
       }
     },
@@ -624,6 +900,12 @@
       "extractionState" : "stale",
       "localizations" : {
         "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "English"
+          }
+        },
+        "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "English"
@@ -638,12 +920,24 @@
             "state" : "translated",
             "value" : "Enter Setup"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter Setup"
+          }
         }
       }
     },
     "Exit / Save" : {
       "localizations" : {
         "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exit / Save"
+          }
+        },
+        "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Exit / Save"
@@ -658,6 +952,12 @@
             "state" : "translated",
             "value" : "GATT mode ready"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GATTモードの準備完了"
+          }
         }
       }
     },
@@ -667,6 +967,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Switch to GATT mode"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GATTモードへ切り替え"
           }
         }
       }
@@ -678,6 +984,12 @@
             "state" : "translated",
             "value" : "Failed to switch to GATT mode: %@"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GATTモードへ切り替えられませんでした: %@"
+          }
         }
       }
     },
@@ -687,6 +999,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Failed to restart scanner after GATT setup: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GATT設定後にスキャナを再起動できませんでした: %@"
           }
         }
       }
@@ -698,6 +1016,12 @@
             "state" : "translated",
             "value" : "Do not pair in iPhone Settings > Bluetooth. Connect from this screen."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhoneの「設定 > Bluetooth」ではペアリングせず、この画面から接続してください。"
+          }
         }
       }
     },
@@ -707,6 +1031,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Do not pair it in the iPhone Settings app; continue with this guide."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhoneの設定アプリではペアリングせず、このガイドを進めます"
           }
         }
       }
@@ -718,6 +1048,12 @@
             "state" : "translated",
             "value" : "Turn iPhone sideways and scan the entire code on-screen."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhoneを横向きにして、画面全体のコードを読み取ります"
+          }
         }
       }
     },
@@ -728,12 +1064,24 @@
             "state" : "translated",
             "value" : "Disconnect it from other devices, such as a Mac."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Macなど別の端末との接続を解除します"
+          }
         }
       }
     },
     "OFF" : {
       "localizations" : {
         "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OFF"
+          }
+        },
+        "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "OFF"
@@ -748,12 +1096,24 @@
             "state" : "translated",
             "value" : "Save as PDF"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PDFで保存"
+          }
         }
       }
     },
     "QR" : {
       "localizations" : {
         "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QR"
+          }
+        },
+        "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "QR"
@@ -768,6 +1128,12 @@
             "state" : "translated",
             "value" : "QR item number on delivery note"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QR・納品書の品目番号"
+          }
         }
       }
     },
@@ -777,6 +1143,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Full QR code (delivery note/item label)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QRコード（納品書兼現品票）全文"
           }
         }
       }
@@ -788,6 +1160,12 @@
             "state" : "translated",
             "value" : "Align the QR code to the center of the frame."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QRコードを枠の中央に合わせてください。"
+          }
         }
       }
     },
@@ -798,6 +1176,12 @@
             "state" : "translated",
             "value" : "Scan QR code"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QRコードを読み取る"
+          }
         }
       }
     },
@@ -807,6 +1191,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Rescan QR"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QRを読み取りなおす"
           }
         }
       }
@@ -819,6 +1209,12 @@
             "state" : "translated",
             "value" : "Full QR"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QR全文"
+          }
         }
       }
     },
@@ -828,6 +1224,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Full QR: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QR全文: %@"
           }
         }
       }
@@ -839,12 +1241,24 @@
             "state" : "translated",
             "value" : "SCAN & VERIFY"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SCAN & VERIFY"
+          }
         }
       }
     },
     "SETTINGS" : {
       "localizations" : {
         "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SETTINGS"
+          }
+        },
+        "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "SETTINGS"
@@ -862,7 +1276,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "STEP %1$lld / %2$lld"
           }
         }
@@ -887,6 +1301,12 @@
               }
             }
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あと%lld秒・下のボタンで今すぐ進めます"
+          }
         }
       }
     },
@@ -896,6 +1316,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "App language"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アプリの言語"
           }
         }
       }
@@ -907,6 +1333,12 @@
             "state" : "translated",
             "value" : "App settings"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アプリの設定"
+          }
         }
       }
     },
@@ -916,6 +1348,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Code being read now"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "いま読み取るコード"
           }
         }
       }
@@ -927,6 +1365,12 @@
             "state" : "translated",
             "value" : "Card number"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カード番号"
+          }
         }
       }
     },
@@ -936,6 +1380,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Countdown"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カウントダウン"
           }
         }
       }
@@ -947,6 +1397,12 @@
             "state" : "translated",
             "value" : "Camera"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラ"
+          }
         }
       }
     },
@@ -956,6 +1412,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Camera access is not granted. Please enable camera access in Settings."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラが許可されていません。設定アプリでカメラを許可してください。"
           }
         }
       }
@@ -967,6 +1429,12 @@
             "state" : "translated",
             "value" : "A camera error occurred. Stop the camera and start again."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラでエラーが発生しました。カメラを停止してから再度開始してください。"
+          }
         }
       }
     },
@@ -976,6 +1444,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unable to check camera authorization status."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラの利用状態を確認できませんでした。"
           }
         }
       }
@@ -987,6 +1461,12 @@
             "state" : "translated",
             "value" : "Camera is stopped."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラは停止中です"
+          }
         }
       }
     },
@@ -996,6 +1476,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Stop camera"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラを停止"
           }
         }
       }
@@ -1007,6 +1493,12 @@
             "state" : "translated",
             "value" : "Stopping camera and switching to Bluetooth scanner…"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラを停止してBluetoothスキャナへ切り替えています…"
+          }
         }
       }
     },
@@ -1016,6 +1508,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Camera has stopped. You can resume by tapping \"Scan QR code\"."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラを停止しました。「QRコードを読み取る」で再開できます。"
           }
         }
       }
@@ -1027,6 +1525,12 @@
             "state" : "translated",
             "value" : "Camera has stopped. You can resume by tapping \"Scan barcode\"."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラを停止しました。「バーコードを読み取る」で再開できます。"
+          }
         }
       }
     },
@@ -1036,6 +1540,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Preparing camera…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラを準備しています…"
           }
         }
       }
@@ -1047,6 +1557,12 @@
             "state" : "translated",
             "value" : "Preparing camera"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラを準備中です"
+          }
         }
       }
     },
@@ -1056,6 +1572,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Camera preview. Tap to focus."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラ映像。タップしてピントを合わせます"
           }
         }
       }
@@ -1067,6 +1589,12 @@
             "state" : "translated",
             "value" : "Camera video and codes read via Bluetooth are processed only on-device and are not sent externally."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラ映像とBluetoothで読み取ったコード内容は端末内だけで処理され、外部へ送信されません。"
+          }
         }
       }
     },
@@ -1076,6 +1604,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cancel"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キャンセル"
           }
         }
       }
@@ -1087,6 +1621,12 @@
             "state" : "translated",
             "value" : "Code is being verified. Hold still for a moment."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コードを確認中です。そのまま一瞬だけ保持してください。"
+          }
         }
       }
     },
@@ -1096,6 +1636,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Could not start code scanning."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コード読み取り機能を開始できませんでした。"
           }
         }
       }
@@ -1107,6 +1653,12 @@
             "state" : "translated",
             "value" : "This code starts setup registration. GATT mode is not switched here; it is selected on the next screen."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このコードは設定受付を開始するためのものです。ここではまだGATTモードには切り替わりません。次の画面でGATTを指定します。"
+          }
         }
       }
     },
@@ -1116,6 +1668,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No matched codes in this session yet."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このセッションではまだ一致したコードがありません。"
           }
         }
       }
@@ -1127,6 +1685,12 @@
             "state" : "translated",
             "value" : "Do you want to end this session?"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このセッションを終了しますか？"
+          }
         }
       }
     },
@@ -1136,6 +1700,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bluetooth is not available on this device."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この端末ではBluetoothを利用できません。"
           }
         }
       }
@@ -1147,6 +1717,12 @@
             "state" : "translated",
             "value" : "This device cannot scan QR or Code 128."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この端末ではQRコード・Code 128を読み取れません。"
+          }
         }
       }
     },
@@ -1156,6 +1732,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "This combination is correct."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この組み合わせは正しいです。"
           }
         }
       }
@@ -1167,6 +1749,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "So far"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これまでに"
           }
         }
       }
@@ -1190,6 +1778,12 @@
               }
             }
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これまでに%lldセッションを端末内へ保存しています"
+          }
         }
       }
     },
@@ -1199,6 +1793,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sound 1"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サウンド1"
           }
         }
       }
@@ -1210,6 +1810,12 @@
             "state" : "translated",
             "value" : "Sound 2"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サウンド2"
+          }
         }
       }
     },
@@ -1219,6 +1825,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Could not get all barcode-type settings from the scanner. Use camera instead."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキャナーから全バーコード種類の設定を取得できませんでした。カメラを使用してください。"
           }
         }
       }
@@ -1230,6 +1842,12 @@
             "state" : "translated",
             "value" : "Could not get all barcode settings from scanner. Please power cycle it."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキャナーの全バーコード設定を取得できませんでした。電源を入れ直してください。"
+          }
         }
       }
     },
@@ -1239,6 +1857,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Could not save current scanner read settings. Please power cycle it."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキャナーの現在の読み取り設定を保存できませんでした。電源を入れ直してください。"
           }
         }
       }
@@ -1250,6 +1874,12 @@
             "state" : "translated",
             "value" : "Could not change scanner read settings. Please use the camera."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキャナーの読み取り設定を変更できませんでした。カメラを使用してください。"
+          }
         }
       }
     },
@@ -1259,6 +1889,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scanner setting transfer did not complete. For safety, switching to camera and reconnecting."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキャナーの読み取り設定通信が完了しませんでした。安全のためカメラへ切り替え、再接続します。"
           }
         }
       }
@@ -1270,6 +1906,12 @@
             "state" : "translated",
             "value" : "Start scanner search"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキャナの検索を開始"
+          }
         }
       }
     },
@@ -1279,6 +1921,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Disconnect scanner"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキャナを切断"
           }
         }
       }
@@ -1290,6 +1938,12 @@
             "state" : "translated",
             "value" : "Search for scanners"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキャナを検索"
+          }
         }
       }
     },
@@ -1299,6 +1953,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scanning for scanners…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキャナを検索中…"
           }
         }
       }
@@ -1310,6 +1970,12 @@
             "state" : "translated",
             "value" : "Preparing scanner"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキャナを準備します"
+          }
         }
       }
     },
@@ -1319,6 +1985,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Make sure \"BLE_GATT\" and a success message appear on the scanner screen, then start scanning. If iOS pairing confirmation appears, tap Pair."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキャナ画面に「BLE_GATT」と成功表示が出たことを確認して、検索を開始してください。iOSのペアリング確認が表示された場合は「ペアリング」を押します。"
           }
         }
       }
@@ -1330,6 +2002,12 @@
             "state" : "translated",
             "value" : "Scanner display reference"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキャナ表示の目安"
+          }
         }
       }
     },
@@ -1339,6 +2017,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Step %lld / 2"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ステップ %lld / 2"
           }
         }
       }
@@ -1350,6 +2034,12 @@
             "state" : "translated",
             "value" : "Step 1: scan the square QR code on the delivery note/item label"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ステップ1、納品書兼現品票の四角いQRコードを読み取ってください"
+          }
         }
       }
     },
@@ -1360,6 +2050,12 @@
             "state" : "translated",
             "value" : "Step 2: scan the horizontal Code 128 barcode with vertical bars on the item tag"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ステップ2、現品票の縦線が並んだ横長のCode 128を読み取ってください"
+          }
         }
       }
     },
@@ -1369,6 +2065,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Releasing the slider previews the current success sound."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スライダーを離すと現在の成功音でプレビューされます"
           }
         }
       }
@@ -1381,6 +2083,12 @@
             "state" : "translated",
             "value" : "Saving session on device"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セッションを端末内へ保存しています"
+          }
         }
       }
     },
@@ -1390,6 +2098,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Session name"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セッション名"
           }
         }
       }
@@ -1401,6 +2115,12 @@
             "state" : "translated",
             "value" : "Session name (optional)"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セッション名（任意）"
+          }
         }
       }
     },
@@ -1410,6 +2130,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Session details"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セッション詳細"
           }
         }
       }
@@ -1421,6 +2147,12 @@
             "state" : "translated",
             "value" : "Tap to connect"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タップして接続"
+          }
         }
       }
     },
@@ -1430,6 +2162,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tap to focus"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タップでピント合わせ"
           }
         }
       }
@@ -1441,6 +2179,12 @@
             "state" : "translated",
             "value" : "Tap to select and preview"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タップで選択して試聴します"
+          }
         }
       }
     },
@@ -1450,6 +2194,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chime (3 tones)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャイム（3音）"
           }
         }
       }
@@ -1461,6 +2211,12 @@
             "state" : "translated",
             "value" : "Press trigger once to scan"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "トリガーを1回押して読み取る"
+          }
         }
       }
     },
@@ -1470,6 +2226,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Barcode"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バーコード"
           }
         }
       }
@@ -1481,6 +2243,12 @@
             "state" : "translated",
             "value" : "Barcode item number on item label"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バーコード・現品票の品番"
+          }
         }
       }
     },
@@ -1490,6 +2258,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scan barcode"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バーコードを読み取る"
           }
         }
       }
@@ -1501,6 +2275,12 @@
             "state" : "translated",
             "value" : "Checking barcode-type scan settings…"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バーコード種類の読み取り設定を確認中です…"
+          }
         }
       }
     },
@@ -1510,6 +2290,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Beep (POS register standard)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ピッ（POSレジ風・標準）"
           }
         }
       }
@@ -1521,6 +2307,12 @@
             "state" : "translated",
             "value" : "Beep beep"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ピピッ（2回）"
+          }
         }
       }
     },
@@ -1530,6 +2322,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Four beeps (standard alarm)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ピピピピ（アラーム・標準）"
           }
         }
       }
@@ -1541,6 +2339,12 @@
             "state" : "translated",
             "value" : "Descending tone"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブーー（下降音）"
+          }
         }
       }
     },
@@ -1550,6 +2354,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Buzzer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブブー（ブザー）"
           }
         }
       }
@@ -1561,6 +2371,12 @@
             "state" : "translated",
             "value" : "First, place the delivery note/item-label QR code in the camera frame."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まず、納品書兼現品票のQRコードをカメラに映してください。"
+          }
         }
       }
     },
@@ -1571,6 +2387,12 @@
             "state" : "translated",
             "value" : "Sounds play even in silent mode. Actual volume depends on device volume settings."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マナーモード中でも効果音は再生されます。実際の音量は端末の音量ボタンの設定にも依存します。"
+          }
         }
       }
     },
@@ -1580,6 +2402,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "This session will not be saved because 0 matches were found."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一致が0件のため、このセッションは履歴に保存されません。"
           }
         }
       }
@@ -1603,6 +2431,12 @@
               }
             }
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一致した%lld件は履歴に保存されます。"
+          }
         }
       }
     },
@@ -1612,6 +2446,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Matched codes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一致したコード"
           }
         }
       }
@@ -1623,6 +2463,12 @@
             "state" : "translated",
             "value" : "No matched codes."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一致したコードはありません。"
+          }
         }
       }
     },
@@ -1632,6 +2478,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Matched"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一致しました"
           }
         }
       }
@@ -1643,6 +2495,12 @@
             "state" : "translated",
             "value" : "Not matched"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一致しません"
+          }
         }
       }
     },
@@ -1652,6 +2510,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No match history"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一致履歴はありません"
           }
         }
       }
@@ -1663,6 +2527,12 @@
             "state" : "translated",
             "value" : "Shows remaining seconds on the match screen. You can also tap Next Match manually at any time."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一致画面に残り秒数を表示します。手動の「次の照合」もいつでも使えます。"
+          }
         }
       }
     },
@@ -1672,6 +2542,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "After confirming the match result, it automatically proceeds to the next QR scan."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一致結果を確認後、自動で次のQR読み取りへ進みます"
           }
         }
       }
@@ -1683,6 +2559,12 @@
             "state" : "translated",
             "value" : "Mismatch"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不一致"
+          }
         }
       }
     },
@@ -1692,6 +2574,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Go to next match now"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今すぐ次の照合へ"
           }
         }
       }
@@ -1703,6 +2591,12 @@
             "state" : "translated",
             "value" : "Previously connected scanner"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以前接続したスキャナ"
+          }
         }
       }
     },
@@ -1712,6 +2606,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Start a session per work unit. Matched codes and timestamps are stored in local history."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作業単位ごとにセッションを開始します。一致したコードと時刻が端末内の履歴へ記録されます。"
           }
         }
       }
@@ -1723,6 +2623,12 @@
             "state" : "translated",
             "value" : "Destination"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "供給先"
+          }
         }
       }
     },
@@ -1732,6 +2638,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Source"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "入力元"
           }
         }
       }
@@ -1743,6 +2655,12 @@
             "state" : "translated",
             "value" : "Show enlarged"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全画面で大きく表示"
+          }
         }
       }
     },
@@ -1752,6 +2670,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Share"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有する"
           }
         }
       }
@@ -1763,6 +2687,12 @@
             "state" : "translated",
             "value" : "No scanner can be reconnected. Please search for scanners."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再接続できるスキャナがありません。スキャナを検索してください。"
+          }
         }
       }
     },
@@ -1772,6 +2702,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "First match"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最初の照合"
           }
         }
       }
@@ -1783,6 +2719,12 @@
             "state" : "translated",
             "value" : "Scan this code last, save GATT settings, and exit setup mode."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最後にこのコードを読み取り、GATT設定を保存して設定モードを終了します。"
+          }
         }
       }
     },
@@ -1792,6 +2734,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Last match"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最後の照合"
           }
         }
       }
@@ -1804,6 +2752,12 @@
             "state" : "translated",
             "value" : "min"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分"
+          }
         }
       }
     },
@@ -1813,6 +2767,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Failed to disconnect: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切断に失敗しました: %@"
           }
         }
       }
@@ -1824,6 +2784,12 @@
             "state" : "translated",
             "value" : "On first use, use the Initial Connection Guide to enter GATT/APP mode. After disconnecting from this screen, reconnect from Previously connected scanner."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "初回は「初回接続ガイド」でGATT／APPモードにします。この画面から切断した後は「以前接続したスキャナ」から再接続できます。"
+          }
         }
       }
     },
@@ -1833,6 +2799,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Open initial connection guide"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "初回接続ガイドを開く"
           }
         }
       }
@@ -1844,6 +2816,12 @@
             "state" : "translated",
             "value" : "The default is OFF. Turning it on does not auto-advance on mismatch."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "初期設定はOFFです。ONにしても不一致時は自動で進みません。"
+          }
         }
       }
     },
@@ -1853,6 +2831,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Another scanner’s read settings are pending restore. Please reconnect to the original scanner."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のスキャナーの読み取り設定が復元待ちです。元のスキャナーへ再接続してください。"
           }
         }
       }
@@ -1864,6 +2848,12 @@
             "state" : "translated",
             "value" : "Search another scanner"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のスキャナを検索"
+          }
         }
       }
     },
@@ -1873,6 +2863,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Align another delivery note/item-label QR code to the center of the frame."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別の納品書兼現品票のQRコードを枠の中央に合わせてください。"
           }
         }
       }
@@ -1884,6 +2880,12 @@
             "state" : "translated",
             "value" : "Sound effect volume"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "効果音の音量"
+          }
         }
       }
     },
@@ -1893,6 +2895,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Receiving parts warehouse"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受入部品庫"
           }
         }
       }
@@ -1904,6 +2912,12 @@
             "state" : "translated",
             "value" : "Match log per box"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "各箱の照合記録"
+          }
         }
       }
     },
@@ -1913,6 +2927,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Read log per box"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "各箱の読み取り記録"
           }
         }
       }
@@ -1924,6 +2944,12 @@
             "state" : "translated",
             "value" : "Enter name (optional)"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名前を入力（任意）"
+          }
         }
       }
     },
@@ -1933,6 +2959,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Part number"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "品番"
           }
         }
       }
@@ -1944,6 +2976,12 @@
             "state" : "translated",
             "value" : "Number of part numbers"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "品番数"
+          }
         }
       }
     },
@@ -1953,6 +2991,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Item number"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "品目番号"
           }
         }
       }
@@ -1965,6 +3009,12 @@
             "state" : "translated",
             "value" : "Item number %@ "
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "品目番号 %@ "
+          }
         }
       }
     },
@@ -1974,6 +3024,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Item number %@ is a correct match."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "品目番号 %@ の組み合わせは正しいです。"
           }
         }
       }
@@ -1988,7 +3044,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "品目番号 %1$@ を読み取りました。%2$@"
           }
         }
@@ -2004,7 +3060,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "品目番号: %1$@%2$@　カード番号: %3$@"
           }
         }
@@ -2017,6 +3073,12 @@
             "state" : "translated",
             "value" : "Played when item numbers match."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "品目番号が一致したときに鳴ります"
+          }
         }
       }
     },
@@ -2026,6 +3088,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Item numbers match."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "品目番号が一致しています。"
           }
         }
       }
@@ -2037,6 +3105,12 @@
             "state" : "translated",
             "value" : "Item number matches. This is box %1$lld in this session."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "品目番号が一致しています。この品番は本セッションで%lld箱目です。"
+          }
         }
       }
     },
@@ -2046,6 +3120,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Played when item numbers do not match."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "品目番号が一致しないときに鳴ります"
           }
         }
       }
@@ -2057,6 +3137,12 @@
             "state" : "translated",
             "value" : "Item number does not match. Please verify the target and scan again."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "品目番号が一致しません。対象を確認して、もう一度読み取ってください。"
+          }
         }
       }
     },
@@ -2066,6 +3152,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Item number does not match. Check for mixing delivery note with physical item."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "品目番号が一致しません。納品書と現品の取り違えを確認してください。"
           }
         }
       }
@@ -2077,6 +3169,12 @@
             "state" : "translated",
             "value" : "Failure sound"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失敗音"
+          }
         }
       }
     },
@@ -2086,6 +3184,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "History"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "履歴"
           }
         }
       }
@@ -2097,6 +3201,12 @@
             "state" : "translated",
             "value" : "No history found"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "履歴が見つかりません"
+          }
         }
       }
     },
@@ -2106,6 +3216,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No history yet"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "履歴はまだありません"
           }
         }
       }
@@ -2117,6 +3233,12 @@
             "state" : "translated",
             "value" : "Failed to save history. Please check available storage on this device."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "履歴を保存できませんでした。端末の空き容量を確認してください。"
+          }
         }
       }
     },
@@ -2126,6 +3248,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Factory"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工場"
           }
         }
       }
@@ -2140,7 +3268,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "工場: %1$@　受入部品庫: %2$@　供給先: %3$@"
           }
         }
@@ -2153,6 +3281,12 @@
             "state" : "translated",
             "value" : "Idle"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待機中"
+          }
         }
       }
     },
@@ -2162,6 +3296,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auto-advance on success"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成功時 自動で次へ"
           }
         }
       }
@@ -2173,6 +3313,12 @@
             "state" : "translated",
             "value" : "Automatically proceed to next match when successful"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成功時に自動で次の照合へ進む"
+          }
         }
       }
     },
@@ -2182,6 +3328,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auto-advance to the next match on success"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成功時の自動「次の照合」"
           }
         }
       }
@@ -2193,6 +3345,12 @@
             "state" : "translated",
             "value" : "Success sound"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成功音"
+          }
         }
       }
     },
@@ -2202,6 +3360,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Back"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "戻る"
           }
         }
       }
@@ -2213,6 +3377,12 @@
             "state" : "translated",
             "value" : "Close zoomed view"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拡大表示を閉じる"
+          }
         }
       }
     },
@@ -2222,6 +3392,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Instruction count"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指示数"
           }
         }
       }
@@ -2233,6 +3409,12 @@
             "state" : "translated",
             "value" : "Failed to connect: %@"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続できませんでした: %@"
+          }
         }
       }
     },
@@ -2243,6 +3425,12 @@
             "state" : "translated",
             "value" : "Connection diagnostic (last 20)"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続診断（直近20件）"
+          }
         }
       }
     },
@@ -2252,6 +3440,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "New match session"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しい照合セッション"
           }
         }
       }
@@ -2264,6 +3458,12 @@
             "state" : "translated",
             "value" : "Japanese"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "日本語"
+          }
         }
       }
     },
@@ -2273,6 +3473,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Waiting for video start"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "映像の開始を待っています"
           }
         }
       }
@@ -2284,6 +3490,12 @@
             "state" : "translated",
             "value" : "Disconnected"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未接続"
+          }
         }
       }
     },
@@ -2294,6 +3506,12 @@
             "state" : "translated",
             "value" : "Sub number"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "枝番"
+          }
         }
       }
     },
@@ -2303,6 +3521,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Number of boxes to inspect"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "検査箱数"
           }
         }
       }
@@ -2317,7 +3541,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "検査箱数: %1$lld箱（品番数: %2$lld）"
           }
         }
@@ -2330,6 +3554,12 @@
             "state" : "translated",
             "value" : "Searching for scanners…"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "検索中…"
+          }
         }
       }
     },
@@ -2339,6 +3569,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Align the horizontal Code 128 barcode to the frame."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "横長のCode 128バーコードを枠に合わせてください。"
           }
         }
       }
@@ -2350,6 +3586,12 @@
             "state" : "translated",
             "value" : "Fit the entire horizontal Code 128 barcode in the frame."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "横長のCode 128バーコード全体を枠に合わせてください。"
+          }
         }
       }
     },
@@ -2359,6 +3601,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scan each code once in order from top to bottom on the next 3 screens."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次の3画面に表示されるコードを、上から順に1回ずつ読み取ってください。"
           }
         }
       }
@@ -2370,6 +3618,12 @@
             "state" : "translated",
             "value" : "Match next code"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次のコードを照合"
+          }
         }
       }
     },
@@ -2379,6 +3633,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Next"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次へ"
           }
         }
       }
@@ -2390,6 +3650,12 @@
             "state" : "translated",
             "value" : "Align the square QR code to the frame."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正方形のQRコードを枠に合わせてください。"
+          }
         }
       }
     },
@@ -2399,6 +3665,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verify"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合"
           }
         }
       }
@@ -2410,6 +3682,12 @@
             "state" : "translated",
             "value" : "Match OK"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合OK"
+          }
         }
       }
     },
@@ -2419,6 +3697,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Match session"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合セッション"
           }
         }
       }
@@ -2430,6 +3714,12 @@
             "state" : "translated",
             "value" : "Start recording on the Match tab to save matched codes by session."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合タブで記録を開始すると、一致したコードがセッション単位で保存されます。"
+          }
         }
       }
     },
@@ -2439,6 +3729,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Match progress, step %1$lld/3"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合の進行状況、ステップ%lld／3"
           }
         }
       }
@@ -2450,6 +3746,12 @@
             "state" : "translated",
             "value" : "Verifying"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合中"
+          }
         }
       }
     },
@@ -2459,6 +3761,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Session in progress"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合中のセッション"
           }
         }
       }
@@ -2470,6 +3778,12 @@
             "state" : "translated",
             "value" : "Start matching,\nthen begin by recording."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合作業を、\n記録して始める。"
+          }
         }
       }
     },
@@ -2479,6 +3793,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Match history"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合履歴"
           }
         }
       }
@@ -2490,6 +3810,12 @@
             "state" : "translated",
             "value" : "Match history report"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合履歴レポート"
+          }
         }
       }
     },
@@ -2500,6 +3826,12 @@
             "state" : "translated",
             "value" : "Match time"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合時刻"
+          }
         }
       }
     },
@@ -2509,6 +3841,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Match time: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合時刻: %@"
           }
         }
       }
@@ -2523,7 +3861,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "照合時刻: %1$@ 〜 %2$@"
           }
         }
@@ -2536,6 +3874,12 @@
             "state" : "translated",
             "value" : "Match result, %@"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合結果、%@"
+          }
         }
       }
     },
@@ -2545,6 +3889,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Status"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "状態"
           }
         }
       }
@@ -2556,6 +3906,12 @@
             "state" : "translated",
             "value" : "Item label"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現品票"
+          }
         }
       }
     },
@@ -2565,6 +3921,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aim at the horizontal barcode with vertical bars on the item label."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現品票にある縦線が並んだ横長コードへ向けます"
           }
         }
       }
@@ -2576,6 +3938,12 @@
             "state" : "translated",
             "value" : "Item label info (barcode parsing)"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現品票情報（バーコード解析）"
+          }
         }
       }
     },
@@ -2585,6 +3953,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "You can’t start the camera safely during screen mirroring or screen recording. End mirroring and start camera again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画面ミラーリングまたは画面収録中は、この端末でカメラを安全に開始できません。ミラーリングを終了してから、もう一度カメラを開始してください。"
           }
         }
       }
@@ -2596,6 +3970,12 @@
             "state" : "translated",
             "value" : "Number"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "番号"
+          }
         }
       }
     },
@@ -2606,6 +3986,12 @@
             "state" : "translated",
             "value" : "Control code"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理コード"
+          }
         }
       }
     },
@@ -2615,6 +4001,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Box"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "箱"
           }
         }
       }
@@ -2627,6 +4019,12 @@
             "state" : "translated",
             "value" : "Box count"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "箱目"
+          }
         }
       }
     },
@@ -2636,6 +4034,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Delivery quantity"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "納入数量"
           }
         }
       }
@@ -2650,7 +4054,7 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "納入数量: %1$@　指示数: %2$@"
           }
         }
@@ -2663,6 +4067,12 @@
             "state" : "translated",
             "value" : "Delivery note"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "納品書"
+          }
         }
       }
     },
@@ -2672,6 +4082,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aim at the square code on the delivery note/item label."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "納品書兼現品票にある四角いコードへ向けます"
           }
         }
       }
@@ -2683,6 +4099,12 @@
             "state" : "translated",
             "value" : "Delivery note information"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "納品書情報"
+          }
         }
       }
     },
@@ -2692,6 +4114,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Delivery note info (QR parsing)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "納品書情報（QR解析）"
           }
         }
       }
@@ -2703,6 +4131,12 @@
             "state" : "translated",
             "value" : "End"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了"
+          }
         }
       }
     },
@@ -2712,6 +4146,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Finish"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了する"
           }
         }
       }
@@ -2723,6 +4163,12 @@
             "state" : "translated",
             "value" : "Ending…"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了中…"
+          }
         }
       }
     },
@@ -2732,6 +4178,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Completed"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了済み"
           }
         }
       }
@@ -2744,6 +4196,12 @@
             "state" : "translated",
             "value" : "Completed / approx."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了済み・約"
+          }
         }
       }
     },
@@ -2753,6 +4211,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Completed · about %lld min"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了済み・約%lld分"
           }
         }
       }
@@ -2764,6 +4228,12 @@
             "state" : "translated",
             "value" : "Result"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "結果"
+          }
         }
       }
     },
@@ -2773,6 +4243,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Continue by scanning the item-label Code 128 barcode with BCST-47."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "続けてBCST-47で現品票のCode 128バーコードを読み取ってください。"
           }
         }
       }
@@ -2784,6 +4260,12 @@
             "state" : "translated",
             "value" : "Continue by showing the item-label Code 128 barcode."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "続けて現品票のCode 128バーコードを映してください。"
+          }
         }
       }
     },
@@ -2794,6 +4276,12 @@
             "state" : "translated",
             "value" : "Failed to start the back camera. Please test camera on a real device."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "背面カメラを開始できませんでした。実機でカメラを確認してください。"
+          }
         }
       }
     },
@@ -2803,6 +4291,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Automatically advancing to next match"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動で次の照合へ進みます"
           }
         }
       }
@@ -2826,6 +4320,12 @@
               }
             }
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動で次の照合へ進みます。あと%lld秒"
+          }
         }
       }
     },
@@ -2835,6 +4335,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auto-advance delay"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動で進むまでの時間"
           }
         }
       }
@@ -2846,6 +4352,12 @@
             "state" : "translated",
             "value" : "Select display language."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "表示言語を選択します。"
+          }
         }
       }
     },
@@ -2855,6 +4367,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "If not found, turn scanner power OFF/ON and search again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "見つからない場合は、スキャナの電源をOFF／ONしてからもう一度検索します。"
           }
         }
       }
@@ -2866,6 +4384,12 @@
             "state" : "translated",
             "value" : "Language"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "言語"
+          }
         }
       }
     },
@@ -2875,6 +4399,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No record (matched with previous version)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記録なし（旧バージョンで照合）"
           }
         }
       }
@@ -2886,6 +4416,12 @@
             "state" : "translated",
             "value" : "Start recording"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記録を開始する"
+          }
         }
       }
     },
@@ -2895,6 +4431,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Settings"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定"
           }
         }
       }
@@ -2906,6 +4448,12 @@
             "state" : "translated",
             "value" : "Please wait until setup is complete."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定が完了するまでお待ちください"
+          }
         }
       }
     },
@@ -2915,6 +4463,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cannot display setup code."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定コードを表示できません"
           }
         }
       }
@@ -2926,6 +4480,12 @@
             "state" : "translated",
             "value" : "Save settings and exit"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定を保存して終了"
+          }
         }
       }
     },
@@ -2935,6 +4495,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Start setup"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定を開始"
           }
         }
       }
@@ -2946,6 +4512,12 @@
             "state" : "translated",
             "value" : "Scanned values are not used for matching."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取った値は照合に使用していません。"
+          }
         }
       }
     },
@@ -2955,6 +4527,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scanned, next"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取りました・次へ"
           }
         }
       }
@@ -2966,6 +4544,12 @@
             "state" : "translated",
             "value" : "Setting read target"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取り対象を設定中"
+          }
         }
       }
     },
@@ -2975,6 +4559,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scan order is wrong. Please scan the delivery note/item-label QR code first."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取り順序が違います。先に納品書兼現品票のQRコードを読み取ってください。"
           }
         }
       }
@@ -2986,6 +4576,12 @@
             "state" : "translated",
             "value" : "Scan order is wrong. Waiting for item-label Code 128 barcode now."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取り順序が違います。現在は現品票のCode 128バーコード待ちです。"
+          }
         }
       }
     },
@@ -2995,6 +4591,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "When scanning, \"BLE_GATT\" appears on the scanner screen. Save is not complete, so moving to the next screen."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取るとスキャナ画面に「BLE_GATT」が表示されます。まだ保存は完了していないため、次の画面へ進みます。"
           }
         }
       }
@@ -3006,6 +4608,12 @@
             "state" : "translated",
             "value" : "Unable to read"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読取不可"
+          }
         }
       }
     },
@@ -3015,6 +4623,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Reading"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読取中"
           }
         }
       }
@@ -3026,6 +4640,12 @@
             "state" : "translated",
             "value" : "Read complete. Continue by scanning the Code 128 barcode with BCST-47."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読取完了。続けてBCST-47でCode 128バーコードを読み取ってください。"
+          }
         }
       }
     },
@@ -3035,6 +4655,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Read complete. Continue by showing the horizontal Code 128 barcode."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読取完了。続けて横長のCode 128バーコードを映してください。"
           }
         }
       }
@@ -3046,6 +4672,12 @@
             "state" : "translated",
             "value" : "Read target: Code 128 only (restoring from previous settings)"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読取対象：Code 128のみ（旧設定から復旧中）"
+          }
         }
       }
     },
@@ -3055,6 +4687,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Read target: QR and Code 128 (match session)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読取対象：QR・Code 128（照合セッション）"
           }
         }
       }
@@ -3066,6 +4704,12 @@
             "state" : "translated",
             "value" : "Read target: QR only (restoring from previous settings)"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読取対象：QRのみ（旧設定から復旧中）"
+          }
         }
       }
     },
@@ -3075,6 +4719,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Read target: restored to pre-connection settings"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読取対象：接続前の設定へ復元済み"
           }
         }
       }
@@ -3086,6 +4736,12 @@
             "state" : "translated",
             "value" : "Please confirm the scan tone or scanner screen display."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読取音またはスキャナ画面の表示を確認してください"
+          }
         }
       }
     },
@@ -3095,6 +4751,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "After the scan sound or success indicator, press \"Scanned, next\"."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読取音または成功表示を確認してから「読み取りました・次へ」を押してください。"
           }
         }
       }
@@ -3106,6 +4768,12 @@
             "state" : "translated",
             "value" : "Close"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "閉じる"
+          }
         }
       }
     },
@@ -3115,6 +4783,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Start"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開始"
           }
         }
       }
@@ -3126,6 +4800,12 @@
             "state" : "translated",
             "value" : "Video will appear here once started."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開始すると映像がここに表示されます"
+          }
         }
       }
     },
@@ -3136,6 +4816,12 @@
             "state" : "translated",
             "value" : "After starting, you can always check the number of matches."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開始後は照合済み件数を常に確認できます"
+          }
         }
       }
     },
@@ -3145,6 +4831,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Volume"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音量"
           }
         }
       }
