@@ -8,17 +8,21 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     static let storageKey = "CodeMatch.AppLanguage"
     static let uiTestLanguageResetArgument = "-resetLanguage"
 
-    static let fallback: AppLanguage = {
-        resetStoredLanguageForUITestingIfRequested()
-        return .japanese
-    }()
+    static let fallback: AppLanguage = .japanese
 
-    private static func resetStoredLanguageForUITestingIfRequested() {
+    static func prepareForLaunch() {
         guard ProcessInfo.processInfo.arguments.contains(uiTestLanguageResetArgument) else {
             return
         }
         UserDefaults.standard.removeObject(forKey: storageKey)
     }
+
+    private static let englishLocalizationBundle: Bundle? = {
+        guard let path = Bundle.main.path(forResource: AppLanguage.english.rawValue, ofType: "lproj") else {
+            return nil
+        }
+        return Bundle(path: path)
+    }()
 
     static var current: AppLanguage {
         AppLanguage(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? fallback.rawValue) ?? fallback
@@ -44,13 +48,14 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     }
 
     var localizationBundle: Bundle {
-        guard
-            let path = Bundle.main.path(forResource: rawValue, ofType: "lproj"),
-            let bundle = Bundle(path: path)
-        else {
+        switch self {
+        case .japanese:
+            // The string catalog's source language is Japanese, so its source
+            // values are resolved directly from the main bundle.
             return .main
+        case .english:
+            return Self.englishLocalizationBundle ?? .main
         }
-        return bundle
     }
 
     var displayName: String {

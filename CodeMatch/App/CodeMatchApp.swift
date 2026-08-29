@@ -4,6 +4,10 @@ import SwiftUI
 struct CodeMatchApp: App {
     @AppStorage(AppLanguage.storageKey) private var appLanguageRawValue = AppLanguage.fallback.rawValue
 
+    init() {
+        AppLanguage.prepareForLaunch()
+    }
+
     private var appLanguage: AppLanguage {
         AppLanguage(rawValue: appLanguageRawValue) ?? .fallback
     }

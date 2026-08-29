@@ -25,7 +25,10 @@ struct CameraPreview: UIViewRepresentable {
         uiView.onTap = onTap
         uiView.onRegionOfInterest = onRegionOfInterest
         uiView.expectedCode = expectedCode
-        uiView.accessibilityLabel = AppLocalization.string("カメラ映像。タップしてピントを合わせます")
+        let localizedAccessibilityLabel = AppLocalization.string("カメラ映像。タップしてピントを合わせます")
+        if uiView.accessibilityLabel != localizedAccessibilityLabel {
+            uiView.accessibilityLabel = localizedAccessibilityLabel
+        }
     }
 
     static func dismantleUIView(_ uiView: PreviewView, coordinator: ()) {
