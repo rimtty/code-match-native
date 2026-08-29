@@ -46,16 +46,43 @@ final class CodeMatchUITests: XCTestCase {
         app.launch()
 
         app.tabBars.buttons["設定"].tap()
-        let searchButton = app.buttons["searchBluetoothScannerButton"]
-        XCTAssertTrue(searchButton.waitForExistence(timeout: 5))
-        searchButton.tap()
+        let setupGuideButton = app.buttons["scannerSetupGuideButton"]
+        XCTAssertTrue(setupGuideButton.waitForExistence(timeout: 5))
+        setupGuideButton.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["scannerSetupGuide"].waitForExistence(timeout: 3))
+
+        app.buttons["scannerSetupNextButton"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["scannerSetupBarcode_enterSetup"].waitForExistence(timeout: 3))
+        let enlargeButton = app.buttons["scannerSetupEnlarge_enterSetup"]
+        XCTAssertTrue(enlargeButton.waitForExistence(timeout: 3))
+        enlargeButton.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["scannerSetupFullscreenBarcode_enterSetup"].waitForExistence(timeout: 3))
+        app.buttons["scannerSetupFullscreenCloseButton"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["scannerSetupBarcode_enterSetup"].waitForExistence(timeout: 3))
+        app.buttons["scannerSetupNextButton"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["scannerSetupBarcode_gattMode"].waitForExistence(timeout: 3))
+        app.buttons["scannerSetupNextButton"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["scannerSetupBarcode_saveAndExit"].waitForExistence(timeout: 3))
+        app.buttons["scannerSetupNextButton"].tap()
+        app.buttons["scannerSetupSearchButton"].tap()
+
         let device = app.buttons["bluetoothScannerDevice_SIMULATOR-BCST-47"]
         XCTAssertTrue(device.waitForExistence(timeout: 3))
         device.tap()
 
         XCTAssertTrue(app.staticTexts["bluetoothScannerStatus"].waitForExistence(timeout: 3))
         XCTAssertEqual(app.staticTexts["bluetoothScannerStatus"].label, "BCST-47 (Simulator) 接続済み")
-        XCTAssertTrue(app.buttons["disconnectBluetoothScannerButton"].exists)
+        let disconnectButton = app.buttons["disconnectBluetoothScannerButton"]
+        XCTAssertTrue(disconnectButton.exists)
+        disconnectButton.tap()
+
+        let reconnectButton = app.buttons["knownScannerReconnectButton"]
+        XCTAssertTrue(reconnectButton.waitForExistence(timeout: 3))
+        app.buttons["searchBluetoothScannerButton"].tap()
+        XCTAssertTrue(reconnectButton.waitForExistence(timeout: 3))
+        reconnectButton.tap()
+
+        XCTAssertEqual(app.staticTexts["bluetoothScannerStatus"].label, "BCST-47 (Simulator) 接続済み")
     }
 
     /// スキャナーの主要フローを1回のアプリ起動でまとめて検証する。
