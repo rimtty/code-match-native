@@ -28,11 +28,13 @@ Regenerate the printable sample codes in `TestResources/Generated`:
 swift tools/generate_test_codes.swift TestResources/Generated
 ```
 
-Simulators have no rear camera, so `CameraScanner` always fails there. Use the on-screen demo buttons (`demoMatchButton` / `demoMismatchButton`, compiled into simulator builds only via `#if targetEnvironment(simulator)`) to exercise match/mismatch UI, sound, and state transitions; real scanning must be verified on a device. UI tests rely on these buttons and therefore run on simulator only.
+Simulators have no rear camera, so `CameraScanner` always fails there. Use the on-screen demo buttons (`demoMatchButton` / `demoMismatchButton`, plus the Bluetooth variants and the mock `SIMULATOR-BCST-47` scanner, compiled into simulator builds only via `#if targetEnvironment(simulator)`) to exercise match/mismatch UI, sound, and state transitions; real scanning must be verified on a device. UI tests rely on these buttons and therefore run on simulator only.
+
+CI (`.github/workflows/ci.yml`) runs two macOS jobs: `device-build` (Inateck SDK bootstrap + generic iOS build) and `simulator-test` (one `build-for-testing`, then `test-without-building` for unit and UI tests with per-test execution-time allowances and one retry). Do not split UI tests back into a per-test job matrix — macOS minutes bill at 10x and the matrix burned them for no coverage gain. CI runners use an English locale; reproduce that locally with `-testLanguage en -testRegion US`, which is what exposed the Japanese-fallback bugs.
 
 ## Architecture
 
-Flow: `CodeMatchApp` → `RootTabView` (owns the single `HistoryStore`) → tabs. The scan tab shows `SessionStartView` until a session is active, then `ScannerScreen` keyed by `.id(session.id)`.
+Flow: `CodeMatchApp` → `RootTabView` (owns the single `HistoryStore`, `BluetoothScannerService`, and `CameraScanner` as `@StateObject`s) → tabs. The scan tab shows `SessionStartView` until a session is active, then `ScannerScreen` keyed by `.id(session.id)`.
 
 - **`ScannerViewModel`** (`@MainActor`, `ObservableObject`) is the state machine: `ScanStep` goes `.qr` → `.barcode` → `.result(MatchResult)`. It is the `CameraScannerDelegate`, so all scan handling funnels through `cameraScanner(_:didRead:type:)`, which drops reads that don't match the currently `expectedCode`.
 - **`CameraScanner`** owns `AVCaptureSession` on a private serial `sessionQueue`, with metadata delivered on a second queue and hopped back to `@MainActor` before touching the delegate. Only `AVCaptureMetadataOutput` with `[.qr, .code128]` — deliberately no `AVCapturePhotoOutput`; do not add one.
@@ -44,14 +46,16 @@ Two misread defenses that are intentional and easy to break accidentally:
 - `scanLocked` suppresses reads for 250ms after accepting a QR value.
 - Code 128 requires the *same* value seen twice within 0.7s (`barcodeCandidate`) before it is accepted; only then does the camera stop and comparison run.
 
-Audio/haptics: `FeedbackPlayer` synthesizes PCM tones via `AVAudioEngine` (ambient category, `.mixWithOthers`). Per the guide, individual code acceptance is haptic-only plus a short chirp; the success chime and the 4× failure alert fire only at the final verdict. Success is delayed ~0.28s after a barcode accept so the chirp and chime don't collide.
+Audio/haptics: `FeedbackPlayer` synthesizes PCM tones via `AVAudioEngine` (ambient category, `.mixWithOthers`). It is a single shared instance (`FeedbackPlayer.shared`) — engine setup is expensive and per-view instances caused a re-render loop, so keep it that way. Per the guide, individual code acceptance is haptic-only plus a short chirp; the success chime and the 4× failure alert fire only at the final verdict. Success is delayed ~0.28s after a barcode accept so the chirp and chime don't collide.
 
 Only matches are recorded (`historyStore.recordMatch` on `.match`); mismatches never touch history or the header count.
 
 ## Conventions
 
-- All user-facing strings are Japanese, hardcoded in the views — there is no localization catalog. UI tests match on those literal Japanese labels (e.g. `一致しました`, `終了する`), so changing copy breaks `CodeMatchUITests`.
-- UI tests drive the app through launch arguments handled in `HistoryStore.init` / `ScannerViewModel.init` / `RootTabView.init`: `-resetHistory` wipes the store, `-demoMatch` boots straight into an active session showing a match. Keep the three sites in sync when adding a hook.
+- User-facing strings live in `CodeMatch/Resources/Localizable.xcstrings` (source language **ja**, English translations) and are resolved through `AppLocalization.string(...)` / `AppLanguage` (`CodeMatch/App/AppLanguage.swift`); the in-app language setting is stored under `AppLanguage.storageKey` and Japanese is the fallback regardless of system locale. **Every key must keep an explicit `ja` entry with `state: translated`** — otherwise Xcode emits no `ja.lproj/Localizable.strings` and English-locale hosts (CI) silently resolve Japanese to English. When adding copy, add both `ja` and `en` entries.
+- The app defaults to Japanese, and UI tests match on the literal Japanese labels (e.g. `一致しました`, `終了する`), so changing copy breaks `CodeMatchUITests`.
+- Keep SwiftUI view `init`s cheap and side-effect-free: they rerun on every parent body evaluation. Anything heavy (stores, `AVCaptureSession`, audio engines) or side-effectful (UserDefaults resets) belongs inside a `@StateObject(wrappedValue:)` autoclosure (see `RootTabView.makeHistoryStore()`) or a shared instance. Violating this saturated the main thread and hung every UI test with "Timed out while evaluating UI query".
+- UI tests drive the app through launch arguments: `-resetHistory` (`HistoryStore.init`), `-resetLanguage` (`AppLanguage.prepareForLaunch`), `-resetAutoAdvance` (`AutoAdvanceSettings`, invoked from `RootTabView.makeHistoryStore`), `-resetBluetoothScanner` / `-demoBluetoothConnected` (`BluetoothScannerService`), and `-demoMatch` / `-demoMismatch` (`RootTabView.makeHistoryStore` + `ScannerViewModel.init`) which boot straight into an active session showing a result. Keep these sites in sync when adding a hook.
 - Views are addressed in tests by `.accessibilityIdentifier` (`startSessionButton`, `endSessionButton`, `sessionMatchCount`, `resetButton`, `scannerTitle`, `historySessionRow`, …); preserve identifiers when refactoring view hierarchies.
 - Colors come only from `AppTheme` (inherited from the web version's charcoal/green/lime); the app pins `.preferredColorScheme(.light)`.
 - The app declares no tracking in `Resources/PrivacyInfo.xcprivacy`. Any cloud sync, analytics, or SDK addition requires updating that manifest and the App Store Connect answers.
