@@ -19,28 +19,32 @@ enum BluetoothScannerSetupCode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .enterSetup: "設定を開始"
-        case .gattMode: "GATTモードへ切り替え"
-        case .saveAndExit: "設定を保存して終了"
+        case .enterSetup: AppLocalization.string("設定を開始")
+        case .gattMode: AppLocalization.string("GATTモードへ切り替え")
+        case .saveAndExit: AppLocalization.string("設定を保存して終了")
         }
     }
 
     var scannerDisplayText: String {
         switch self {
-        case .enterSetup: "Enter Setup"
-        case .gattMode: "BLE_GATT"
-        case .saveAndExit: "Exit / Save"
+        case .enterSetup: AppLocalization.string("Enter Setup")
+        case .gattMode: AppLocalization.string("BLE_GATT")
+        case .saveAndExit: AppLocalization.string("Exit / Save")
         }
     }
 
     var resultGuidance: String {
         switch self {
         case .enterSetup:
-            "このコードは設定受付を開始するためのものです。ここではまだGATTモードには切り替わりません。次の画面でGATTを指定します。"
+            AppLocalization.string(
+                "このコードは設定受付を開始するためのものです。ここではまだGATTモードには切り替わりません。次の画面でGATTを指定します。"
+            )
         case .gattMode:
-            "読み取るとスキャナ画面に「BLE_GATT」が表示されます。まだ保存は完了していないため、次の画面へ進みます。"
+            AppLocalization.string(
+                "読み取るとスキャナ画面に「BLE_GATT」が表示されます。まだ保存は完了していないため、次の画面へ進みます。"
+            )
         case .saveAndExit:
-            "最後にこのコードを読み取り、GATT設定を保存して設定モードを終了します。"
+            AppLocalization.string("最後にこのコードを読み取り、GATT設定を保存して設定モードを終了します。")
         }
     }
 }
@@ -50,6 +54,7 @@ struct SettingsScreen: View {
     @AppStorage(FeedbackSettings.volumeKey) private var volume = FeedbackSettings.defaultVolume
     @AppStorage(FeedbackSettings.successSoundKey) private var successSound = SuccessSound.posBeep.rawValue
     @AppStorage(FeedbackSettings.failureSoundKey) private var failureSound = FailureSound.buzzer.rawValue
+    @AppStorage(AppLanguage.storageKey) private var selectedLanguageRawValue = AppLanguage.japanese.rawValue
     @AppStorage(AutoAdvanceSettings.enabledKey) private var autoAdvanceEnabled = AutoAdvanceSettings.defaultEnabled
     @AppStorage(AutoAdvanceSettings.delaySecondsKey) private var autoAdvanceDelaySeconds = AutoAdvanceSettings.defaultDelay.rawValue
     @State private var player = FeedbackPlayer()
@@ -75,8 +80,8 @@ struct SettingsScreen: View {
                     autoAdvanceCard
                     volumeCard
                     soundCard(
-                        title: "成功音",
-                        subtitle: "品目番号が一致したときに鳴ります",
+                        title: AppLocalization.string("成功音"),
+                        subtitle: AppLocalization.string("品目番号が一致したときに鳴ります"),
                         icon: "checkmark.circle.fill",
                         tint: AppTheme.green
                     ) {
@@ -93,8 +98,8 @@ struct SettingsScreen: View {
                         }
                     }
                     soundCard(
-                        title: "失敗音",
-                        subtitle: "品目番号が一致しないときに鳴ります",
+                        title: AppLocalization.string("失敗音"),
+                        subtitle: AppLocalization.string("品目番号が一致しないときに鳴ります"),
                         icon: "exclamationmark.triangle.fill",
                         tint: AppTheme.red
                     ) {
@@ -119,6 +124,8 @@ struct SettingsScreen: View {
                     .foregroundStyle(AppTheme.muted)
                     .lineSpacing(3)
                     .padding(.horizontal, 6)
+
+                    languageSelectionCard
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 20)
@@ -179,7 +186,10 @@ struct SettingsScreen: View {
                         Button {
                             bluetoothScanner.reconnectKnownDevice()
                         } label: {
-                            Label("\(knownDevice.name) に再接続", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
+                            Label(
+                                AppLocalization.string("\(knownDevice.name) に再接続"),
+                                systemImage: "arrow.trianglehead.2.clockwise.rotate.90"
+                            )
                                 .font(.subheadline.weight(.bold))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
@@ -194,7 +204,9 @@ struct SettingsScreen: View {
                         bluetoothScanner.startDiscovery()
                     } label: {
                         Label(
-                            isSearching ? "検索中…" : "別のスキャナを検索",
+                            isSearching
+                                ? AppLocalization.string("検索中…")
+                                : AppLocalization.string("別のスキャナを検索"),
                             systemImage: "antenna.radiowaves.left.and.right"
                         )
                         .font(.subheadline.weight(.bold))
@@ -210,7 +222,9 @@ struct SettingsScreen: View {
                         bluetoothScanner.startDiscovery()
                     } label: {
                         Label(
-                            isSearching ? "検索中…" : "スキャナを検索",
+                            isSearching
+                                ? AppLocalization.string("検索中…")
+                                : AppLocalization.string("スキャナを検索"),
                             systemImage: "antenna.radiowaves.left.and.right"
                         )
                         .font(.subheadline.weight(.bold))
@@ -309,6 +323,37 @@ struct SettingsScreen: View {
         .scannerCard()
     }
 
+    private var languageSelectionCard: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(spacing: 8) {
+                Image(systemName: "globe")
+                    .foregroundStyle(AppTheme.green)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(AppLocalization.string("言語"))
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.ink)
+                    Text(AppLocalization.string("表示言語を選択します。"))
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.muted)
+                }
+            }
+
+            Picker(AppLocalization.string("アプリの言語"), selection: $selectedLanguageRawValue) {
+                ForEach(AppLanguage.allCases) { language in
+                    Text(language.displayName)
+                        .tag(language.rawValue)
+                        .accessibilityIdentifier("languageOption_\(language.rawValue)")
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("languageSelectionPicker")
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .scannerCard()
+        .accessibilityIdentifier("languageSelectionCard")
+    }
+
     @ViewBuilder
     private var configurationStatus: some View {
         switch bluetoothScanner.configurationState {
@@ -319,7 +364,10 @@ struct SettingsScreen: View {
             )
                 .foregroundStyle(AppTheme.green)
         case .configuring:
-            Label("バーコード種類の読み取り設定を確認中です…", systemImage: "gearshape.2.fill")
+            Label(
+                AppLocalization.string("バーコード種類の読み取り設定を確認中です…"),
+                systemImage: "gearshape.2.fill"
+            )
                 .foregroundStyle(AppTheme.muted)
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle.fill")
@@ -388,8 +436,12 @@ struct SettingsScreen: View {
 
             Label(
                 autoAdvanceEnabled
-                    ? "一致画面に残り秒数を表示します。手動の「次の照合」もいつでも使えます。"
-                    : "初期設定はOFFです。ONにしても不一致時は自動で進みません。",
+                    ? AppLocalization.string(
+                        "一致画面に残り秒数を表示します。手動の「次の照合」もいつでも使えます。"
+                    )
+                    : AppLocalization.string(
+                        "初期設定はOFFです。ONにしても不一致時は自動で進みません。"
+                    ),
                 systemImage: autoAdvanceEnabled ? "timer" : "pause.circle"
             )
             .font(.caption)
@@ -430,7 +482,7 @@ struct SettingsScreen: View {
                 }
                 .tint(AppTheme.green)
                 .accessibilityIdentifier("volumeSlider")
-                .accessibilityLabel("効果音の音量")
+                .accessibilityLabel(AppLocalization.string("効果音の音量"))
                 Image(systemName: "speaker.wave.3.fill")
                     .font(.caption)
                     .foregroundStyle(AppTheme.muted)
@@ -492,7 +544,7 @@ private struct BluetoothScannerSetupGuide: View {
 
                 ScrollView {
                     VStack(spacing: 20) {
-                        Text("STEP \(step + 1) / \(stepCount)")
+                        Text(AppLocalization.string("STEP \(step + 1) / \(stepCount)"))
                             .font(.caption2.weight(.black))
                             .tracking(1.8)
                             .foregroundStyle(AppTheme.green)
@@ -518,7 +570,11 @@ private struct BluetoothScannerSetupGuide: View {
                             step += 1
                         } label: {
                             HStack(spacing: 8) {
-                                Text(step == 0 ? "次へ" : "読み取りました・次へ")
+                                Text(
+                                    step == 0
+                                        ? AppLocalization.string("次へ")
+                                        : AppLocalization.string("読み取りました・次へ")
+                                )
                                 Image(systemName: "chevron.right")
                             }
                             .frame(maxWidth: .infinity, minHeight: 58)
@@ -571,9 +627,12 @@ private struct BluetoothScannerSetupGuide: View {
                     .font(.title2.weight(.bold))
                     .foregroundStyle(AppTheme.ink)
                 VStack(alignment: .leading, spacing: 12) {
-                    setupChecklistRow(number: 1, text: "BCST-47の電源を入れます")
-                    setupChecklistRow(number: 2, text: "Macなど別の端末との接続を解除します")
-                    setupChecklistRow(number: 3, text: "iPhoneの設定アプリではペアリングせず、このガイドを進めます")
+                    setupChecklistRow(number: 1, text: AppLocalization.string("BCST-47の電源を入れます"))
+                    setupChecklistRow(number: 2, text: AppLocalization.string("Macなど別の端末との接続を解除します"))
+                    setupChecklistRow(
+                        number: 3,
+                        text: AppLocalization.string("iPhoneの設定アプリではペアリングせず、このガイドを進めます")
+                    )
                 }
                 Text("次の3画面に表示されるコードを、上から順に1回ずつ読み取ってください。")
                     .font(.subheadline)
@@ -703,7 +762,7 @@ private struct Code128SetupBarcode: View {
                 .stroke(AppTheme.line, lineWidth: 1)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(code.title)のCode 128設定コード")
+        .accessibilityLabel(AppLocalization.string("\(code.title)のCode 128設定コード"))
         .accessibilityIdentifier("scannerSetupBarcode_\(code.accessibilityID)")
     }
 
@@ -771,7 +830,7 @@ private struct FullscreenScannerSetupBarcode: View {
                             .foregroundStyle(AppTheme.ink)
                             .padding(18)
                     }
-                    .accessibilityLabel("拡大表示を閉じる")
+                    .accessibilityLabel(AppLocalization.string("拡大表示を閉じる"))
                     .accessibilityIdentifier("scannerSetupFullscreenCloseButton")
                 }
                 .overlay(alignment: .bottom) {
@@ -820,8 +879,8 @@ private struct SoundOptionRow: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(label)\(isSelected ? "、選択中" : "")")
-        .accessibilityHint("タップで選択して試聴します")
+        .accessibilityLabel(isSelected ? AppLocalization.string("\(label)、選択中") : label)
+        .accessibilityHint(AppLocalization.string("タップで選択して試聴します"))
     }
 }
 

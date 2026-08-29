@@ -32,11 +32,11 @@ enum SuccessSound: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .sample1: "サウンド1"
-        case .sample2: "サウンド2"
-        case .posBeep: "ピッ（POSレジ風・標準）"
-        case .doubleBeep: "ピピッ（2回）"
-        case .chime: "チャイム（3音）"
+        case .sample1: AppLocalization.string("サウンド1")
+        case .sample2: AppLocalization.string("サウンド2")
+        case .posBeep: AppLocalization.string("ピッ（POSレジ風・標準）")
+        case .doubleBeep: AppLocalization.string("ピピッ（2回）")
+        case .chime: AppLocalization.string("チャイム（3音）")
         }
     }
 
@@ -60,10 +60,10 @@ enum FailureSound: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .failSample: "サウンド1"
-        case .buzzer: "ブブー（ブザー）"
-        case .alarm: "ピピピピ（アラーム・標準）"
-        case .descend: "ブーー（下降音）"
+        case .failSample: AppLocalization.string("サウンド1")
+        case .buzzer: AppLocalization.string("ブブー（ブザー）")
+        case .alarm: AppLocalization.string("ピピピピ（アラーム・標準）")
+        case .descend: AppLocalization.string("ブーー（下降音）")
         }
     }
 

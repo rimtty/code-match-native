@@ -105,7 +105,7 @@ final class HistoryStore: ObservableObject {
             try data.write(to: storageURL, options: [.atomic, .completeFileProtection])
             storageError = nil
         } catch {
-            storageError = "履歴を保存できませんでした。端末の空き容量を確認してください。"
+            storageError = AppLocalization.string("履歴を保存できませんでした。端末の空き容量を確認してください。")
         }
     }
 

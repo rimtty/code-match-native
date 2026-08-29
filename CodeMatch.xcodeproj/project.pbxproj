@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A10000000000000000000001 /* CodeMatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* CodeMatchApp.swift */; };
+		A10000000000000000000017 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001D /* AppLanguage.swift */; };
 		A10000000000000000000002 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AppTheme.swift */; };
 		A10000000000000000000003 /* ScanModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* ScanModels.swift */; };
 		A10000000000000000000004 /* FeedbackPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* FeedbackPlayer.swift */; };
@@ -29,6 +30,8 @@
 		A10000000000000000000014 /* Fail1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001A /* Fail1.mp3 */; };
 		A10000000000000000000015 /* SessionPDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* SessionPDFExporter.swift */; };
 		A10000000000000000000016 /* BluetoothScannerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001C /* BluetoothScannerService.swift */; };
+		A10000000000000000000018 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001E /* Localizable.xcstrings */; };
+		A10000000000000000000060 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000060 /* InfoPlist.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,6 +53,7 @@
 
 /* Begin PBXFileReference section */
 		A20000000000000000000001 /* CodeMatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeMatchApp.swift; sourceTree = "<group>"; };
+		A2000000000000000000001D /* AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* ScanModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanModels.swift; sourceTree = "<group>"; };
 		A20000000000000000000004 /* FeedbackPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackPlayer.swift; sourceTree = "<group>"; };
@@ -75,6 +79,19 @@
 		A2000000000000000000001A /* Fail1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Fail1.mp3; sourceTree = "<group>"; };
 		A2000000000000000000001B /* SessionPDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPDFExporter.swift; sourceTree = "<group>"; };
 		A2000000000000000000001C /* BluetoothScannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothScannerService.swift; sourceTree = "<group>"; };
+		A2000000000000000000001E /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		A20000000000000000000060 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A20000000000000000000061 /* en */,
+				A20000000000000000000062 /* ja */,
+			);
+			name = InfoPlist.strings;
+			path = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		A20000000000000000000061 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = "en.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		A20000000000000000000062 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = "ja.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -129,6 +146,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000001 /* CodeMatchApp.swift */,
+				A2000000000000000000001D /* AppLanguage.swift */,
 				A20000000000000000000013 /* RootTabView.swift */,
 			);
 			path = App;
@@ -179,6 +197,8 @@
 				A20000000000000000000009 /* Assets.xcassets */,
 				A2000000000000000000000B /* Info.plist */,
 				A2000000000000000000000A /* PrivacyInfo.xcprivacy */,
+				A2000000000000000000001E /* Localizable.xcstrings */,
+				A20000000000000000000060 /* InfoPlist.strings */,
 				A7000000000000000000000F /* Sounds */,
 			);
 			path = Resources;
@@ -353,6 +373,8 @@
 			files = (
 				A10000000000000000000009 /* Assets.xcassets in Resources */,
 				A1000000000000000000000A /* PrivacyInfo.xcprivacy in Resources */,
+				A10000000000000000000018 /* Localizable.xcstrings in Resources */,
+				A10000000000000000000060 /* InfoPlist.strings in Resources */,
 				A10000000000000000000012 /* success1.mp3 in Resources */,
 				A10000000000000000000013 /* success2.mp3 in Resources */,
 				A10000000000000000000014 /* Fail1.mp3 in Resources */,
@@ -381,6 +403,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000001 /* CodeMatchApp.swift in Sources */,
+				A10000000000000000000017 /* AppLanguage.swift in Sources */,
 				A10000000000000000000002 /* AppTheme.swift in Sources */,
 				A10000000000000000000003 /* ScanModels.swift in Sources */,
 				A10000000000000000000004 /* FeedbackPlayer.swift in Sources */,

@@ -13,9 +13,11 @@ protocol CameraScannerDelegate: AnyObject {
 final class CameraScanner: NSObject, ObservableObject, @unchecked Sendable {
     typealias Completion = @MainActor @Sendable () -> Void
 
-    private static let unsupportedScreenCaptureMessage =
-        "画面ミラーリングまたは画面収録中は、この端末でカメラを安全に開始できません。" +
-        "ミラーリングを終了してから、もう一度カメラを開始してください。"
+    private static var unsupportedScreenCaptureMessage: String {
+        AppLocalization.string(
+            "画面ミラーリングまたは画面収録中は、この端末でカメラを安全に開始できません。ミラーリングを終了してから、もう一度カメラを開始してください。"
+        )
+    }
 
     let session = AVCaptureSession()
     weak var delegate: CameraScannerDelegate?
@@ -113,15 +115,15 @@ final class CameraScanner: NSObject, ObservableObject, @unchecked Sendable {
                     self.configureAndStart()
                 } else {
                     self.cancelPendingStart()
-                    self.reportFailure("カメラが許可されていません。設定アプリでカメラを許可してください。")
+                    self.reportFailure(AppLocalization.string("カメラが許可されていません。設定アプリでカメラを許可してください。"))
                 }
             }
         case .denied, .restricted:
             cancelPendingStart()
-            reportFailure("カメラが許可されていません。設定アプリでカメラを許可してください。")
+            reportFailure(AppLocalization.string("カメラが許可されていません。設定アプリでカメラを許可してください。"))
         @unknown default:
             cancelPendingStart()
-            reportFailure("カメラの利用状態を確認できませんでした。")
+            reportFailure(AppLocalization.string("カメラの利用状態を確認できませんでした。"))
         }
     }
 
@@ -301,7 +303,7 @@ final class CameraScanner: NSObject, ObservableObject, @unchecked Sendable {
                 self.session.startRunning()
             } else if error?.code != AVError.mediaServicesWereReset.rawValue {
                 self.wantsRunning = false
-                self.reportFailure("カメラでエラーが発生しました。カメラを停止してから再度開始してください。")
+                self.reportFailure(AppLocalization.string("カメラでエラーが発生しました。カメラを停止してから再度開始してください。"))
             }
         }
     }
@@ -398,7 +400,7 @@ final class CameraScanner: NSObject, ObservableObject, @unchecked Sendable {
             let input = try? AVCaptureDeviceInput(device: device),
             session.canAddInput(input)
         else {
-            reportFailure("背面カメラを開始できませんでした。実機でカメラを確認してください。")
+            reportFailure(AppLocalization.string("背面カメラを開始できませんでした。実機でカメラを確認してください。"))
             return false
         }
         session.addInput(input)
@@ -408,7 +410,7 @@ final class CameraScanner: NSObject, ObservableObject, @unchecked Sendable {
         // intentionally has no AVCapturePhotoOutput and never takes a photo.
         let output = AVCaptureMetadataOutput()
         guard session.canAddOutput(output) else {
-            reportFailure("コード読み取り機能を開始できませんでした。")
+            reportFailure(AppLocalization.string("コード読み取り機能を開始できませんでした。"))
             return false
         }
         session.addOutput(output)
@@ -418,7 +420,7 @@ final class CameraScanner: NSObject, ObservableObject, @unchecked Sendable {
         let supported = output.availableMetadataObjectTypes
         output.metadataObjectTypes = [.qr, .code128].filter(supported.contains)
         guard !output.metadataObjectTypes.isEmpty else {
-            reportFailure("この端末ではQRコード・Code 128を読み取れません。")
+            reportFailure(AppLocalization.string("この端末ではQRコード・Code 128を読み取れません。"))
             return false
         }
         applyActiveType()

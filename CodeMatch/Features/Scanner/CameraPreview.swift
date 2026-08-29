@@ -14,6 +14,7 @@ struct CameraPreview: UIViewRepresentable {
         view.onTap = onTap
         view.onRegionOfInterest = onRegionOfInterest
         view.expectedCode = expectedCode
+        view.accessibilityLabel = AppLocalization.string("カメラ映像。タップしてピントを合わせます")
         return view
     }
 
@@ -24,6 +25,7 @@ struct CameraPreview: UIViewRepresentable {
         uiView.onTap = onTap
         uiView.onRegionOfInterest = onRegionOfInterest
         uiView.expectedCode = expectedCode
+        uiView.accessibilityLabel = AppLocalization.string("カメラ映像。タップしてピントを合わせます")
     }
 
     static func dismantleUIView(_ uiView: PreviewView, coordinator: ()) {
@@ -77,7 +79,7 @@ final class PreviewView: UIView {
         addGestureRecognizer(gesture)
         isAccessibilityElement = true
         accessibilityIdentifier = "cameraPreview"
-        accessibilityLabel = "カメラ映像。タップしてピントを合わせます"
+        accessibilityLabel = AppLocalization.string("カメラ映像。タップしてピントを合わせます")
 
         // セッション開始後でないと座標変換が確定しないため、開始通知でも再計算する。
         NotificationCenter.default.addObserver(
