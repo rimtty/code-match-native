@@ -462,19 +462,24 @@ private struct BluetoothScannerSetupGuide: View {
                     }
 
                     if step < stepCount - 1 {
-                        Button("読み取りました・次へ") {
+                        Button {
                             step += 1
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text(step == 0 ? "次へ" : "読み取りました・次へ")
+                                Image(systemName: "chevron.right")
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 58)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.green)
-                        .frame(maxWidth: .infinity)
                         .accessibilityIdentifier("scannerSetupNextButton")
                     } else {
                         Button {
                             onSearch()
                         } label: {
                             Label("スキャナの検索を開始", systemImage: "antenna.radiowaves.left.and.right")
-                                .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, minHeight: 58)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.green)

@@ -3,13 +3,14 @@ import SwiftUI
 
 struct CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
+    let isActive: Bool
     let expectedCode: ExpectedCode?
     let onTap: (_ devicePoint: CGPoint, _ viewPoint: CGPoint) -> Void
     let onRegionOfInterest: (CGRect) -> Void
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
-        view.setSession(session)
+        view.setActive(isActive, session: session)
         view.onTap = onTap
         view.onRegionOfInterest = onRegionOfInterest
         view.expectedCode = expectedCode
@@ -19,7 +20,7 @@ struct CameraPreview: UIViewRepresentable {
     func updateUIView(_ uiView: PreviewView, context: Context) {
         // Bluetoothとの切替や画面再構築後も、表示中のレイヤーを現在の
         // CameraScannerのセッションへ確実に接続する。
-        uiView.setSession(session)
+        uiView.setActive(isActive, session: session)
         uiView.onTap = onTap
         uiView.onRegionOfInterest = onRegionOfInterest
         uiView.expectedCode = expectedCode
@@ -28,15 +29,14 @@ struct CameraPreview: UIViewRepresentable {
     static func dismantleUIView(_ uiView: PreviewView, coordinator: ()) {
         // AVCaptureSessionはプレビュー層を保持することがあるため、画面遷移時に
         // 古い表示先を明示的に外す。再表示した新しいレイヤーが黒くなるのを防ぐ。
-        uiView.setSession(nil)
+        uiView.prepareForDismantle()
     }
 }
 
 final class PreviewView: UIView {
     var onTap: ((_ devicePoint: CGPoint, _ viewPoint: CGPoint) -> Void)?
     var onRegionOfInterest: ((CGRect) -> Void)?
-    private var previewRecoveryWorkItem: DispatchWorkItem?
-    private var didAttemptPreviewRecovery = false
+    var isActive = false
 
     var expectedCode: ExpectedCode? {
         didSet {
@@ -52,11 +52,22 @@ final class PreviewView: UIView {
 
     func setSession(_ session: AVCaptureSession?) {
         guard previewLayer.session !== session else { return }
-        previewRecoveryWorkItem?.cancel()
-        didAttemptPreviewRecovery = false
         previewLayer.session = session
         updateRegionOfInterest()
-        schedulePreviewRecoveryIfNeeded()
+    }
+
+    /// AVCaptureSession自体は再利用する一方、停止中のプレビュー接続は外す。
+    /// Bluetooth表示中や照合終了後にIOSurfaceを保持し続けないための境界。
+    func setActive(_ active: Bool, session: AVCaptureSession) {
+        isActive = active
+        setSession(active ? session : nil)
+    }
+
+    func prepareForDismantle() {
+        isActive = false
+        setSession(nil)
+        onTap = nil
+        onRegionOfInterest = nil
     }
 
     override init(frame: CGRect) {
@@ -81,54 +92,24 @@ final class PreviewView: UIView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         updateRegionOfInterest()
-        schedulePreviewRecoveryIfNeeded()
     }
 
     @objc private func sessionDidStartRunning(_ notification: Notification) {
         DispatchQueue.main.async { [weak self] in
             guard let self,
+                  self.isActive,
                   let startedSession = notification.object as? AVCaptureSession,
                   startedSession === self.previewLayer.session
             else { return }
-            self.didAttemptPreviewRecovery = false
             self.updateRegionOfInterest()
-            self.schedulePreviewRecoveryIfNeeded()
         }
-    }
-
-    /// セッション自体がrunningでも映像接続だけが停止する場合がある。
-    /// isPreviewingを確認し、必要なときだけ同じセッションを再接続する。
-    private func schedulePreviewRecoveryIfNeeded() {
-        guard window != nil,
-              bounds.width > 0,
-              bounds.height > 0,
-              let session = previewLayer.session,
-              session.isRunning,
-              !previewLayer.isPreviewing,
-              !didAttemptPreviewRecovery,
-              previewRecoveryWorkItem == nil
-        else { return }
-
-        let workItem = DispatchWorkItem { [weak self, weak session] in
-            guard let self, let session else { return }
-            self.previewRecoveryWorkItem = nil
-            guard self.window != nil,
-                  self.previewLayer.session === session,
-                  session.isRunning,
-                  !self.previewLayer.isPreviewing
-            else { return }
-
-            self.didAttemptPreviewRecovery = true
-            self.previewLayer.session = nil
-            self.previewLayer.session = session
-            self.updateRegionOfInterest()
-            print("[CameraPreview] Reconnected non-previewing capture session")
-        }
-        previewRecoveryWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: workItem)
     }
 
     /// 画面上のガイド枠に対応する領域をメタデータ座標系へ変換して通知する。

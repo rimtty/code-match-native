@@ -12,6 +12,7 @@ struct ScannerScreen: View {
     init(
         historyStore: HistoryStore,
         bluetoothScanner: BluetoothScannerService,
+        cameraScanner: CameraScanner,
         sessionID: UUID
     ) {
         self.historyStore = historyStore
@@ -20,7 +21,8 @@ struct ScannerScreen: View {
         _viewModel = StateObject(
             wrappedValue: ScannerViewModel(
                 historyStore: historyStore,
-                bluetoothScanner: bluetoothScanner
+                bluetoothScanner: bluetoothScanner,
+                camera: cameraScanner
             )
         )
     }
@@ -83,8 +85,12 @@ struct ScannerScreen: View {
         .alert("このセッションを終了しますか？", isPresented: $showsEndConfirmation) {
             Button("キャンセル", role: .cancel) {}
             Button("終了する", role: .destructive) {
-                viewModel.prepareForSessionEnd()
-                historyStore.endActiveSession()
+                // stopRunningは完全停止まで待つ同期APIのため、CameraScannerの
+                // 専用キューで停止が完了してから画面を閉じる。セッション自体は
+                // アプリ内で再利用し、短時間の破棄・再生成を繰り返さない。
+                viewModel.prepareForSessionEnd {
+                    historyStore.endActiveSession()
+                }
             }
         } message: {
             Text(matchedCount > 0
@@ -109,9 +115,10 @@ struct ScannerScreen: View {
 
             Spacer()
 
-            Button("終了") {
+            Button(viewModel.isEndingSession ? "終了中…" : "終了") {
                 showsEndConfirmation = true
             }
+            .disabled(viewModel.isEndingSession)
             .font(.subheadline.weight(.bold))
             .foregroundStyle(AppTheme.ink)
             .padding(.horizontal, 16)
@@ -166,9 +173,8 @@ struct ScannerScreen: View {
                     .accessibilityIdentifier("resultView")
                 case .qr, .barcode:
                     ZStack {
-                        // 入力元を切り替えてもAVCaptureVideoPreviewLayerを破棄しない。
-                        // セッションの表示先を維持し、Bluetoothからカメラへ戻した
-                        // 直後にプレビューだけが黒くなる状態を防ぐ。
+                        // View自体は維持するが、停止中はAVCaptureVideoPreviewLayerを
+                        // セッションから外してカメラ用IOSurfaceを保持し続けない。
                         cameraStage
                             .opacity(viewModel.inputSource == .camera ? 1 : 0)
                             .allowsHitTesting(viewModel.inputSource == .camera)
@@ -255,10 +261,14 @@ struct ScannerScreen: View {
     private var cameraStage: some View {
         GeometryReader { proxy in
             ZStack {
-                // プレビュー層は停止中やBluetooth入力中も保持する。カメラ再開時に
-                // 同じAVCaptureSessionの映像を即座に再表示できるようにする。
+                // AVCaptureSessionは再利用し、PreviewLayerとの接続だけを
+                // 稼働状態に合わせて付け外しする。
                 CameraPreview(
                     session: viewModel.camera.session,
+                    // stopRunningが完了するまではプレビュー層を接続したままにする。
+                    // isEndingSessionだけで先に外すと、実行中セッションからの
+                    // PreviewLayer切断がメインスレッドを長時間塞ぐことがある。
+                    isActive: viewModel.isCameraRunning,
                     expectedCode: viewModel.expectedCode,
                     onTap: { devicePoint, viewPoint in
                         viewModel.focus(at: devicePoint, displayAt: viewPoint)
@@ -351,12 +361,19 @@ struct ScannerScreen: View {
                         systemImage: viewModel.isCameraRunning || viewModel.isCameraStarting ? "stop.fill" : "viewfinder"
                     )
                     .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 62)
+                    .background(
+                        AppTheme.green,
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                    // plainスタイルでは透明な余白がヒット領域から外れることがあるため、
+                    // 見えている緑のボタン全体を明示的にタップ領域へ含める。
+                    .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.white)
-                .background(AppTheme.green, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .frame(maxWidth: .infinity)
                 .accessibilityIdentifier("cameraButton")
             }
 

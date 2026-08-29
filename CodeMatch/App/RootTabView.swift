@@ -3,9 +3,10 @@ import SwiftUI
 struct RootTabView: View {
     @StateObject private var historyStore: HistoryStore
     @StateObject private var bluetoothScanner: BluetoothScannerService
+    @StateObject private var cameraScanner: CameraScanner
     @Environment(\.scenePhase) private var scenePhase
 
-    init() {
+    init(cameraScanner: CameraScanner = CameraScanner()) {
         let store = HistoryStore()
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("-demoMatch") || arguments.contains("-demoMismatch") {
@@ -13,13 +14,15 @@ struct RootTabView: View {
         }
         _historyStore = StateObject(wrappedValue: store)
         _bluetoothScanner = StateObject(wrappedValue: BluetoothScannerService())
+        _cameraScanner = StateObject(wrappedValue: cameraScanner)
     }
 
     var body: some View {
         TabView {
             ScannerFlowView(
                 historyStore: historyStore,
-                bluetoothScanner: bluetoothScanner
+                bluetoothScanner: bluetoothScanner,
+                cameraScanner: cameraScanner
             )
                 .tabItem {
                     Label("照合", systemImage: "barcode.viewfinder")
@@ -49,6 +52,7 @@ struct RootTabView: View {
 private struct ScannerFlowView: View {
     @ObservedObject var historyStore: HistoryStore
     @ObservedObject var bluetoothScanner: BluetoothScannerService
+    @ObservedObject var cameraScanner: CameraScanner
 
     var body: some View {
         Group {
@@ -56,6 +60,7 @@ private struct ScannerFlowView: View {
                 ScannerScreen(
                     historyStore: historyStore,
                     bluetoothScanner: bluetoothScanner,
+                    cameraScanner: cameraScanner,
                     sessionID: session.id
                 )
                     .id(session.id)
