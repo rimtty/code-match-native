@@ -15,6 +15,9 @@ final class ScannerViewModel: ObservableObject {
     @Published private(set) var focusPoint: CGPoint?
     /// 一致した品番がこのセッションで何箱目の照合かを示す通し番号。結果表示中以外は0。
     @Published private(set) var sessionBoxNumber = 0
+    @Published private(set) var isAutoAdvanceEnabled: Bool
+    @Published private(set) var autoAdvanceDelay: AutoAdvanceDelay
+    @Published private(set) var autoAdvanceSecondsRemaining: Int?
 
     let camera: CameraScanner
     private let feedback = FeedbackPlayer()
@@ -22,6 +25,8 @@ final class ScannerViewModel: ObservableObject {
     private let bluetoothScanner: BluetoothScannerService
     private var scanLocked = false
     private var barcodeCandidate: (value: String, count: Int, date: Date)?
+    private var autoAdvanceTask: Task<Void, Never>?
+    private let autoAdvanceTickDuration: Duration
     /// 接続済みスキャナを初期入力にする一方、利用者がカメラを選んだ後は
     /// 同じ照合セッション内で自動的にBluetoothへ戻さないためのフラグ。
     private var cameraWasSelectedByUser = false
@@ -50,11 +55,17 @@ final class ScannerViewModel: ObservableObject {
     init(
         historyStore: HistoryStore,
         bluetoothScanner: BluetoothScannerService,
-        camera: CameraScanner = CameraScanner()
+        camera: CameraScanner = CameraScanner(),
+        isAutoAdvanceEnabled: Bool = AutoAdvanceSettings.isEnabled(),
+        autoAdvanceDelay: AutoAdvanceDelay = AutoAdvanceSettings.delay(),
+        autoAdvanceTickDuration: Duration = .seconds(1)
     ) {
         self.historyStore = historyStore
         self.bluetoothScanner = bluetoothScanner
         self.camera = camera
+        self.isAutoAdvanceEnabled = isAutoAdvanceEnabled
+        self.autoAdvanceDelay = autoAdvanceDelay
+        self.autoAdvanceTickDuration = autoAdvanceTickDuration
         camera.delegate = self
         bluetoothScanner.onCode = { [weak self] value in
             self?.handleBluetoothScan(value)
@@ -76,6 +87,7 @@ final class ScannerViewModel: ObservableObject {
     }
 
     deinit {
+        autoAdvanceTask?.cancel()
         // 予期しない画面破棄経路でも、非同期停止処理がCameraScanner自身を
         // 完了まで保持し、実行中のカメラデバイスを残さない。
         camera.stop()
@@ -114,7 +126,8 @@ final class ScannerViewModel: ObservableObject {
         }
     }
 
-    func reset() {
+    func reset(automaticallyStartScanning: Bool = false) {
+        cancelAutoAdvanceCountdown()
         camera.stop()
         step = .qr
         qrValue = ""
@@ -132,7 +145,54 @@ final class ScannerViewModel: ObservableObject {
             bluetoothScanner.setExpectedCode(nil)
             inputSource = .camera
             message = "まず、納品書兼現品票のQRコードをカメラに映してください。"
+            if automaticallyStartScanning {
+                startCamera()
+            }
         }
+    }
+
+    /// バーコード待機中に、誤って読み取ったQRだけを破棄してQR工程へ戻す。
+    /// セッションと照合済み件数は維持し、選択中の入力方法で直ちに読み取りを再開する。
+    func rereadQR() {
+        guard step == .barcode, !isEndingSession else { return }
+
+        cancelAutoAdvanceCountdown()
+        step = .qr
+        qrValue = ""
+        barcodeValue = ""
+        scanLocked = false
+        barcodeCandidate = nil
+        focusPoint = nil
+
+        if inputSource == .bluetooth, bluetoothScanner.isConnected {
+            bluetoothScanner.setExpectedCode(.qr)
+            message = "BCST-47で別の納品書兼現品票のQRコードを読み取ってください。"
+            return
+        }
+
+        bluetoothScanner.setExpectedCode(nil)
+        inputSource = .camera
+        camera.setActiveType(ExpectedCode.qr.metadataType)
+        message = "別の納品書兼現品票のQRコードを枠の中央に合わせてください。"
+        if !isCameraRunning, !isCameraStarting {
+            startCamera()
+        }
+    }
+
+    func setAutoAdvanceEnabled(_ isEnabled: Bool) {
+        guard isAutoAdvanceEnabled != isEnabled else { return }
+        isAutoAdvanceEnabled = isEnabled
+        if isEnabled {
+            startAutoAdvanceCountdownIfNeeded()
+        } else {
+            cancelAutoAdvanceCountdown()
+        }
+    }
+
+    func setAutoAdvanceDelay(_ delay: AutoAdvanceDelay) {
+        guard autoAdvanceDelay != delay else { return }
+        autoAdvanceDelay = delay
+        startAutoAdvanceCountdownIfNeeded()
     }
 
     func selectInputSource(_ source: ScanInputSource) {
@@ -195,6 +255,7 @@ final class ScannerViewModel: ObservableObject {
     }
 
     func prepareForSessionEnd(completion: CameraScanner.Completion? = nil) {
+        cancelAutoAdvanceCountdown()
         guard !isEndingSession else { return }
         isEndingSession = true
         scanLocked = true
@@ -215,6 +276,7 @@ final class ScannerViewModel: ObservableObject {
     }
 
     func prepareForBackground() {
+        cancelAutoAdvanceCountdown()
         stopCamera()
         if inputSource == .bluetooth {
             // バックグラウンド中は読取コールバックを扱わないため、強制終了に
@@ -224,6 +286,10 @@ final class ScannerViewModel: ObservableObject {
     }
 
     func resumeAfterForeground() {
+        if step == .result(.match) {
+            startAutoAdvanceCountdownIfNeeded()
+            return
+        }
         guard !isEndingSession,
               inputSource == .bluetooth,
               bluetoothScanner.isConnected,
@@ -391,7 +457,8 @@ final class ScannerViewModel: ObservableObject {
     }
 
     private func finishComparison(resultSoundDelay: TimeInterval = 0) {
-        bluetoothScanner.setExpectedCode(nil)
+        // 結果表示と次の照合の間もQR・Code 128のセッション固定モードを維持する。
+        // 工程ごとのGATT設定変更をなくし、連続トリガーと設定通信の競合を防ぐ。
         let result = CodeMatcher.compare(qrPayload: qrValue, barcodePayload: barcodeValue)
         step = .result(result)
 
@@ -409,11 +476,48 @@ final class ScannerViewModel: ObservableObject {
                 ? "品目番号が一致しています。この品番は本セッションで\(boxNumber)箱目です。"
                 : "品目番号が一致しています。"
             feedback.success(after: resultSoundDelay)
+            startAutoAdvanceCountdownIfNeeded()
         case .mismatch:
             sessionBoxNumber = 0
             message = "品目番号が一致しません。納品書と現品の取り違えを確認してください。"
             feedback.failure()
         }
+    }
+
+    private func startAutoAdvanceCountdownIfNeeded() {
+        cancelAutoAdvanceCountdown()
+        guard isAutoAdvanceEnabled,
+              !isEndingSession,
+              step == .result(.match) else { return }
+
+        autoAdvanceSecondsRemaining = autoAdvanceDelay.rawValue
+        autoAdvanceTask = Task { [weak self] in
+            while let self,
+                  let remaining = self.autoAdvanceSecondsRemaining,
+                  remaining > 0 {
+                do {
+                    try await Task.sleep(for: self.autoAdvanceTickDuration)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled,
+                      self.isAutoAdvanceEnabled,
+                      self.step == .result(.match) else { return }
+
+                let nextRemaining = remaining - 1
+                if nextRemaining == 0 {
+                    self.reset(automaticallyStartScanning: true)
+                    return
+                }
+                self.autoAdvanceSecondsRemaining = nextRemaining
+            }
+        }
+    }
+
+    private func cancelAutoAdvanceCountdown() {
+        autoAdvanceTask?.cancel()
+        autoAdvanceTask = nil
+        autoAdvanceSecondsRemaining = nil
     }
 
     /// 履歴へ残す値。読み取れた品番を優先し、抽出できない場合はQRの生値を使う。
