@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import UIKit
+import Combine
 
 @MainActor
 protocol CameraScannerDelegate: AnyObject {
@@ -9,19 +10,29 @@ protocol CameraScannerDelegate: AnyObject {
     func cameraScanner(_ scanner: CameraScanner, didFail message: String)
 }
 
-final class CameraScanner: NSObject, @unchecked Sendable {
+final class CameraScanner: NSObject, ObservableObject, @unchecked Sendable {
+    typealias Completion = @MainActor @Sendable () -> Void
+
+    private static let unsupportedScreenCaptureMessage =
+        "画面ミラーリングまたは画面収録中は、この端末でカメラを安全に開始できません。" +
+        "ミラーリングを終了してから、もう一度カメラを開始してください。"
+
     let session = AVCaptureSession()
     weak var delegate: CameraScannerDelegate?
 
-    private let sessionQueue = DispatchQueue(label: "jp.rimtty.CodeMatch.camera-session")
+    private let sessionQueue: DispatchQueue
     private let metadataQueue = DispatchQueue(label: "jp.rimtty.CodeMatch.metadata")
     private var configured = false
     private var metadataOutput: AVCaptureMetadataOutput?
     private var activeType: AVMetadataObject.ObjectType?
     private var captureDevice: AVCaptureDevice?
     private var wantsRunning = false
+    private var isShutDown = false
 
-    override init() {
+    init(
+        sessionQueue: DispatchQueue = DispatchQueue(label: "jp.rimtty.CodeMatch.camera-session")
+    ) {
+        self.sessionQueue = sessionQueue
         super.init()
         NotificationCenter.default.addObserver(
             self,
@@ -53,13 +64,44 @@ final class CameraScanner: NSObject, @unchecked Sendable {
             name: AVCaptureSession.didStopRunningNotification,
             object: session
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenCaptureStateDidChange(_:)),
+            name: UIScreen.capturedDidChangeNotification,
+            object: nil
+        )
     }
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @MainActor
     func requestAccessAndStart() {
+        let screenCaptureActive = Self.isScreenCaptureActive()
+        let supportsMultitaskingCamera = session.isMultitaskingCameraAccessSupported
+        print(
+            "[CameraScanner] Capture environment screenCaptured=\(screenCaptureActive) " +
+            "multitaskingSupported=\(supportsMultitaskingCamera)"
+        )
+
+        // DeviceHub、AirPlay、画面収録などで画面が複製されている間に、
+        // マルチタスクカメラ非対応端末で開始するとカメラサービス全体が
+        // 復帰不能になるOS不具合を確認している。標準カメラまで巻き込むため、
+        // この組み合わせではハードウェアへ触れる前に開始を拒否する。
+        if Self.shouldBlockCameraStart(
+            isScreenCaptured: screenCaptureActive,
+            supportsMultitaskingCamera: supportsMultitaskingCamera
+        ) {
+            reportFailure(Self.unsupportedScreenCaptureMessage)
+            return
+        }
+
         // 権限ダイアログ中に画面が閉じられた場合、後から届く許可結果で
         // セッションを勝手に再開しないよう、開始意思をキュー上で管理する。
-        sessionQueue.async { [weak self] in
-            self?.wantsRunning = true
+        sessionQueue.async { [self] in
+            guard !isShutDown else { return }
+            wantsRunning = true
         }
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
@@ -83,13 +125,48 @@ final class CameraScanner: NSObject, @unchecked Sendable {
         }
     }
 
-    func stop() {
-        sessionQueue.async { [weak self] in
-            guard let self else { return }
-            self.wantsRunning = false
-            if self.session.isRunning {
-                self.session.stopRunning()
+    func stop(completion: Completion? = nil) {
+        // `self`を強く保持する。画面破棄と同時に停止要求を出した場合でも、
+        // キュー上のstopRunningが完了する前にCameraScannerを解放しない。
+        sessionQueue.async { [self] in
+            wantsRunning = false
+            if session.isRunning {
+                let startedAt = ProcessInfo.processInfo.systemUptime
+                session.stopRunning()
+                let elapsed = ProcessInfo.processInfo.systemUptime - startedAt
+                print("[CameraScanner] Stopped session in \(String(format: "%.3f", elapsed))s")
             }
+            completeOnMain(completion, operation: "Stop")
+        }
+    }
+
+    /// 照合セッション終了時の最終解放。カメラ停止を待ってから入力・出力を外し、
+    /// mediaserverdが次のアプリへデバイスを確実に渡せる状態にする。
+    func shutdown(completion: Completion? = nil) {
+        sessionQueue.async { [self] in
+            wantsRunning = false
+
+            if !isShutDown {
+                isShutDown = true
+                let startedAt = ProcessInfo.processInfo.systemUptime
+                if session.isRunning {
+                    session.stopRunning()
+                }
+
+                metadataOutput?.setMetadataObjectsDelegate(nil, queue: nil)
+                session.beginConfiguration()
+                removeConfiguredInputsAndOutputs()
+                session.commitConfiguration()
+
+                metadataOutput = nil
+                captureDevice = nil
+                configured = false
+
+                let elapsed = ProcessInfo.processInfo.systemUptime - startedAt
+                print("[CameraScanner] Shutdown completed in \(String(format: "%.3f", elapsed))s")
+            }
+
+            completeOnMain(completion, operation: "Shutdown")
         }
     }
 
@@ -127,6 +204,20 @@ final class CameraScanner: NSObject, @unchecked Sendable {
         return safeRect
     }
 
+    static func shouldBlockCameraStart(
+        isScreenCaptured: Bool,
+        supportsMultitaskingCamera: Bool
+    ) -> Bool {
+        isScreenCaptured && !supportsMultitaskingCamera
+    }
+
+    @MainActor
+    private static func isScreenCaptureActive() -> Bool {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .contains { $0.traitCollection.sceneCaptureState == .active }
+    }
+
     func focus(at devicePoint: CGPoint) {
         sessionQueue.async { [weak self] in
             guard let self, let device = self.captureDevice else { return }
@@ -153,7 +244,7 @@ final class CameraScanner: NSObject, @unchecked Sendable {
 
     private func configureAndStart() {
         sessionQueue.async { [weak self] in
-            guard let self, self.wantsRunning else { return }
+            guard let self, self.wantsRunning, !self.isShutDown else { return }
             if !self.configured, !self.configureSession() {
                 self.wantsRunning = false
                 return
@@ -161,9 +252,20 @@ final class CameraScanner: NSObject, @unchecked Sendable {
             guard self.wantsRunning else { return }
             guard !self.session.isRunning else { return }
             self.session.startRunning()
+            let formatDescription: String
+            if let device = self.captureDevice {
+                let dimensions = CMVideoFormatDescriptionGetDimensions(
+                    device.activeFormat.formatDescription
+                )
+                formatDescription = "format=\(dimensions.width)x\(dimensions.height)"
+            } else {
+                formatDescription = "format=unknown"
+            }
             print(
                 "[CameraScanner] Started session running=\(self.session.isRunning) " +
-                "inputs=\(self.session.inputs.count) outputs=\(self.session.outputs.count)"
+                "interrupted=\(self.session.isInterrupted) " +
+                "inputs=\(self.session.inputs.count) outputs=\(self.session.outputs.count) " +
+                formatDescription
             )
         }
     }
@@ -174,12 +276,25 @@ final class CameraScanner: NSObject, @unchecked Sendable {
         }
     }
 
+    private func completeOnMain(_ completion: Completion?, operation: String) {
+        guard let completion else { return }
+        let queuedAt = ProcessInfo.processInfo.systemUptime
+        Task { @MainActor in
+            let delay = ProcessInfo.processInfo.systemUptime - queuedAt
+            print(
+                "[CameraScanner] \(operation) completion reached main actor in "
+                    + "\(String(format: "%.3f", delay))s"
+            )
+            completion()
+        }
+    }
+
     @objc private func sessionRuntimeError(_ notification: Notification) {
         let error = notification.userInfo?[AVCaptureSessionErrorKey] as? NSError
         print("[CameraScanner] Runtime error: \(error?.domain ?? "unknown") \(error?.code ?? 0) \(error?.localizedDescription ?? "")")
 
         sessionQueue.async { [weak self] in
-            guard let self, self.wantsRunning else { return }
+            guard let self, self.wantsRunning, !self.isShutDown else { return }
             // mediaServicesWereReset後は、直前まで使用中だったセッションを再開する。
             if error?.code == AVError.mediaServicesWereReset.rawValue,
                !self.session.isRunning {
@@ -193,13 +308,20 @@ final class CameraScanner: NSObject, @unchecked Sendable {
 
     @objc private func sessionWasInterrupted(_ notification: Notification) {
         let reason = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? NSNumber
-        print("[CameraScanner] Session interrupted reason=\(reason?.intValue ?? -1)")
+        let rawValue = reason?.intValue ?? -1
+        print(
+            "[CameraScanner] Session interrupted reason=\(rawValue) "
+                + "(\(Self.interruptionDescription(rawValue)))"
+        )
     }
 
     @objc private func sessionInterruptionEnded(_ notification: Notification) {
         print("[CameraScanner] Session interruption ended")
         sessionQueue.async { [weak self] in
-            guard let self, self.wantsRunning, !self.session.isRunning else { return }
+            guard let self,
+                  self.wantsRunning,
+                  !self.isShutDown,
+                  !self.session.isRunning else { return }
             self.session.startRunning()
         }
     }
@@ -218,10 +340,58 @@ final class CameraScanner: NSObject, @unchecked Sendable {
         }
     }
 
+    @objc private func screenCaptureStateDidChange(_ notification: Notification) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let screenCaptureActive = Self.isScreenCaptureActive()
+            let supportsMultitaskingCamera = self.session.isMultitaskingCameraAccessSupported
+            print(
+                "[CameraScanner] Capture environment changed screenCaptured=" +
+                "\(screenCaptureActive) multitaskingSupported=\(supportsMultitaskingCamera)"
+            )
+            guard Self.shouldBlockCameraStart(
+                isScreenCaptured: screenCaptureActive,
+                supportsMultitaskingCamera: supportsMultitaskingCamera
+            ) else { return }
+
+            // カメラ稼働後にAirPlayやDeviceHubのミラーリングが始まった場合も、
+            // OSのカメラサービスが復帰不能になる前に直ちに停止する。
+            self.stop { [weak self] in
+                self?.reportFailure(Self.unsupportedScreenCaptureMessage)
+            }
+        }
+    }
+
     private func configureSession() -> Bool {
         session.beginConfiguration()
-        session.sessionPreset = .high
-        defer { session.commitConfiguration() }
+        // QR / Code 128の認識には720pで十分。`.high`に任せると端末によって
+        // 高解像度のカメラパイプラインが選ばれ、cameracapturedの負荷と
+        // バッファ使用量が大きくなるため、上限を明示する。
+        session.sessionPreset = .hd1280x720
+        var configurationSucceeded = false
+        defer {
+            if !configurationSucceeded {
+                metadataOutput?.setMetadataObjectsDelegate(nil, queue: nil)
+                removeConfiguredInputsAndOutputs()
+                metadataOutput = nil
+                captureDevice = nil
+            }
+            session.commitConfiguration()
+        }
+
+        // iOS 18以降は専用entitlementなしで、対応端末なら画面ミラーリング等の
+        // 別フォアグラウンド処理と競合せずカメラを利用できる。これを開始前に
+        // 有効化し、reason 4の永続的な黒画面を回避する。
+        if #available(iOS 18.0, *), session.isMultitaskingCameraAccessSupported {
+            session.isMultitaskingCameraAccessEnabled = true
+        }
+        if #available(iOS 18.0, *) {
+            print(
+                "[CameraScanner] Multitasking camera supported="
+                    + "\(session.isMultitaskingCameraAccessSupported) "
+                    + "enabled=\(session.isMultitaskingCameraAccessEnabled)"
+            )
+        }
 
         guard
             let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
@@ -270,7 +440,24 @@ final class CameraScanner: NSObject, @unchecked Sendable {
         } catch { }
 
         configured = true
+        configurationSucceeded = true
         return true
+    }
+
+    private func removeConfiguredInputsAndOutputs() {
+        session.outputs.forEach(session.removeOutput)
+        session.inputs.forEach(session.removeInput)
+    }
+
+    private static func interruptionDescription(_ rawValue: Int) -> String {
+        switch rawValue {
+        case 1: "audioDeviceInUseByAnotherClient"
+        case 2: "videoDeviceInUseByAnotherClient"
+        case 3: "videoDeviceNotAvailableInBackground"
+        case 4: "videoDeviceNotAvailableWithMultipleForegroundApps"
+        case 5: "videoDeviceNotAvailableDueToSystemPressure"
+        default: "unknown"
+        }
     }
 
     private func applyActiveType() {

@@ -20,6 +20,53 @@ final class CameraPreviewTests: XCTestCase {
         XCTAssertNil(view.previewLayer.session)
     }
 
+    func testPreviewDismantleDetachesSessionAndDisablesRecovery() {
+        let view = PreviewView()
+        let session = AVCaptureSession()
+        view.isActive = true
+        view.setSession(session)
+
+        view.prepareForDismantle()
+
+        XCTAssertFalse(view.isActive)
+        XCTAssertNil(view.previewLayer.session)
+    }
+
+    func testInactivePreviewDetachesReusableCaptureSession() {
+        let view = PreviewView()
+        let session = AVCaptureSession()
+
+        view.setActive(true, session: session)
+        XCTAssertTrue(view.previewLayer.session === session)
+
+        view.setActive(false, session: session)
+        XCTAssertFalse(view.isActive)
+        XCTAssertNil(view.previewLayer.session)
+
+        view.setActive(true, session: session)
+        XCTAssertTrue(view.previewLayer.session === session)
+    }
+
+    func testShutdownRetainsScannerUntilQueuedTeardownCompletes() async {
+        let queue = DispatchQueue(label: "CameraPreviewTests.suspended-session")
+        queue.suspend()
+        var scanner: CameraScanner? = CameraScanner(sessionQueue: queue)
+        weak var weakScanner = scanner
+        let shutdownCompleted = expectation(description: "camera shutdown completed")
+
+        scanner?.shutdown {
+            shutdownCompleted.fulfill()
+        }
+        scanner = nil
+
+        // 旧実装のweak selfでは、この時点でscannerが解放され停止処理が消えていた。
+        XCTAssertNotNil(weakScanner)
+        queue.resume()
+
+        await fulfillment(of: [shutdownCompleted], timeout: 2)
+        XCTAssertNil(weakScanner)
+    }
+
     func testMetadataRegionIsClampedToNormalizedCoordinates() {
         XCTAssertEqual(
             CameraScanner.normalizedMetadataRect(
@@ -34,6 +81,28 @@ final class CameraPreviewTests: XCTestCase {
             )
         )
     }
+
+    func testCameraStartIsBlockedOnlyForUnsupportedScreenCapture() {
+        XCTAssertTrue(
+            CameraScanner.shouldBlockCameraStart(
+                isScreenCaptured: true,
+                supportsMultitaskingCamera: false
+            )
+        )
+        XCTAssertFalse(
+            CameraScanner.shouldBlockCameraStart(
+                isScreenCaptured: false,
+                supportsMultitaskingCamera: false
+            )
+        )
+        XCTAssertFalse(
+            CameraScanner.shouldBlockCameraStart(
+                isScreenCaptured: true,
+                supportsMultitaskingCamera: true
+            )
+        )
+    }
+
 }
 
 final class CodeMatcherTests: XCTestCase {
@@ -606,7 +675,7 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertEqual(context.service.persistedSymbologyMode, .code128Only)
     }
 
-    func testEndingBluetoothSessionRestoresUnrestrictedBaseline() {
+    func testEndingBluetoothSessionRestoresUnrestrictedBaseline() async {
         let context = makeContext()
         defer { context.cleanup() }
         context.service.startDiscovery()
@@ -616,10 +685,75 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertEqual(context.service.expectedCode, .qr)
         XCTAssertEqual(context.service.persistedSymbologyMode, .qrOnly)
 
-        context.viewModel.prepareForSessionEnd()
+        let completed = expectation(description: "Bluetooth session ended")
+        context.viewModel.prepareForSessionEnd {
+            completed.fulfill()
+        }
+        await fulfillment(of: [completed], timeout: 2)
 
         XCTAssertNil(context.service.expectedCode)
         XCTAssertEqual(context.service.persistedSymbologyMode, .unrestricted)
+    }
+
+    func testEndingSessionWaitsForCameraStopBeforeCompleting() async {
+        let queue = DispatchQueue(label: "BluetoothScannerFlowTests.suspended-camera")
+        queue.suspend()
+        let camera = CameraScanner(sessionQueue: queue)
+        let context = makeContext(camera: camera)
+        defer { context.cleanup() }
+        let shutdownCompleted = expectation(description: "session end waits for camera")
+        var didComplete = false
+
+        // 実セッションの開始通知と同じ状態を作る。停止キューを止めている間は
+        // PreviewLayerを外さないため、UI上もrunningのまま維持される必要がある。
+        context.viewModel.cameraScannerDidStart(camera)
+        XCTAssertTrue(context.viewModel.isCameraRunning)
+
+        context.viewModel.prepareForSessionEnd {
+            didComplete = true
+            shutdownCompleted.fulfill()
+        }
+
+        XCTAssertTrue(context.viewModel.isEndingSession)
+        XCTAssertTrue(context.viewModel.isCameraRunning)
+        XCTAssertFalse(didComplete)
+        queue.resume()
+
+        await fulfillment(of: [shutdownCompleted], timeout: 2)
+        XCTAssertTrue(didComplete)
+        XCTAssertFalse(context.viewModel.isEndingSession)
+        XCTAssertFalse(context.viewModel.isCameraRunning)
+    }
+
+    func testViewModelDeinitWaitsForCameraStop() async {
+        let queue = DispatchQueue(label: "BluetoothScannerFlowTests.deinit-camera")
+        queue.suspend()
+        var camera: CameraScanner? = CameraScanner(sessionQueue: queue)
+        weak var weakCamera = camera
+        var context: (
+            service: BluetoothScannerService,
+            viewModel: ScannerViewModel,
+            store: HistoryStore,
+            cleanup: () -> Void
+        )? = makeContext(camera: camera!)
+        let stopDrained = expectation(description: "deinit camera stop drained")
+
+        context?.cleanup()
+        context = nil
+        camera = nil
+
+        // ScannerViewModel.deinitがstopをキューへ積み、処理完了まで
+        // CameraScanner自身を保持していることを確認する。
+        XCTAssertNotNil(weakCamera)
+        queue.async {
+            Task { @MainActor in
+                stopDrained.fulfill()
+            }
+        }
+        queue.resume()
+
+        await fulfillment(of: [stopDrained], timeout: 2)
+        XCTAssertNil(weakCamera)
     }
 
     func testBluetoothDisconnectKeepsCurrentStepAndFallsBackToCamera() async {
@@ -648,7 +782,7 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertEqual(context.viewModel.qrValue, ScannerViewModel.sampleQRPayload)
     }
 
-    private func makeContext() -> (
+    private func makeContext(camera: CameraScanner = CameraScanner()) -> (
         service: BluetoothScannerService,
         viewModel: ScannerViewModel,
         store: HistoryStore,
@@ -662,7 +796,11 @@ final class BluetoothScannerFlowTests: XCTestCase {
         let service = BluetoothScannerService(defaults: defaults)
         let store = HistoryStore(storageURL: storageURL)
         store.beginSession()
-        let viewModel = ScannerViewModel(historyStore: store, bluetoothScanner: service)
+        let viewModel = ScannerViewModel(
+            historyStore: store,
+            bluetoothScanner: service,
+            camera: camera
+        )
         return (service, viewModel, store, {
             try? FileManager.default.removeItem(at: directory)
             defaults.removePersistentDomain(forName: defaultsName)

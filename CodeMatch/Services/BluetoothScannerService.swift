@@ -1081,10 +1081,16 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             return
         }
 
+        let requestedAt = ProcessInfo.processInfo.systemUptime
         sdkDevice.messageManager.setSettingInfo(with: command) { [weak self] result in
+            let callbackDelay = ProcessInfo.processInfo.systemUptime - requestedAt
             Task { @MainActor in
                 guard let self, revision == self.symbologyConfigurationRevision,
                       self.connectedSDKDevice?.uuid == sdkDevice.uuid else { return }
+                print(
+                    "[BluetoothScanner] Symbology SDK callback after "
+                        + "\(String(format: "%.3f", callbackDelay))s"
+                )
                 switch result {
                 case .success:
                     self.recordAppliedSymbologyMode(mode)
@@ -1098,6 +1104,11 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                 }
             }
         }
+        let dispatchDuration = ProcessInfo.processInfo.systemUptime - requestedAt
+        print(
+            "[BluetoothScanner] Symbology SDK request returned in "
+                + "\(String(format: "%.3f", dispatchDuration))s"
+        )
     }
 
 #else
