@@ -45,13 +45,29 @@ jobs:
             -only-testing:CodeMatchTests \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: UI tests
+  ui-test:
+    runs-on: macos-15
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        test:
+          - testMockBluetoothScannerConnectsAndCompletesMatch
+          - testScannerFlowMatchDuplicateResetAndMismatch
+          - testSessionAutoAdvanceShowsCountdownAndStartsNextMatch
+          - testSessionCanStartAndShowsMatchCount
+          - testSettingsDiscoversAndConnectsMockScanner
+          - testSettingsLanguageSwitchPersistsAcrossRelaunch
+          - testSettingsTabAllowsSoundSelection
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: UI test (${{ matrix.test }})
         run: |
           DEVICE_ID=$(xcrun simctl list devices available --json | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(dev['udid'] for k,v in d.items() if 'iOS' in k for dev in v if dev['isAvailable'] and 'iPhone' in dev['name']))")
           echo "Using simulator $DEVICE_ID"
-          # Unit tests exercise camera and accessibility services. Reboot and
-          # erase the ephemeral CI simulator so UI tests start with clean OS
-          # services and app data instead of inheriting a degraded session.
+          # Each UI test gets a clean simulator so a stalled XCTest session
+          # cannot poison the remaining coverage.
           xcrun simctl shutdown "$DEVICE_ID" || true
           xcrun simctl erase "$DEVICE_ID"
           xcrun simctl boot "$DEVICE_ID"
@@ -60,5 +76,5 @@ jobs:
             -project CodeMatch.xcodeproj \
             -scheme CodeMatch \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
-            -only-testing:CodeMatchUITests \
+            -only-testing:CodeMatchUITests/CodeMatchUITests/${{ matrix.test }} \
             CODE_SIGNING_ALLOWED=NO
