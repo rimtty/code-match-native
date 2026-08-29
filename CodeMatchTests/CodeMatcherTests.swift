@@ -235,7 +235,7 @@ final class BluetoothScannerServiceTests: XCTestCase {
     func testSymbologyModeStatusTextExplainsActiveRestriction() {
         XCTAssertEqual(
             BluetoothScannerSymbologyMode.unrestricted.statusText,
-            "読取対象：QR／Code 128（安全状態）"
+            "読取対象：接続前の設定へ復元済み"
         )
         XCTAssertEqual(
             BluetoothScannerSymbologyMode.qrOnly.statusText,
@@ -267,16 +267,54 @@ final class BluetoothScannerServiceTests: XCTestCase {
         withExtendedLifetime(observation) {}
     }
 
-    func testSymbologyCommandUsesAreasReportedByScanner() throws {
+    func testSymbologyCommandUsesEveryBarcodeTypeReportedByScanner() throws {
         let settings = """
         {"data":[
+          {"area":"11","value":"1","name":"code39_on"},
           {"area":"42","value":"1","name":"qrcode_on"},
-          {"area":17,"value":1,"name":"code128_on"}
+          {"area":17,"value":1,"name":"code128_on"},
+          {"area":"12","value":"0","name":"ean_13_on"},
+          {"area":"15","value":"1","name":"USPS_On","flag":3019},
+          {"area":"34","value":"1","name":"rss_expanded_on","flag":3038},
+          {"area":"31","value":"1","name":"shake_reminder"}
         ]}
         """
+        let original = try XCTUnwrap(
+            BluetoothScannerService.symbologySettingValues(from: settings)
+        )
+        XCTAssertEqual(
+            original,
+            [
+                "code39_on": 1,
+                "qrcode_on": 1,
+                "code128_on": 1,
+                "ean_13_on": 0,
+                "USPS_On": 1,
+                "rss_expanded_on": 1
+            ]
+        )
+
+        let restricted = try XCTUnwrap(
+            BluetoothScannerService.symbologySettingValues(
+                for: .code128Only,
+                original: original
+            )
+        )
+        XCTAssertEqual(
+            restricted,
+            [
+                "code39_on": 0,
+                "qrcode_on": 0,
+                "code128_on": 1,
+                "ean_13_on": 0,
+                "USPS_On": 0,
+                "rss_expanded_on": 0
+            ]
+        )
+
         let command = try XCTUnwrap(
             BluetoothScannerService.symbologySettingCommand(
-                values: ["qrcode_on": 1, "code128_on": 0],
+                values: restricted,
                 settings: settings
             )
         )
@@ -286,14 +324,62 @@ final class BluetoothScannerServiceTests: XCTestCase {
         )
 
         XCTAssertEqual(items.first(where: { $0["name"] == "qrcode_on" })?["area"], "42")
-        XCTAssertEqual(items.first(where: { $0["name"] == "qrcode_on" })?["value"], "1")
+        XCTAssertEqual(items.first(where: { $0["name"] == "qrcode_on" })?["value"], "0")
         XCTAssertEqual(items.first(where: { $0["name"] == "code128_on" })?["area"], "17")
-        XCTAssertEqual(items.first(where: { $0["name"] == "code128_on" })?["value"], "0")
+        XCTAssertEqual(items.first(where: { $0["name"] == "code128_on" })?["value"], "1")
+        XCTAssertEqual(items.first(where: { $0["name"] == "code39_on" })?["value"], "0")
+        XCTAssertEqual(items.first(where: { $0["name"] == "ean_13_on" })?["value"], "0")
+        XCTAssertEqual(items.first(where: { $0["name"] == "USPS_On" })?["value"], "0")
+        XCTAssertEqual(items.first(where: { $0["name"] == "rss_expanded_on" })?["value"], "0")
+        XCTAssertNil(items.first(where: { $0["name"] == "shake_reminder" }))
         XCTAssertTrue(BluetoothScannerService.hasRequiredSymbologySettings(settings))
         XCTAssertFalse(
             BluetoothScannerService.hasRequiredSymbologySettings(
                 "{\"data\":[{\"area\":\"42\",\"value\":\"1\",\"name\":\"qrcode_on\"}]}"
             )
+        )
+    }
+
+    func testOriginalBarcodeSettingsRoundTripWithoutChangingValues() throws {
+        let settings = """
+        {"data":[
+          {"area":"11","value":"0","name":"code39_on"},
+          {"area":"11","value":"1","name":"code128_on"},
+          {"area":"12","value":"1","name":"ean_13_on"},
+          {"area":"28","value":"0","name":"qrcode_on"},
+          {"area":"27","value":"1","name":"datamatrix_on"}
+        ]}
+        """
+        let original = try XCTUnwrap(
+            BluetoothScannerService.symbologySettingValues(from: settings)
+        )
+        let restricted = try XCTUnwrap(
+            BluetoothScannerService.symbologySettingValues(
+                for: .code128Only,
+                original: original
+            )
+        )
+        XCTAssertEqual(restricted.values.filter { $0 == 1 }.count, 1)
+        XCTAssertEqual(restricted["code128_on"], 1)
+
+        let restoreCommand = try XCTUnwrap(
+            BluetoothScannerService.symbologySettingCommand(
+                values: original,
+                settings: settings
+            )
+        )
+        let data = try XCTUnwrap(restoreCommand.data(using: .utf8))
+        let items = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [[String: String]]
+        )
+        XCTAssertEqual(
+            Dictionary(uniqueKeysWithValues: items.compactMap { item in
+                guard let name = item["name"], let value = item["value"].flatMap(Int.init) else {
+                    return nil
+                }
+                return (name, value)
+            }),
+            original
         )
     }
 
@@ -403,16 +489,27 @@ final class BluetoothScannerServiceTests: XCTestCase {
         firstLaunch.setExpectedCode(.barcode)
 
         XCTAssertEqual(firstLaunch.persistedSymbologyMode, .code128Only)
+        XCTAssertEqual(
+            firstLaunch.persistedSymbologySnapshot?.values,
+            [
+                "code39_on": 1,
+                "code128_on": 1,
+                "ean_13_on": 1,
+                "qrcode_on": 1,
+                "datamatrix_on": 1
+            ]
+        )
 
         // Code 128待ちでプロセスが終了した状況を、同じUserDefaultsを使う
         // 新しいサービスインスタンスで再現する。照合画面がなくても再接続時に
-        // QRとCode 128を両方有効にする安全状態へ戻す。
+        // 保存した照合開始前の全バーコード設定へ戻す。
         let relaunched = BluetoothScannerService(defaults: defaults)
         relaunched.reconnectPreferredDevice()
 
         XCTAssertTrue(relaunched.isReadyForScanning)
         XCTAssertNil(relaunched.expectedCode)
         XCTAssertEqual(relaunched.persistedSymbologyMode, .unrestricted)
+        XCTAssertNil(relaunched.persistedSymbologySnapshot)
     }
 
     func testManualDisconnectRestoresSafeBaseline() {
@@ -431,6 +528,7 @@ final class BluetoothScannerServiceTests: XCTestCase {
         XCTAssertFalse(service.isReadyForScanning)
         XCTAssertNil(service.expectedCode)
         XCTAssertEqual(service.persistedSymbologyMode, .unrestricted)
+        XCTAssertNil(service.persistedSymbologySnapshot)
     }
 
     func testManualDisconnectKeepsKnownDeviceAvailableForReconnectAfterSearch() {

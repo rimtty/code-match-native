@@ -218,7 +218,7 @@ final class ScannerViewModel: ObservableObject {
         stopCamera()
         if inputSource == .bluetooth {
             // バックグラウンド中は読取コールバックを扱わないため、強制終了に
-            // 備えてスキャナーをQR／Code 128の両方が使える安全状態へ戻す。
+            // 備えてスキャナーを照合開始前の全バーコード設定へ戻す。
             bluetoothScanner.setExpectedCode(nil)
         }
     }

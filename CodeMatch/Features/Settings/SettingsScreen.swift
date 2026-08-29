@@ -316,7 +316,7 @@ struct SettingsScreen: View {
             )
                 .foregroundStyle(AppTheme.green)
         case .configuring:
-            Label("QR／Code 128の読み取り設定を確認中です…", systemImage: "gearshape.2.fill")
+            Label("バーコード種類の読み取り設定を確認中です…", systemImage: "gearshape.2.fill")
                 .foregroundStyle(AppTheme.muted)
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle.fill")
