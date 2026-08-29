@@ -126,11 +126,16 @@ private struct SessionStartView: View {
                             Label("記録を開始する", systemImage: "play.fill")
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
+                                .frame(minHeight: 68)
+                                .contentShape(Rectangle())
+                                .foregroundStyle(.white)
+                                .background(
+                                    AppTheme.green,
+                                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                )
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(.white)
-                        .background(AppTheme.green, in: RoundedRectangle(cornerRadius: 14))
+                        .contentShape(Rectangle())
                         .accessibilityIdentifier("startSessionButton")
                     }
                     .frame(maxWidth: .infinity)

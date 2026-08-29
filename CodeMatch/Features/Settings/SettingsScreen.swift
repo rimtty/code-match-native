@@ -103,6 +103,8 @@ struct SettingsScreen: View {
             }
 
             if bluetoothScanner.isConnected {
+                configurationStatus
+
                 Button(role: .destructive) {
                     bluetoothScanner.disconnect()
                 } label: {
@@ -176,10 +178,52 @@ struct SettingsScreen: View {
             .font(.caption2)
             .lineSpacing(3)
             .accessibilityIdentifier("bluetoothScannerConnectionHelp")
+
+            if !bluetoothScanner.diagnosticEvents.isEmpty {
+                DisclosureGroup("接続診断（直近20件）") {
+                    VStack(alignment: .leading, spacing: 7) {
+                        ForEach(bluetoothScanner.diagnosticEvents.reversed()) { event in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text(event.date, style: .time)
+                                    .foregroundStyle(AppTheme.muted)
+                                Text(event.message)
+                                    .foregroundStyle(AppTheme.ink)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
+                    .font(.caption2.monospaced())
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("bluetoothDiagnosticEvents")
+                }
+                .font(.caption.weight(.bold))
+                .tint(AppTheme.green)
+                .accessibilityIdentifier("bluetoothDiagnosticsDisclosure")
+            }
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .scannerCard()
+    }
+
+    @ViewBuilder
+    private var configurationStatus: some View {
+        switch bluetoothScanner.configurationState {
+        case .ready:
+            Label(
+                bluetoothScanner.persistedSymbologyMode.statusText,
+                systemImage: "checkmark.circle.fill"
+            )
+                .foregroundStyle(AppTheme.green)
+        case .configuring:
+            Label("QR／Code 128の読み取り設定を確認中です…", systemImage: "gearshape.2.fill")
+                .foregroundStyle(AppTheme.muted)
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(AppTheme.red)
+        case .unavailable:
+            EmptyView()
+        }
     }
 
     private var isSearching: Bool {

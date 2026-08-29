@@ -50,17 +50,73 @@ enum BluetoothScannerConnectionState: Equatable {
     }
 }
 
+enum BluetoothScannerConfigurationState: Equatable {
+    case unavailable
+    case configuring
+    case ready
+    case failed(String)
+}
+
+enum BluetoothScannerSymbologyMode: String, Equatable {
+    case unrestricted
+    case qrOnly
+    case code128Only
+
+    init(expectedCode: ExpectedCode?) {
+        switch expectedCode {
+        case .qr: self = .qrOnly
+        case .barcode: self = .code128Only
+        case nil: self = .unrestricted
+        }
+    }
+
+    var settingValues: [String: Int] {
+        switch self {
+        case .unrestricted:
+            ["qrcode_on": 1, "code128_on": 1]
+        case .qrOnly:
+            ["qrcode_on": 1, "code128_on": 0]
+        case .code128Only:
+            ["qrcode_on": 0, "code128_on": 1]
+        }
+    }
+
+    var statusText: String {
+        switch self {
+        case .unrestricted:
+            "読取対象：QR／Code 128（安全状態）"
+        case .qrOnly:
+            "読取対象：QRのみ（照合ステップ1）"
+        case .code128Only:
+            "読取対象：Code 128のみ（照合ステップ2）"
+        }
+    }
+}
+
+struct BluetoothScannerDiagnosticEvent: Identifiable, Equatable, Codable {
+    let id = UUID()
+    let date: Date
+    let message: String
+}
+
 /// Inateck SDKへの依存をアプリの残りから隔離する接続サービス。
 /// Simulatorでは同じAPIのモックとして動作し、実機ビルドだけが公式SDKを使用する。
 @MainActor
 final class BluetoothScannerService: NSObject, ObservableObject {
     static let preferredDeviceIDKey = "bluetoothScanner.preferredDeviceID"
+    static let symbologyRecoveryModeKey = "bluetoothScanner.symbologyRecoveryMode"
+    static let diagnosticEventsKey = "bluetoothScanner.diagnosticEvents"
+    static let cachedScannerSettingsKey = "bluetoothScanner.cachedScannerSettings"
     static let discoveryTimeout: TimeInterval = 5
     static let connectionTimeout: TimeInterval = 30
+    static let automaticReconnectTimeout: TimeInterval = 8
     static let duplicateInterval: TimeInterval = 0.75
+    static let settingsRetryLimit = 4
 
     @Published private(set) var devices: [BluetoothScannerDevice] = []
     @Published private(set) var state: BluetoothScannerConnectionState = .idle
+    @Published private(set) var configurationState: BluetoothScannerConfigurationState = .unavailable
+    @Published private(set) var diagnosticEvents: [BluetoothScannerDiagnosticEvent] = []
 
     var onCode: ((String) -> Void)?
 
@@ -72,6 +128,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     )
     private var reconnectDeviceID: String?
     private var lastDeliveredCode: (value: String, date: Date)?
+    private(set) var expectedCode: ExpectedCode?
 
 #if INATECK_SDK
     private var sdkDevices: [String: BLEDevice] = [:]
@@ -85,10 +142,23 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     private var gattModeChangeInProgress = false
     private var sdkOutputConfigurationPeripheral: CBPeripheral?
     private var sdkOutputConfigurationInProgress = false
+    private var sdkOutputConfigurationCompleted = false
+    private var connectedScannerSettings: String?
+    private var symbologyConfigurationRevision = 0
+    private var manualDisconnectInProgress = false
 #endif
 
     var connectedDevice: BluetoothScannerDevice? { state.connectedDevice }
     var isConnected: Bool { connectedDevice != nil }
+    var isReadyForScanning: Bool { isConnected && configurationState == .ready }
+
+    var persistedSymbologyMode: BluetoothScannerSymbologyMode {
+        guard let rawValue = defaults.string(forKey: Self.symbologyRecoveryModeKey),
+              let mode = BluetoothScannerSymbologyMode(rawValue: rawValue) else {
+            return .unrestricted
+        }
+        return mode
+    }
 
     init(
         defaults: UserDefaults = .standard,
@@ -100,6 +170,15 @@ final class BluetoothScannerService: NSObject, ObservableObject {
 
         if ProcessInfo.processInfo.arguments.contains("-resetBluetoothScanner") {
             defaults.removeObject(forKey: Self.preferredDeviceIDKey)
+            defaults.removeObject(forKey: Self.symbologyRecoveryModeKey)
+            defaults.removeObject(forKey: Self.diagnosticEventsKey)
+            defaults.removeObject(forKey: Self.cachedScannerSettingsKey)
+        } else if let data = defaults.data(forKey: Self.diagnosticEventsKey),
+                  let events = try? JSONDecoder().decode(
+                    [BluetoothScannerDiagnosticEvent].self,
+                    from: data
+                  ) {
+            diagnosticEvents = Array(events.suffix(20))
         }
 
 #if INATECK_SDK
@@ -116,6 +195,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             let device = Self.simulatorDevice
             devices = [device]
             state = .connected(device)
+            configurationState = .ready
+            recordAppliedSymbologyMode(.unrestricted)
             defaults.set(device.id, forKey: Self.preferredDeviceIDKey)
         }
 #endif
@@ -187,7 +268,10 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         }
     }
 
-    func connect(_ device: BluetoothScannerDevice) {
+    func connect(
+        _ device: BluetoothScannerDevice,
+        timeout: TimeInterval = BluetoothScannerService.connectionTimeout
+    ) {
         trace("Connect requested: \(device.name) [\(device.id)]")
 #if INATECK_SDK
         guard let sdkDevice = sdkDevices[device.id]
@@ -203,7 +287,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         // The first connection can present an iOS bonding dialog. Five seconds
         // is enough for scanning, but not for the user to approve that dialog
         // and for the SDK to finish service discovery.
-        sdkDevice.connect(timeout: Self.connectionTimeout) { [weak self] value in
+        sdkDevice.connect(timeout: timeout) { [weak self] value in
             Task { @MainActor in
                 guard let self else { return }
                 self.trace("SDK scan callback invoked (\(value.utf8.count) UTF-8 bytes)")
@@ -220,6 +304,9 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                 switch result {
                 case .success:
                     self.connectedSDKDevice = sdkDevice
+                    self.sdkOutputConfigurationCompleted = false
+                    self.connectedScannerSettings = nil
+                    self.configurationState = .configuring
                     self.defaults.set(device.id, forKey: Self.preferredDeviceIDKey)
                     self.state = .connected(device)
                     self.automaticReconnectAttempt = 0
@@ -227,6 +314,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                     self.ensureGATTMode(for: sdkDevice, appDevice: device)
                 case .failure(let error):
                     self.connectedSDKDevice = nil
+                    self.configurationState = .unavailable
                     self.state = .failed("接続できませんでした: \(error.localizedDescription)")
                     self.trace("Connection failed: \(error.localizedDescription)")
                     self.scheduleAutomaticReconnect(reason: "connection failure")
@@ -239,6 +327,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         state = .connecting(device)
         defaults.set(device.id, forKey: Self.preferredDeviceIDKey)
         state = .connected(device)
+        configurationState = .ready
+        recordAppliedSymbologyMode(BluetoothScannerSymbologyMode(expectedCode: expectedCode))
 #endif
     }
 
@@ -248,31 +338,22 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         automaticReconnectTask?.cancel()
         automaticReconnectTask = nil
         automaticReconnectAttempt = 0
-        cancelSDKOutputConfiguration()
 #endif
         reconnectDeviceID = nil
         defaults.removeObject(forKey: Self.preferredDeviceIDKey)
+        expectedCode = nil
 
 #if INATECK_SDK
+        symbologyConfigurationRevision += 1
         guard let sdkDevice = connectedSDKDevice else {
+            configurationState = .unavailable
             state = .idle
             return
         }
-        sdkDevice.disconnect { [weak self] result in
-            Task { @MainActor in
-                guard let self else { return }
-                self.connectedSDKDevice = nil
-                switch result {
-                case .success:
-                    self.state = .idle
-                    self.trace("Disconnected")
-                case .failure(let error):
-                    self.state = .failed("切断に失敗しました: \(error.localizedDescription)")
-                    self.trace("Disconnect failed: \(error.localizedDescription)")
-                }
-            }
-        }
+        restoreSafeBaselineBeforeDisconnect(sdkDevice)
 #else
+        recordAppliedSymbologyMode(.unrestricted)
+        configurationState = .unavailable
         state = .idle
 #endif
     }
@@ -295,7 +376,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                 "Preferred-device reconnect using SDK cache: \(device.name) "
                     + "[\(device.id)] state=\(String(describing: cachedSDKDevice.connectState))"
             )
-            connect(device)
+            connect(device, timeout: Self.automaticReconnectTimeout)
             return
         }
 #endif
@@ -325,6 +406,39 @@ final class BluetoothScannerService: NSObject, ObservableObject {
 #endif
     }
 
+    /// 現在の業務工程に合わせてBCST-47のQR／Code 128読取を切り替える。
+    /// `nil`では、アプリ外でもスキャナを使用できる安全状態として両方を有効にする。
+    func setExpectedCode(_ expectedCode: ExpectedCode?) {
+        let mode = BluetoothScannerSymbologyMode(expectedCode: expectedCode)
+
+        // `configurationState = .ready`を受けた画面が同じ入力元を再選択しても、
+        // 既に適用済みの設定をSDKへ再送しない。再送すると
+        // configuring → ready → 再送の通知ループになる。
+        guard self.expectedCode != expectedCode
+                || !isReadyForScanning
+                || persistedSymbologyMode != mode else { return }
+
+        self.expectedCode = expectedCode
+        recordPendingSymbologyMode(mode)
+#if INATECK_SDK
+        symbologyConfigurationRevision += 1
+        guard connectedSDKDevice != nil else {
+            configurationState = .unavailable
+            return
+        }
+        configurationState = .configuring
+        guard sdkOutputConfigurationCompleted else { return }
+        applyExpectedCodeConfiguration(revision: symbologyConfigurationRevision)
+#else
+        guard isConnected else {
+            configurationState = .unavailable
+            return
+        }
+        recordAppliedSymbologyMode(mode)
+        configurationState = .ready
+#endif
+    }
+
     /// SimulatorのUIテストと単体テストだけで使用する入力フック。
     func simulateScan(_ value: String) {
 #if !INATECK_SDK
@@ -334,6 +448,10 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     }
 
     private func receiveCode(_ rawValue: String) {
+        guard isReadyForScanning else {
+            trace("Scan callback ignored because scanner configuration is not ready")
+            return
+        }
         let value = Self.normalizedPayload(rawValue)
         guard !value.isEmpty else { return }
 
@@ -437,7 +555,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             if reconnectDeviceID == device.id {
                 reconnectDeviceID = nil
                 BLEManager.shared.stopScan()
-                connect(device)
+                connect(device, timeout: Self.automaticReconnectTimeout)
             }
         case .stop:
             sdkDiscoveryIsRunning = false
@@ -462,6 +580,14 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                 || connectedDevice?.id == sdkDevice.uuid else { return }
         cancelSDKOutputConfiguration()
         connectedSDKDevice = nil
+        sdkOutputConfigurationCompleted = false
+        connectedScannerSettings = nil
+        configurationState = .unavailable
+        if manualDisconnectInProgress {
+            state = .idle
+            trace("Manual disconnect completed")
+            return
+        }
         if gattModeChangeInProgress {
             gattModeChangeInProgress = false
             state = .idle
@@ -474,80 +600,150 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         }
     }
 
-    private func ensureGATTMode(for sdkDevice: BLEDevice, appDevice: BluetoothScannerDevice) {
+    private func ensureGATTMode(
+        for sdkDevice: BLEDevice,
+        appDevice: BluetoothScannerDevice,
+        settingsAttempt: Int = 0
+    ) {
         sdkDevice.messageManager.getSettingInfo { [weak self] result in
             Task { @MainActor in
                 guard let self, self.connectedSDKDevice?.uuid == sdkDevice.uuid else { return }
                 switch result {
                 case .success(let settings):
-                    let inventoryMode = Self.settingValue(named: "inventory_mode", from: settings)
-                    let automaticCacheUpload = Self.settingValue(named: "auto_upload_cache", from: settings)
-                    let clearCacheAtStartup = Self.settingValue(named: "start_up_clean_cache", from: settings)
-                    self.trace(
-                        "Scanner data modes: inventory=\(inventoryMode.map(String.init) ?? "unknown") "
-                            + "autoUpload=\(automaticCacheUpload.map(String.init) ?? "unknown") "
-                            + "clearAtStartup=\(clearCacheAtStartup.map(String.init) ?? "unknown")"
+                    guard Self.hasRequiredSymbologySettings(settings) else {
+                        self.retryScannerSettings(
+                            for: sdkDevice,
+                            appDevice: appDevice,
+                            after: settingsAttempt,
+                            reason: "incomplete response"
+                        )
+                        return
+                    }
+                    self.defaults.set(settings, forKey: Self.cachedScannerSettingsKey)
+                    self.continueScannerConfiguration(
+                        with: settings,
+                        sdkDevice: sdkDevice,
+                        appDevice: appDevice
                     )
-                    guard let mode = Self.bluetoothMode(from: settings) else {
-                        self.trace("Could not determine the scanner Bluetooth mode")
-                        self.beginSDKOutputConfiguration(deviceID: sdkDevice.uuid)
-                        return
-                    }
-                    guard mode != 2 else {
-                        self.gattModeChangeInProgress = false
-                        self.trace("Scanner Bluetooth mode confirmed: GATT (2)")
-                        self.beginSDKOutputConfiguration(deviceID: sdkDevice.uuid)
-                        return
-                    }
+                case .failure(let error):
+                    self.trace("Bluetooth mode query failed: \(error.localizedDescription)")
+                    self.retryScannerSettings(
+                        for: sdkDevice,
+                        appDevice: appDevice,
+                        after: settingsAttempt,
+                        reason: "query failure"
+                    )
+                }
+            }
+        }
+    }
 
-                    self.gattModeChangeInProgress = true
-                    self.state = .connecting(appDevice)
-                    self.trace("Scanner Bluetooth mode is \(mode); applying GATT mode (2)")
-                    let command = """
-                    [{"area":"1","value":"0","name":"bt_mode_low"},\
-                    {"area":"31","value":"1","name":"bt_mode_high"}]
-                    """
-                    sdkDevice.messageManager.setSettingInfo(with: command) { [weak self] updateResult in
+    private func retryScannerSettings(
+        for sdkDevice: BLEDevice,
+        appDevice: BluetoothScannerDevice,
+        after attempt: Int,
+        reason: String
+    ) {
+        if attempt >= Self.settingsRetryLimit {
+            if let cachedSettings = defaults.string(forKey: Self.cachedScannerSettingsKey),
+               Self.hasRequiredSymbologySettings(cachedSettings) {
+                trace("Scanner settings unavailable; using cached setting areas")
+                continueScannerConfiguration(
+                    with: cachedSettings,
+                    sdkDevice: sdkDevice,
+                    appDevice: appDevice
+                )
+            } else {
+                configurationState = .failed(
+                    "スキャナーのQR／Code 128設定を取得できませんでした。電源を入れ直してください。"
+                )
+                trace("Scanner settings unavailable after \(attempt + 1) attempts")
+            }
+            return
+        }
+
+        let nextAttempt = attempt + 1
+        trace("Scanner settings \(reason); retrying (attempt \(nextAttempt + 1))")
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled, let self,
+                  self.connectedSDKDevice?.uuid == sdkDevice.uuid else { return }
+            self.ensureGATTMode(
+                for: sdkDevice,
+                appDevice: appDevice,
+                settingsAttempt: nextAttempt
+            )
+        }
+    }
+
+    private func continueScannerConfiguration(
+        with settings: String,
+        sdkDevice: BLEDevice,
+        appDevice: BluetoothScannerDevice
+    ) {
+        connectedScannerSettings = settings
+        let inventoryMode = Self.settingValue(named: "inventory_mode", from: settings)
+        let automaticCacheUpload = Self.settingValue(named: "auto_upload_cache", from: settings)
+        let clearCacheAtStartup = Self.settingValue(named: "start_up_clean_cache", from: settings)
+        trace(
+            "Scanner data modes: inventory=\(inventoryMode.map(String.init) ?? "unknown") "
+                + "autoUpload=\(automaticCacheUpload.map(String.init) ?? "unknown") "
+                + "clearAtStartup=\(clearCacheAtStartup.map(String.init) ?? "unknown")"
+        )
+        guard let mode = Self.bluetoothMode(from: settings) else {
+            trace("Could not determine the scanner Bluetooth mode")
+            beginSDKOutputConfiguration(deviceID: sdkDevice.uuid)
+            return
+        }
+        guard mode != 2 else {
+            gattModeChangeInProgress = false
+            trace("Scanner Bluetooth mode confirmed: GATT (2)")
+            beginSDKOutputConfiguration(deviceID: sdkDevice.uuid)
+            return
+        }
+
+        gattModeChangeInProgress = true
+        state = .connecting(appDevice)
+        trace("Scanner Bluetooth mode is \(mode); applying GATT mode (2)")
+        let command = """
+        [{"area":"1","value":"0","name":"bt_mode_low"},\
+        {"area":"31","value":"1","name":"bt_mode_high"}]
+        """
+        sdkDevice.messageManager.setSettingInfo(with: command) { [weak self] updateResult in
+            Task { @MainActor in
+                guard let self else { return }
+                switch updateResult {
+                case .success:
+                    self.trace("GATT mode setting accepted; restarting scanner")
+                    sdkDevice.messageManager.setRestart { [weak self] restartResult in
                         Task { @MainActor in
                             guard let self else { return }
-                            switch updateResult {
+                            switch restartResult {
                             case .success:
-                                self.trace("GATT mode setting accepted; restarting scanner")
-                                sdkDevice.messageManager.setRestart { [weak self] restartResult in
-                                    Task { @MainActor in
-                                        guard let self else { return }
-                                        switch restartResult {
-                                        case .success:
-                                            self.trace("Scanner restart accepted after GATT mode change")
-                                            self.scheduleGATTRestartFallback(
-                                                for: sdkDevice,
-                                                appDevice: appDevice
-                                            )
-                                        case .failure(let error):
-                                            self.gattModeChangeInProgress = false
-                                            self.state = .failed(
-                                                "GATT設定後にスキャナを再起動できませんでした: "
-                                                    + error.localizedDescription
-                                            )
-                                            self.trace(
-                                                "Scanner restart after GATT mode change failed: "
-                                                    + error.localizedDescription
-                                            )
-                                        }
-                                    }
-                                }
+                                self.trace("Scanner restart accepted after GATT mode change")
+                                self.scheduleGATTRestartFallback(
+                                    for: sdkDevice,
+                                    appDevice: appDevice
+                                )
                             case .failure(let error):
                                 self.gattModeChangeInProgress = false
                                 self.state = .failed(
-                                    "GATTモードへ切り替えられませんでした: \(error.localizedDescription)"
+                                    "GATT設定後にスキャナを再起動できませんでした: "
+                                        + error.localizedDescription
                                 )
-                                self.trace("GATT mode setting failed: \(error.localizedDescription)")
+                                self.trace(
+                                    "Scanner restart after GATT mode change failed: "
+                                        + error.localizedDescription
+                                )
                             }
                         }
                     }
                 case .failure(let error):
-                    self.trace("Bluetooth mode query failed: \(error.localizedDescription)")
-                    self.beginSDKOutputConfiguration(deviceID: sdkDevice.uuid)
+                    self.gattModeChangeInProgress = false
+                    self.state = .failed(
+                        "GATTモードへ切り替えられませんでした: \(error.localizedDescription)"
+                    )
+                    self.trace("GATT mode setting failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -630,14 +826,16 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     /// below. Use a short-lived write-only Core Bluetooth client so the SDK
     /// remains the sole subscriber to FF01.
     private func beginSDKOutputConfiguration(deviceID: String) {
-        guard !sdkOutputConfigurationInProgress,
-              let availabilityMonitor,
+        guard !sdkOutputConfigurationInProgress else { return }
+        guard let availabilityMonitor,
               availabilityMonitor.state == .poweredOn,
               let identifier = UUID(uuidString: deviceID),
               let peripheral = availabilityMonitor.retrievePeripherals(
                 withIdentifiers: [identifier]
               ).first else {
             trace("SDK-output configuration could not retrieve the connected scanner")
+            sdkOutputConfigurationCompleted = true
+            applyExpectedCodeConfiguration(revision: symbologyConfigurationRevision)
             return
         }
 
@@ -702,8 +900,10 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     private func finishSDKOutputConfiguration(_ peripheral: CBPeripheral, message: String) {
         trace(message)
         sdkOutputConfigurationInProgress = false
+        sdkOutputConfigurationCompleted = true
         sdkOutputConfigurationPeripheral = nil
         availabilityMonitor?.cancelPeripheralConnection(peripheral)
+        applyExpectedCodeConfiguration(revision: symbologyConfigurationRevision)
     }
 
     private func cancelSDKOutputConfiguration() {
@@ -716,6 +916,100 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         availabilityMonitor?.cancelPeripheralConnection(peripheral)
     }
 
+    private func restoreSafeBaselineBeforeDisconnect(_ sdkDevice: BLEDevice) {
+        configurationState = .configuring
+        guard let settings = connectedScannerSettings,
+              let command = Self.symbologySettingCommand(
+                values: BluetoothScannerSymbologyMode.unrestricted.settingValues,
+                settings: settings
+              ) else {
+            trace("Safe symbology restore skipped because scanner settings are unavailable")
+            performManualDisconnect(sdkDevice)
+            return
+        }
+
+        sdkDevice.messageManager.setSettingInfo(with: command) { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                switch result {
+                case .success:
+                    self.recordAppliedSymbologyMode(.unrestricted)
+                    self.trace("Scanner symbology restored to safe baseline before disconnect")
+                case .failure(let error):
+                    // 制限中の記録は消さず、次回接続時の復旧を必ず再試行する。
+                    self.trace(
+                        "Safe symbology restore before disconnect failed: "
+                            + error.localizedDescription
+                    )
+                }
+                self.performManualDisconnect(sdkDevice)
+            }
+        }
+    }
+
+    private func performManualDisconnect(_ sdkDevice: BLEDevice) {
+        manualDisconnectInProgress = true
+        cancelSDKOutputConfiguration()
+        sdkDevice.disconnect { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                self.connectedSDKDevice = nil
+                self.sdkOutputConfigurationCompleted = false
+                self.connectedScannerSettings = nil
+                self.configurationState = .unavailable
+                self.manualDisconnectInProgress = false
+                switch result {
+                case .success:
+                    self.state = .idle
+                    self.trace("Disconnected")
+                case .failure(let error):
+                    self.state = .failed("切断に失敗しました: \(error.localizedDescription)")
+                    self.trace("Disconnect failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func applyExpectedCodeConfiguration(revision: Int) {
+        guard revision == symbologyConfigurationRevision,
+              let sdkDevice = connectedSDKDevice,
+              let settings = connectedScannerSettings else {
+            if connectedSDKDevice != nil, connectedScannerSettings == nil {
+                trace("Symbology configuration deferred because scanner settings are unavailable")
+            }
+            return
+        }
+
+        let mode = BluetoothScannerSymbologyMode(expectedCode: expectedCode)
+        let values = mode.settingValues
+
+        guard let command = Self.symbologySettingCommand(values: values, settings: settings) else {
+            trace("Symbology configuration skipped because QR/Code 128 settings were not reported")
+            configurationState = .failed(
+                "スキャナーからQR／Code 128の設定を取得できませんでした。カメラを使用してください。"
+            )
+            return
+        }
+
+        sdkDevice.messageManager.setSettingInfo(with: command) { [weak self] result in
+            Task { @MainActor in
+                guard let self, revision == self.symbologyConfigurationRevision,
+                      self.connectedSDKDevice?.uuid == sdkDevice.uuid else { return }
+                switch result {
+                case .success:
+                    self.recordAppliedSymbologyMode(mode)
+                    self.configurationState = .ready
+                    self.trace("Scanner symbology configured for \(mode.rawValue)")
+                case .failure(let error):
+                    self.configurationState = .failed(
+                        "スキャナーの読み取り設定を変更できませんでした。カメラを使用してください。"
+                    )
+                    self.trace("Scanner symbology configuration failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
 #else
     private static let simulatorDevice = BluetoothScannerDevice(
         id: "SIMULATOR-BCST-47",
@@ -723,8 +1017,69 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     )
 #endif
 
+    /// 制限を適用する前に記録し、プロセスが途中終了しても次回接続で復旧できるようにする。
+    /// 安全状態への変更では、SDKの成功応答を受けるまで既存の制限記録を残す。
+    private func recordPendingSymbologyMode(_ mode: BluetoothScannerSymbologyMode) {
+        guard mode != .unrestricted else { return }
+        defaults.set(mode.rawValue, forKey: Self.symbologyRecoveryModeKey)
+    }
+
+    private func recordAppliedSymbologyMode(_ mode: BluetoothScannerSymbologyMode) {
+        if mode == .unrestricted {
+            defaults.removeObject(forKey: Self.symbologyRecoveryModeKey)
+        } else {
+            defaults.set(mode.rawValue, forKey: Self.symbologyRecoveryModeKey)
+        }
+    }
+
+    /// 固定している公式iOS SDKは、取得した設定の`area`と`name`を
+    /// `setSettingInfo`へ返す形式を使う。機種固有のareaはハードコードしない。
+    static func hasRequiredSymbologySettings(_ settings: String) -> Bool {
+        symbologySettingCommand(
+            values: BluetoothScannerSymbologyMode.unrestricted.settingValues,
+            settings: settings
+        ) != nil
+    }
+
+    static func symbologySettingCommand(values: [String: Int], settings: String) -> String? {
+        guard let data = settings.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let root = object as? [String: Any],
+              let items = root["data"] as? [[String: Any]] else { return nil }
+
+        var commands: [[String: String]] = []
+        for name in ["qrcode_on", "code128_on"] {
+            guard let value = values[name],
+                  let item = items.first(where: { $0["name"] as? String == name }),
+                  let areaValue = item["area"] else { return nil }
+
+            let area: String
+            if let string = areaValue as? String {
+                area = string
+            } else if let number = areaValue as? NSNumber {
+                area = number.stringValue
+            } else {
+                return nil
+            }
+            commands.append(["area": area, "value": String(value), "name": name])
+        }
+
+        guard let commandData = try? JSONSerialization.data(withJSONObject: commands),
+              let command = String(data: commandData, encoding: .utf8) else { return nil }
+        return command
+    }
+
     private func trace(_ message: String) {
         logger.info("\(message, privacy: .public)")
+        diagnosticEvents.append(
+            BluetoothScannerDiagnosticEvent(date: now(), message: message)
+        )
+        if diagnosticEvents.count > 20 {
+            diagnosticEvents.removeFirst(diagnosticEvents.count - 20)
+        }
+        if let data = try? JSONEncoder().encode(diagnosticEvents) {
+            defaults.set(data, forKey: Self.diagnosticEventsKey)
+        }
 #if DEBUG
         print("[BluetoothScanner] \(message)")
 #endif

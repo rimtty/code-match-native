@@ -11,13 +11,29 @@ final class CodeMatchUITests: XCTestCase {
         XCTAssertTrue(inputPicker.waitForExistence(timeout: 5))
         XCTAssertTrue(inputPicker.buttons["Bluetooth"].isSelected)
         XCTAssertTrue(app.staticTexts["BCST-47 (Simulator)"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["1  四角いQRコード"].waitForExistence(timeout: 3))
+
+        // Bluetoothからカメラへ切り替えた際にもプレビュー層が表示され、
+        // 再びBluetoothへ戻して照合を継続できることを確認する。
+        inputPicker.buttons["カメラ"].tap()
+        XCTAssertTrue(inputPicker.buttons["カメラ"].isSelected)
+        XCTAssertTrue(app.descendants(matching: .any)["cameraStage"].waitForExistence(timeout: 3))
+        inputPicker.buttons["Bluetooth"].tap()
+        XCTAssertTrue(inputPicker.buttons["Bluetooth"].isSelected)
 
         app.swipeUp()
         let demoToggle = app.staticTexts["カメラなしで判定をテスト"]
         XCTAssertTrue(demoToggle.waitForExistence(timeout: 3))
         demoToggle.tap()
+
+        // Code 128を先に読んでもQR工程のままで、誤った値を照合へ進めない。
+        app.buttons["demoBluetoothBarcodeButton"].tap()
+        XCTAssertTrue(app.staticTexts["読み取り順序が違います。先に納品書兼現品票のQRコードを読み取ってください。 読み取った値は照合に使用していません。"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["scannerTitle"].label, "QRコードを読み取る")
+
         app.buttons["demoBluetoothQRButton"].tap()
         XCTAssertTrue(app.staticTexts["バーコードを読み取る"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["2  横長のCode 128"].waitForExistence(timeout: 3))
         app.buttons["demoBluetoothBarcodeButton"].tap()
 
         XCTAssertTrue(app.staticTexts["一致しました"].waitForExistence(timeout: 5))
@@ -98,7 +114,8 @@ final class CodeMatchUITests: XCTestCase {
 
         let startButton = app.buttons["startSessionButton"]
         XCTAssertTrue(startButton.waitForExistence(timeout: 5))
-        startButton.tap()
+        // 緑のボタン中央だけでなく、左端寄りでも操作できることを確認する。
+        startButton.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5)).tap()
 
         let count = app.staticTexts["sessionMatchCount"]
         XCTAssertTrue(count.waitForExistence(timeout: 3))

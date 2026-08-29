@@ -110,6 +110,15 @@ final class FeedbackPlayer {
         ], gap: 0, volumeScale: 0.6)
     }
 
+    /// 入力順序または業務フォーマットが違う読取を、最終照合の不一致音とは区別して通知する。
+    func invalidScan() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        play([
+            Tone(frequency: 330, duration: 0.09, amplitude: 0.65),
+            Tone(frequency: 330, duration: 0.09, amplitude: 0.65)
+        ], gap: 0.06, volumeScale: 0.7)
+    }
+
     func success(after delay: TimeInterval = 0) {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
 

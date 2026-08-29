@@ -1,5 +1,40 @@
 import XCTest
+import AVFoundation
+import Combine
 @testable import CodeMatch
+
+@MainActor
+final class CameraPreviewTests: XCTestCase {
+    func testPreviewLayerCanRebindAndDetachCaptureSessions() {
+        let view = PreviewView()
+        let firstSession = AVCaptureSession()
+        let secondSession = AVCaptureSession()
+
+        view.setSession(firstSession)
+        XCTAssertTrue(view.previewLayer.session === firstSession)
+
+        view.setSession(secondSession)
+        XCTAssertTrue(view.previewLayer.session === secondSession)
+
+        view.setSession(nil)
+        XCTAssertNil(view.previewLayer.session)
+    }
+
+    func testMetadataRegionIsClampedToNormalizedCoordinates() {
+        XCTAssertEqual(
+            CameraScanner.normalizedMetadataRect(
+                CGRect(x: -0.25, y: 0.2, width: 0.75, height: 1.1)
+            ),
+            CGRect(x: 0, y: 0.2, width: 0.5, height: 0.8)
+        )
+        XCTAssertNil(CameraScanner.normalizedMetadataRect(.zero))
+        XCTAssertNil(
+            CameraScanner.normalizedMetadataRect(
+                CGRect(x: CGFloat.nan, y: 0, width: 1, height: 1)
+            )
+        )
+    }
+}
 
 final class CodeMatcherTests: XCTestCase {
     // 実ラベルからデコードした実データ
@@ -95,6 +130,17 @@ final class CodeMatcherTests: XCTestCase {
         XCTAssertNil(KanbanQRRecord.parse("SHORT"))
     }
 
+    func testBluetoothScanPayloadValidationRejectsReverseOrderFormats() {
+        XCTAssertTrue(KanbanQRRecord.isValidScanPayload(qrPayload))
+        XCTAssertFalse(KanbanQRRecord.isValidScanPayload(barcodePayload))
+        XCTAssertFalse(KanbanQRRecord.isValidScanPayload(String(qrPayload.prefix(65))))
+
+        XCTAssertTrue(TagBarcodeRecord.isValidScanPayload(barcodePayload))
+        XCTAssertTrue(TagBarcodeRecord.isValidScanPayload("KAAA-55-D86B@0Y5U0I"))
+        XCTAssertFalse(TagBarcodeRecord.isValidScanPayload(qrPayload))
+        XCTAssertFalse(TagBarcodeRecord.isValidScanPayload("BCJH-52-81GG"))
+    }
+
     func testTagBarcodeRecordParsing() {
         let record = TagBarcodeRecord.parse(barcodePayload)
         XCTAssertEqual(record?.partNumber, "BCJH-52-81GG")
@@ -110,6 +156,71 @@ final class CodeMatcherTests: XCTestCase {
 
 @MainActor
 final class BluetoothScannerServiceTests: XCTestCase {
+    func testSymbologyModeStatusTextExplainsActiveRestriction() {
+        XCTAssertEqual(
+            BluetoothScannerSymbologyMode.unrestricted.statusText,
+            "読取対象：QR／Code 128（安全状態）"
+        )
+        XCTAssertEqual(
+            BluetoothScannerSymbologyMode.qrOnly.statusText,
+            "読取対象：QRのみ（照合ステップ1）"
+        )
+        XCTAssertEqual(
+            BluetoothScannerSymbologyMode.code128Only.statusText,
+            "読取対象：Code 128のみ（照合ステップ2）"
+        )
+    }
+
+    func testRepeatedExpectedCodeDoesNotReconfigureReadyScanner() {
+        let defaults = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let service = BluetoothScannerService(defaults: defaults)
+        service.startDiscovery()
+        service.connect(service.devices[0])
+
+        var updates: [BluetoothScannerConfigurationState] = []
+        let observation = service.$configurationState
+            .dropFirst()
+            .sink { updates.append($0) }
+
+        service.setExpectedCode(.qr)
+        service.setExpectedCode(.qr)
+
+        XCTAssertEqual(updates, [.ready])
+        XCTAssertEqual(service.persistedSymbologyMode, .qrOnly)
+        withExtendedLifetime(observation) {}
+    }
+
+    func testSymbologyCommandUsesAreasReportedByScanner() throws {
+        let settings = """
+        {"data":[
+          {"area":"42","value":"1","name":"qrcode_on"},
+          {"area":17,"value":1,"name":"code128_on"}
+        ]}
+        """
+        let command = try XCTUnwrap(
+            BluetoothScannerService.symbologySettingCommand(
+                values: ["qrcode_on": 1, "code128_on": 0],
+                settings: settings
+            )
+        )
+        let data = try XCTUnwrap(command.data(using: .utf8))
+        let items = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [[String: String]]
+        )
+
+        XCTAssertEqual(items.first(where: { $0["name"] == "qrcode_on" })?["area"], "42")
+        XCTAssertEqual(items.first(where: { $0["name"] == "qrcode_on" })?["value"], "1")
+        XCTAssertEqual(items.first(where: { $0["name"] == "code128_on" })?["area"], "17")
+        XCTAssertEqual(items.first(where: { $0["name"] == "code128_on" })?["value"], "0")
+        XCTAssertTrue(BluetoothScannerService.hasRequiredSymbologySettings(settings))
+        XCTAssertFalse(
+            BluetoothScannerService.hasRequiredSymbologySettings(
+                "{\"data\":[{\"area\":\"42\",\"value\":\"1\",\"name\":\"qrcode_on\"}]}"
+            )
+        )
+    }
+
     func testNormalizedPayloadRemovesOnlyTrailingTransportTerminators() {
         XCTAssertEqual(
             BluetoothScannerService.normalizedPayload("QR DATA   0*\r\n\0"),
@@ -179,6 +290,73 @@ final class BluetoothScannerServiceTests: XCTestCase {
         XCTAssertEqual(restored.connectedDevice?.id, service.devices[0].id)
     }
 
+    func testDiagnosticsKeepOnlyRecentConnectionEventsWithoutScanPayloads() {
+        let defaults = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let service = BluetoothScannerService(defaults: defaults)
+
+        for _ in 0..<12 {
+            service.startDiscovery()
+            service.stopDiscovery()
+        }
+        service.connect(service.devices[0])
+        service.simulateScan("PRIVATE-SCAN-PAYLOAD")
+
+        XCTAssertEqual(service.diagnosticEvents.count, 20)
+        XCTAssertTrue(
+            service.diagnosticEvents.contains(where: { $0.message.contains("Connect requested") })
+        )
+        XCTAssertFalse(
+            service.diagnosticEvents.contains(where: { $0.message.contains("PRIVATE-SCAN-PAYLOAD") })
+        )
+
+        let relaunched = BluetoothScannerService(defaults: defaults)
+        XCTAssertLessThanOrEqual(relaunched.diagnosticEvents.count, 20)
+        XCTAssertTrue(
+            relaunched.diagnosticEvents.contains(where: { $0.message.contains("Connect requested") })
+        )
+    }
+
+    func testRelaunchRecoversRestrictedScannerToSafeBaseline() {
+        let defaults = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let firstLaunch = BluetoothScannerService(defaults: defaults)
+        firstLaunch.startDiscovery()
+        firstLaunch.connect(firstLaunch.devices[0])
+        firstLaunch.setExpectedCode(.barcode)
+
+        XCTAssertEqual(firstLaunch.persistedSymbologyMode, .code128Only)
+
+        // Code 128待ちでプロセスが終了した状況を、同じUserDefaultsを使う
+        // 新しいサービスインスタンスで再現する。照合画面がなくても再接続時に
+        // QRとCode 128を両方有効にする安全状態へ戻す。
+        let relaunched = BluetoothScannerService(defaults: defaults)
+        relaunched.reconnectPreferredDevice()
+
+        XCTAssertTrue(relaunched.isReadyForScanning)
+        XCTAssertNil(relaunched.expectedCode)
+        XCTAssertEqual(relaunched.persistedSymbologyMode, .unrestricted)
+    }
+
+    func testManualDisconnectRestoresSafeBaseline() {
+        let defaults = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let service = BluetoothScannerService(defaults: defaults)
+        service.startDiscovery()
+        service.connect(service.devices[0])
+        service.setExpectedCode(.qr)
+
+        XCTAssertEqual(service.persistedSymbologyMode, .qrOnly)
+
+        service.disconnect()
+
+        XCTAssertFalse(service.isConnected)
+        XCTAssertFalse(service.isReadyForScanning)
+        XCTAssertNil(service.expectedCode)
+        XCTAssertEqual(service.persistedSymbologyMode, .unrestricted)
+    }
+
     func testDuplicateCallbackIsSuppressedInsideDebounceWindow() {
         let defaults = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -209,6 +387,49 @@ final class BluetoothScannerServiceTests: XCTestCase {
 
 @MainActor
 final class BluetoothScannerFlowTests: XCTestCase {
+    func testBluetoothRejectsCode128BeforeQRWithoutAdvancing() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        XCTAssertTrue(context.service.isReadyForScanning)
+        XCTAssertEqual(context.service.expectedCode, .qr)
+        context.service.simulateScan(ScannerViewModel.sampleBarcodePayload)
+
+        XCTAssertEqual(context.viewModel.step, .qr)
+        XCTAssertTrue(context.viewModel.qrValue.isEmpty)
+        XCTAssertTrue(context.viewModel.barcodeValue.isEmpty)
+        XCTAssertTrue(context.viewModel.message.contains("先に"))
+
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.service.expectedCode, .barcode)
+
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleBarcodePayload)
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertNil(context.service.expectedCode)
+    }
+
+    func testBluetoothRejectsQRWhileWaitingForCode128() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+
+        let otherQR = "DAYA005100DFR55581GA  0001000000010000Y      000000BYBYTLYB16   0*"
+        context.service.simulateScan(otherQR)
+
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertTrue(context.viewModel.barcodeValue.isEmpty)
+        XCTAssertTrue(context.viewModel.message.contains("Code 128"))
+    }
+
     func testBluetoothQRThenBarcodeCompletesMatchImmediately() async {
         let context = makeContext()
         defer { context.cleanup() }
@@ -250,6 +471,64 @@ final class BluetoothScannerFlowTests: XCTestCase {
         context.viewModel.handleBluetoothConnectionState(context.service.state)
 
         XCTAssertEqual(context.viewModel.inputSource, .camera)
+    }
+
+    func testBluetoothReadyRestoresInstructionAfterConfigurationMessage() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.viewModel.handleBluetoothConfigurationState(.configuring)
+        XCTAssertTrue(context.viewModel.message.contains("設定しています"))
+
+        context.viewModel.handleBluetoothConfigurationState(.ready)
+
+        XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+        XCTAssertTrue(context.viewModel.message.contains("QRコードを読み取ってください"))
+        XCTAssertFalse(context.viewModel.message.contains("設定しています"))
+    }
+
+    func testBluetoothBackgroundRestoresBaselineAndForegroundReappliesCurrentStep() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.service.expectedCode, .barcode)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .code128Only)
+
+        context.viewModel.prepareForBackground()
+
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertNil(context.service.expectedCode)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .unrestricted)
+
+        context.viewModel.resumeAfterForeground()
+
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.service.expectedCode, .barcode)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .code128Only)
+    }
+
+    func testEndingBluetoothSessionRestoresUnrestrictedBaseline() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        XCTAssertEqual(context.service.expectedCode, .qr)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .qrOnly)
+
+        context.viewModel.prepareForSessionEnd()
+
+        XCTAssertNil(context.service.expectedCode)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .unrestricted)
     }
 
     func testBluetoothDisconnectKeepsCurrentStepAndFallsBackToCamera() async {
