@@ -105,6 +105,14 @@ struct KanbanQRRecord: Equatable {
     let warehouseCode: String?    // 52-56桁: 受入部品庫
     let supplyPointCode: String?  // 57-61桁: 供給先
 
+    /// Bluetoothスキャナ入力を納品書QRとして受理できるかを判定する。
+    /// SDKの文字列コールバックにはシンボル種別が含まれないため、実データ仕様の
+    /// 66桁固定長と必須フィールドの両方を確認してCode 128の逆順入力を防ぐ。
+    static func isValidScanPayload(_ payload: String) -> Bool {
+        let record = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+        return record.count == 66 && parse(record) != nil
+    }
+
     static func parse(_ payload: String) -> KanbanQRRecord? {
         let record = payload.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard record.count >= 20 else { return nil }
@@ -150,6 +158,16 @@ struct KanbanQRRecord: Equatable {
 struct TagBarcodeRecord: Equatable {
     let partNumber: String       // ハイフン付き品番
     let managementCode: String?  // @以降の管理コード
+
+    /// 現品票Code 128の業務フォーマット（4-2-4の品番@管理コード）かを確認する。
+    /// 物理シンボル種別はSDK通知に含まれないため、QR文字列などを次工程で受理しない。
+    static func isValidScanPayload(_ payload: String) -> Bool {
+        let value = payload.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return value.range(
+            of: "^[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{4}@[A-Z0-9]+$",
+            options: .regularExpression
+        ) != nil
+    }
 
     static func parse(_ payload: String) -> TagBarcodeRecord? {
         let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)

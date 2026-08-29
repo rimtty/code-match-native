@@ -54,29 +54,36 @@ struct ScannerScreen: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active, viewModel.isCameraRunning {
-                viewModel.toggleCamera()
+            if phase == .active {
+                viewModel.resumeAfterForeground()
+            } else {
+                // UI状態にかかわらず開始待ちも含めて必ず停止し、Bluetoothは
+                // 強制終了されても困らない安全な読取設定へ戻す。
+                viewModel.prepareForBackground()
             }
         }
         .onChange(of: bluetoothScanner.state) { _, state in
             viewModel.handleBluetoothConnectionState(state)
         }
+        .onChange(of: bluetoothScanner.configurationState) { _, state in
+            viewModel.handleBluetoothConfigurationState(state)
+        }
         .onAppear {
             // 画面表示前から接続済みの場合にもBluetoothを初期入力として反映する。
             viewModel.handleBluetoothConnectionState(bluetoothScanner.state)
+            viewModel.handleBluetoothConfigurationState(bluetoothScanner.configurationState)
         }
         // 履歴からアクティブセッションが削除された場合など、画面が消えたらカメラを止める
         .onDisappear {
-            if viewModel.isCameraRunning {
-                viewModel.toggleCamera()
-            }
+            // 権限コールバック待ちなどUIと実セッションがずれた場合も停止する。
+            viewModel.stopCamera()
         }
         .tint(AppTheme.green)
         .preferredColorScheme(.light)
         .alert("このセッションを終了しますか？", isPresented: $showsEndConfirmation) {
             Button("キャンセル", role: .cancel) {}
             Button("終了する", role: .destructive) {
-                viewModel.reset()
+                viewModel.prepareForSessionEnd()
                 historyStore.endActiveSession()
             }
         } message: {
@@ -143,7 +150,7 @@ struct ScannerScreen: View {
         VStack(spacing: 0) {
             scannerHeader
 
-            if bluetoothScanner.isConnected, viewModel.expectedCode != nil {
+            if bluetoothScanner.isReadyForScanning, viewModel.expectedCode != nil {
                 inputSourcePicker
             }
 
@@ -158,10 +165,18 @@ struct ScannerScreen: View {
                     )
                     .accessibilityIdentifier("resultView")
                 case .qr, .barcode:
-                    if viewModel.inputSource == .bluetooth {
-                        bluetoothStage
-                    } else {
+                    ZStack {
+                        // 入力元を切り替えてもAVCaptureVideoPreviewLayerを破棄しない。
+                        // セッションの表示先を維持し、Bluetoothからカメラへ戻した
+                        // 直後にプレビューだけが黒くなる状態を防ぐ。
                         cameraStage
+                            .opacity(viewModel.inputSource == .camera ? 1 : 0)
+                            .allowsHitTesting(viewModel.inputSource == .camera)
+                            .accessibilityHidden(viewModel.inputSource != .camera)
+
+                        if viewModel.inputSource == .bluetooth {
+                            bluetoothStage
+                        }
                     }
                 }
             }
@@ -222,20 +237,11 @@ struct ScannerScreen: View {
     }
 
     private var bluetoothStage: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "barcode.viewfinder")
-                .font(.system(size: 48, weight: .medium))
-                .foregroundStyle(AppTheme.green)
-            Text(bluetoothScanner.connectedDevice?.name ?? "Bluetoothスキャナ")
-                .font(.headline)
-                .foregroundStyle(AppTheme.ink)
-            Text(viewModel.expectedCode == .qr
-                 ? "トリガーを押してQRコードを読み取ってください"
-                 : "トリガーを押してCode 128を読み取ってください")
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.muted)
-                .multilineTextAlignment(.center)
-        }
+        BluetoothScanGuide(
+            expectedCode: viewModel.expectedCode ?? .qr,
+            deviceName: bluetoothScanner.connectedDevice?.name ?? "Bluetoothスキャナ",
+            isConfiguring: bluetoothScanner.configurationState == .configuring
+        )
         .frame(maxWidth: .infinity)
         .aspectRatio(4 / 3, contentMode: .fit)
         .background(AppTheme.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
@@ -249,22 +255,27 @@ struct ScannerScreen: View {
     private var cameraStage: some View {
         GeometryReader { proxy in
             ZStack {
-                if viewModel.isCameraRunning {
-                    CameraPreview(
-                        session: viewModel.camera.session,
-                        expectedCode: viewModel.expectedCode,
-                        onTap: { point in viewModel.focus(at: point) },
-                        onRegionOfInterest: { rect in viewModel.camera.setRegionOfInterest(rect) }
-                    )
-                    .transition(.opacity)
-                } else {
+                // プレビュー層は停止中やBluetooth入力中も保持する。カメラ再開時に
+                // 同じAVCaptureSessionの映像を即座に再表示できるようにする。
+                CameraPreview(
+                    session: viewModel.camera.session,
+                    expectedCode: viewModel.expectedCode,
+                    onTap: { devicePoint, viewPoint in
+                        viewModel.focus(at: devicePoint, displayAt: viewPoint)
+                    },
+                    onRegionOfInterest: { rect in viewModel.camera.setRegionOfInterest(rect) }
+                )
+                .opacity(viewModel.isCameraRunning ? 1 : 0)
+                .accessibilityIdentifier("cameraPreview")
+
+                if !viewModel.isCameraRunning {
                     AppTheme.ink.opacity(0.06)
                     VStack(spacing: 10) {
                         Image(systemName: "camera.viewfinder")
                             .font(.system(size: 34, weight: .medium))
-                        Text("カメラは停止中です")
+                        Text(viewModel.isCameraStarting ? "カメラを準備中です" : "カメラは停止中です")
                             .font(.subheadline.weight(.semibold))
-                        Text("開始すると映像がここに表示されます")
+                        Text(viewModel.isCameraStarting ? "映像の開始を待っています" : "開始すると映像がここに表示されます")
                             .font(.caption2)
                     }
                     .foregroundStyle(AppTheme.muted)
@@ -336,8 +347,8 @@ struct ScannerScreen: View {
             if viewModel.expectedCode != nil, viewModel.inputSource == .camera {
                 Button(action: viewModel.toggleCamera) {
                     Label(
-                        viewModel.isCameraRunning ? "カメラを停止" : startButtonTitle,
-                        systemImage: viewModel.isCameraRunning ? "stop.fill" : "viewfinder"
+                        viewModel.isCameraRunning || viewModel.isCameraStarting ? "カメラを停止" : startButtonTitle,
+                        systemImage: viewModel.isCameraRunning || viewModel.isCameraStarting ? "stop.fill" : "viewfinder"
                     )
                     .font(.title3.weight(.bold))
                     .frame(maxWidth: .infinity)
@@ -445,8 +456,103 @@ struct ScannerScreen: View {
 
     private var isReading: Bool {
         viewModel.inputSource == .bluetooth
-            ? bluetoothScanner.isConnected
+            ? bluetoothScanner.isReadyForScanning
             : viewModel.isCameraRunning
+    }
+}
+
+private struct BluetoothScanGuide: View {
+    let expectedCode: ExpectedCode
+    let deviceName: String
+    let isConfiguring: Bool
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text(isConfiguring ? "読み取り対象を設定中" : "いま読み取るコード")
+                .font(.caption2.weight(.black))
+                .tracking(1.4)
+                .foregroundStyle(AppTheme.green)
+
+            codeSample
+
+            VStack(spacing: 5) {
+                Text(expectedCode == .qr ? "1  四角いQRコード" : "2  横長のCode 128")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Text(expectedCode == .qr
+                     ? "納品書兼現品票にある四角いコードへ向けます"
+                     : "現品票にある縦線が並んだ横長コードへ向けます")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.muted)
+                    .multilineTextAlignment(.center)
+            }
+
+            Label(
+                isConfiguring ? "設定が完了するまでお待ちください" : "トリガーを1回押して読み取る",
+                systemImage: isConfiguring ? "gearshape.2.fill" : "hand.tap.fill"
+            )
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(AppTheme.green)
+
+            Text(deviceName)
+                .font(.caption2)
+                .foregroundStyle(AppTheme.muted)
+                .lineLimit(1)
+        }
+        .padding(12)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityIdentifier(expectedCode == .qr ? "bluetoothQRGuide" : "bluetoothCode128Guide")
+    }
+
+    @ViewBuilder
+    private var codeSample: some View {
+        if expectedCode == .qr {
+            Image(systemName: "qrcode")
+                .font(.system(size: 62, weight: .regular))
+                .foregroundStyle(AppTheme.ink)
+                .frame(width: 112, height: 82)
+                .background(.white, in: RoundedRectangle(cornerRadius: 12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppTheme.line, lineWidth: 1)
+                }
+        } else {
+            Code128Sample()
+                .frame(width: 190, height: 58)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.white, in: RoundedRectangle(cornerRadius: 12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppTheme.line, lineWidth: 1)
+                }
+        }
+    }
+
+    private var accessibilityText: String {
+        if isConfiguring {
+            return "Bluetoothスキャナーの読み取り対象を設定中です"
+        }
+        return expectedCode == .qr
+            ? "ステップ1、納品書兼現品票の四角いQRコードを読み取ってください"
+            : "ステップ2、現品票の縦線が並んだ横長のCode 128を読み取ってください"
+    }
+}
+
+private struct Code128Sample: View {
+    private let barWidths: [CGFloat] = [3, 1, 2, 4, 1, 3, 2, 1, 4, 2, 3, 1, 2, 4, 1, 2, 3, 1, 4, 2, 1]
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(Array(barWidths.enumerated()), id: \.offset) { _, width in
+                Rectangle()
+                    .fill(AppTheme.ink)
+                    .frame(width: width)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityHidden(true)
     }
 }
 
