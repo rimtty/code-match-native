@@ -3,7 +3,7 @@ import XCTest
 final class CodeMatchUITests: XCTestCase {
     func testMockBluetoothScannerConnectsAndCompletesMatch() {
         let app = XCUIApplication()
-        app.launchArguments += ["-resetHistory", "-demoBluetoothConnected"]
+        app.launchArguments += ["-resetHistory", "-resetAutoAdvance", "-demoBluetoothConnected"]
         app.launch()
 
         app.buttons["startSessionButton"].tap()
@@ -34,6 +34,17 @@ final class CodeMatchUITests: XCTestCase {
         app.buttons["demoBluetoothQRButton"].tap()
         XCTAssertTrue(app.staticTexts["バーコードを読み取る"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["2  横長のCode 128"].waitForExistence(timeout: 3))
+
+        let rereadQRButton = app.buttons["rereadQRButton"]
+        let nextCodeButton = app.buttons["resetButton"]
+        XCTAssertTrue(rereadQRButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(nextCodeButton.exists)
+        XCTAssertLessThan(rereadQRButton.frame.maxY, nextCodeButton.frame.minY)
+        rereadQRButton.tap()
+        XCTAssertEqual(app.staticTexts["scannerTitle"].label, "QRコードを読み取る")
+
+        app.buttons["demoBluetoothQRButton"].tap()
+        XCTAssertTrue(app.staticTexts["バーコードを読み取る"].waitForExistence(timeout: 3))
         app.buttons["demoBluetoothBarcodeButton"].tap()
 
         XCTAssertTrue(app.staticTexts["一致しました"].waitForExistence(timeout: 5))
@@ -42,7 +53,7 @@ final class CodeMatchUITests: XCTestCase {
 
     func testSettingsDiscoversAndConnectsMockScanner() {
         let app = XCUIApplication()
-        app.launchArguments += ["-resetHistory", "-resetBluetoothScanner"]
+        app.launchArguments += ["-resetHistory", "-resetAutoAdvance", "-resetBluetoothScanner"]
         app.launch()
 
         app.tabBars.buttons["設定"].tap()
@@ -89,7 +100,7 @@ final class CodeMatchUITests: XCTestCase {
     /// 起動が最も時間を要するため、一致→重複→リセット→不一致を連続で確認する。
     func testScannerFlowMatchDuplicateResetAndMismatch() {
         let app = XCUIApplication()
-        app.launchArguments += ["-resetHistory", "-demoMatch"]
+        app.launchArguments += ["-resetHistory", "-resetAutoAdvance", "-demoMatch"]
         app.launch()
 
         // 起動引数による一致状態と件数
@@ -136,7 +147,7 @@ final class CodeMatchUITests: XCTestCase {
 
     func testSessionCanStartAndShowsMatchCount() {
         let app = XCUIApplication()
-        app.launchArguments += ["-resetHistory"]
+        app.launchArguments += ["-resetHistory", "-resetAutoAdvance"]
         app.launch()
 
         let startButton = app.buttons["startSessionButton"]
@@ -162,9 +173,23 @@ final class CodeMatchUITests: XCTestCase {
 
     func testSettingsTabAllowsSoundSelection() {
         let app = XCUIApplication()
+        app.launchArguments += ["-resetAutoAdvance"]
         app.launch()
 
         app.tabBars.buttons["設定"].tap()
+        let autoAdvanceToggle = app.switches["autoAdvanceSettingsToggle"]
+        XCTAssertTrue(autoAdvanceToggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(autoAdvanceToggle.value as? String, "0")
+
+        let autoAdvanceDelayPicker = app.segmentedControls["autoAdvanceDelayPicker"]
+        XCTAssertTrue(autoAdvanceDelayPicker.waitForExistence(timeout: 3))
+        XCTAssertTrue(autoAdvanceDelayPicker.buttons["3秒"].isSelected)
+        autoAdvanceDelayPicker.buttons["1秒"].tap()
+        XCTAssertTrue(autoAdvanceDelayPicker.buttons["1秒"].isSelected)
+        autoAdvanceDelayPicker.buttons["5秒"].tap()
+        XCTAssertTrue(autoAdvanceDelayPicker.buttons["5秒"].isSelected)
+        autoAdvanceDelayPicker.buttons["3秒"].tap()
+
         let volumeSlider = app.sliders["volumeSlider"]
         XCTAssertTrue(volumeSlider.waitForExistence(timeout: 5))
 
@@ -185,5 +210,42 @@ final class CodeMatchUITests: XCTestCase {
         app.buttons["successSound_posBeep"].tap()
         app.buttons["failureSound_alarm"].tap()
         XCTAssertTrue(app.buttons["ピッ（POSレジ風・標準）、選択中"].waitForExistence(timeout: 3))
+    }
+
+    func testSessionAutoAdvanceShowsCountdownAndStartsNextMatch() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-resetHistory", "-resetAutoAdvance"]
+        app.launch()
+
+        app.buttons["startSessionButton"].tap()
+
+        let autoAdvanceToggle = app.switches["sessionAutoAdvanceToggle"]
+        XCTAssertTrue(autoAdvanceToggle.waitForExistence(timeout: 3))
+        XCTAssertEqual(autoAdvanceToggle.value as? String, "0")
+        autoAdvanceToggle.tap()
+        XCTAssertEqual(autoAdvanceToggle.value as? String, "1")
+        XCTAssertTrue(app.buttons["sessionAutoAdvanceDelayMenu"].exists)
+
+        for _ in 0..<3 {
+            app.swipeUp()
+        }
+        let demoToggle = app.staticTexts["カメラなしで判定をテスト"]
+        XCTAssertTrue(demoToggle.waitForExistence(timeout: 3))
+        demoToggle.tap()
+        app.buttons["demoMatchButton"].tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["autoAdvanceCountdown"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["自動で次の照合へ進みます"].exists)
+
+        let scannerTitle = app.staticTexts["scannerTitle"]
+        let advancedToNextMatch = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", "QRコードを読み取る"),
+            object: scannerTitle
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [advancedToNextMatch], timeout: 5), .completed)
+        XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
+
+        autoAdvanceToggle.tap()
+        XCTAssertEqual(autoAdvanceToggle.value as? String, "0")
     }
 }

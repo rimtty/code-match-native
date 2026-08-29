@@ -7,8 +7,9 @@ struct RootTabView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     init(cameraScanner: CameraScanner = CameraScanner()) {
-        let store = HistoryStore()
         let arguments = ProcessInfo.processInfo.arguments
+        AutoAdvanceSettings.resetForUITestingIfRequested(arguments: arguments)
+        let store = HistoryStore()
         if arguments.contains("-demoMatch") || arguments.contains("-demoMismatch") {
             store.beginSession()
         }

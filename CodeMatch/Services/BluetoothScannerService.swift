@@ -59,13 +59,14 @@ enum BluetoothScannerConfigurationState: Equatable {
 
 enum BluetoothScannerSymbologyMode: String, Equatable {
     case unrestricted
+    case sessionCodes
+    // 旧バージョンが制限中に終了した場合の復旧互換用。新しい照合では使用しない。
     case qrOnly
     case code128Only
 
     init(expectedCode: ExpectedCode?) {
         switch expectedCode {
-        case .qr: self = .qrOnly
-        case .barcode: self = .code128Only
+        case .qr, .barcode: self = .sessionCodes
         case nil: self = .unrestricted
         }
     }
@@ -74,10 +75,12 @@ enum BluetoothScannerSymbologyMode: String, Equatable {
         switch self {
         case .unrestricted:
             "読取対象：接続前の設定へ復元済み"
+        case .sessionCodes:
+            "読取対象：QR・Code 128（照合セッション）"
         case .qrOnly:
-            "読取対象：QRのみ（照合ステップ1）"
+            "読取対象：QRのみ（旧設定から復旧中）"
         case .code128Only:
-            "読取対象：Code 128のみ（照合ステップ2）"
+            "読取対象：Code 128のみ（旧設定から復旧中）"
         }
     }
 }
@@ -108,6 +111,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     static let connectionTimeout: TimeInterval = 30
     static let automaticReconnectTimeout: TimeInterval = 8
     static let duplicateInterval: TimeInterval = 0.75
+    static let symbologyCommandTimeout: Duration = .seconds(3)
     static let settingsRetryLimit = 4
 
     @Published private(set) var devices: [BluetoothScannerDevice] = []
@@ -146,6 +150,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     private var symbologyConfigurationRevision = 0
     private var symbologyCommandInFlight = false
     private var symbologyCommandGeneration = 0
+    private var symbologyCommandTimeoutTask: Task<Void, Never>?
     private var manualDisconnectInProgress = false
 #endif
 
@@ -337,6 +342,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                     self.connectedScannerSettingsAreFresh = false
                     self.symbologyCommandGeneration += 1
                     self.symbologyCommandInFlight = false
+                    self.symbologyCommandTimeoutTask?.cancel()
+                    self.symbologyCommandTimeoutTask = nil
                     self.manualDisconnectInProgress = false
                     self.configurationState = .configuring
                     self.defaults.set(device.id, forKey: Self.preferredDeviceIDKey)
@@ -461,24 +468,34 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     }
 
     /// 現在の業務工程に合わせ、実機が報告した全バーコード種別から
-    /// 対象の1種類だけを有効にする。`nil`では接続前の設定を正確に復元する。
+    /// 照合中はQRとCode 128の両方だけを有効にする。工程間では設定を書き換えず、
+    /// 読み取り順序はアプリ側で検証する。`nil`では接続前の設定を正確に復元する。
     func setExpectedCode(_ expectedCode: ExpectedCode?) {
         let mode = BluetoothScannerSymbologyMode(expectedCode: expectedCode)
+        let previousExpectedCode = self.expectedCode
+        let previousMode = BluetoothScannerSymbologyMode(expectedCode: previousExpectedCode)
+        self.expectedCode = expectedCode
 
 #if INATECK_SDK
-        // 同じ要求のSDKコマンドが実行中ならrevisionを進めない。画面更新による
-        // 再通知で、正常なコマンドを不要に「旧要求」扱いしないため。
-        if self.expectedCode == expectedCode, symbologyCommandInFlight { return }
+        // QR→Code 128やQR読み直しは論理工程だけを更新する。同じsessionCodesを
+        // 適用中なら追加コマンドを積まず、実行中のGATT処理とトリガー入力を競合させない。
+        if previousMode == mode, symbologyCommandInFlight {
+            if previousExpectedCode != expectedCode {
+                trace("Logical scan step changed while scanner session mode is still configuring")
+            }
+            return
+        }
 #endif
 
-        // `configurationState = .ready`を受けた画面が同じ入力元を再選択しても、
-        // 既に適用済みの設定をSDKへ再送しない。再送すると
-        // configuring → ready → 再送の通知ループになる。
-        guard self.expectedCode != expectedCode
-                || !isReadyForScanning
-                || persistedSymbologyMode != mode else { return }
+        // 物理モードが同じなら論理工程が変わっても再送しない。照合中の
+        // setSettingInfoはセッション開始時の1回だけに限定する。
+        guard !isReadyForScanning || persistedSymbologyMode != mode else {
+            if previousExpectedCode != expectedCode, previousMode == mode {
+                trace("Logical scan step changed; scanner remains in \(mode.rawValue)")
+            }
+            return
+        }
 
-        self.expectedCode = expectedCode
 #if INATECK_SDK
         symbologyConfigurationRevision += 1
         guard connectedSDKDevice != nil else {
@@ -707,6 +724,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         connectedScannerSettingsAreFresh = false
         symbologyCommandGeneration += 1
         symbologyCommandInFlight = false
+        symbologyCommandTimeoutTask?.cancel()
+        symbologyCommandTimeoutTask = nil
         configurationState = .unavailable
         if manualDisconnectInProgress {
             state = .idle
@@ -1076,10 +1095,20 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         symbologyCommandGeneration += 1
         let commandGeneration = symbologyCommandGeneration
         symbologyCommandInFlight = true
+        trace(
+            "Restoring original scanner mode "
+                + "(generation \(commandGeneration), \(snapshot.values.count) barcode types)"
+        )
+        scheduleBaselineRestoreTimeout(
+            generation: commandGeneration,
+            sdkDevice: sdkDevice
+        )
         sdkDevice.messageManager.setSettingInfo(with: command) { [weak self] result in
             Task { @MainActor in
                 guard let self,
                       commandGeneration == self.symbologyCommandGeneration else { return }
+                self.symbologyCommandTimeoutTask?.cancel()
+                self.symbologyCommandTimeoutTask = nil
                 self.symbologyCommandInFlight = false
                 switch result {
                 case .success:
@@ -1103,6 +1132,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     }
 
     private func performManualDisconnect(_ sdkDevice: BLEDevice) {
+        symbologyCommandTimeoutTask?.cancel()
+        symbologyCommandTimeoutTask = nil
         manualDisconnectInProgress = true
         cancelSDKOutputConfiguration()
         sdkDevice.disconnect { [weak self] result in
@@ -1115,6 +1146,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                 self.connectedScannerSettingsAreFresh = false
                 self.symbologyCommandGeneration += 1
                 self.symbologyCommandInFlight = false
+                self.symbologyCommandTimeoutTask?.cancel()
+                self.symbologyCommandTimeoutTask = nil
                 self.configurationState = .unavailable
                 self.manualDisconnectInProgress = false
                 switch result {
@@ -1196,11 +1229,22 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         let commandGeneration = symbologyCommandGeneration
         symbologyCommandInFlight = true
         let requestedAt = ProcessInfo.processInfo.systemUptime
+        trace(
+            "Applying scanner mode \(mode.rawValue) "
+                + "(generation \(commandGeneration), \(values.count) barcode types)"
+        )
+        scheduleSymbologyCommandTimeout(
+            generation: commandGeneration,
+            sdkDevice: sdkDevice,
+            mode: mode
+        )
         sdkDevice.messageManager.setSettingInfo(with: command) { [weak self] result in
             let callbackDelay = ProcessInfo.processInfo.systemUptime - requestedAt
             Task { @MainActor in
                 guard let self,
                       commandGeneration == self.symbologyCommandGeneration else { return }
+                self.symbologyCommandTimeoutTask?.cancel()
+                self.symbologyCommandTimeoutTask = nil
                 self.symbologyCommandInFlight = false
                 guard self.connectedSDKDevice?.uuid == sdkDevice.uuid else { return }
                 if self.manualDisconnectInProgress {
@@ -1243,6 +1287,107 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             "[BluetoothScanner] Symbology SDK request returned in "
                 + "\(String(format: "%.3f", dispatchDuration))s"
         )
+    }
+
+    /// SDKが設定完了を返さない場合は新しいコマンドを重ねず、接続を閉じて
+    /// 保存済みスナップショットからの再同期へ移る。遅れて届く旧コールバックは
+    /// generation不一致で破棄する。
+    private func scheduleSymbologyCommandTimeout(
+        generation: Int,
+        sdkDevice: BLEDevice,
+        mode: BluetoothScannerSymbologyMode
+    ) {
+        symbologyCommandTimeoutTask?.cancel()
+        symbologyCommandTimeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: Self.symbologyCommandTimeout)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled,
+                  let self,
+                  generation == self.symbologyCommandGeneration,
+                  self.symbologyCommandInFlight,
+                  self.connectedSDKDevice?.uuid == sdkDevice.uuid else { return }
+
+            self.symbologyCommandTimeoutTask = nil
+            self.symbologyCommandGeneration += 1
+            self.symbologyCommandInFlight = false
+
+            if self.manualDisconnectInProgress {
+                self.configurationState = .unavailable
+                self.trace(
+                    "Original scanner mode restore timed out during disconnect; "
+                        + "recovery snapshot retained"
+                )
+                self.performManualDisconnect(sdkDevice)
+                return
+            }
+
+            self.cancelSDKOutputConfiguration()
+            self.connectedSDKDevice = nil
+            self.sdkOutputConfigurationCompleted = false
+            self.connectedScannerSettings = nil
+            self.connectedSymbologyValues = nil
+            self.connectedScannerSettingsAreFresh = false
+            self.configurationState = .unavailable
+            self.state = .failed(
+                "スキャナーの読み取り設定通信が完了しませんでした。安全のためカメラへ切り替え、再接続します。"
+            )
+            self.trace(
+                "Scanner mode \(mode.rawValue) timed out "
+                    + "(generation \(generation)); reconnecting"
+            )
+
+            sdkDevice.disconnect { [weak self] result in
+                Task { @MainActor in
+                    guard let self else { return }
+                    switch result {
+                    case .success:
+                        self.trace("Scanner link closed after symbology timeout")
+                    case .failure(let error):
+                        self.trace(
+                            "Scanner link close after symbology timeout failed: "
+                                + error.localizedDescription
+                        )
+                    }
+                    // 切断完了前に再接続を開始すると、同じSDKデバイス上で
+                    // 古いリンクと新しい設定取得が競合するため、必ず完了後に再試行する。
+                    self.scheduleAutomaticReconnect(reason: "symbology command timeout")
+                }
+            }
+        }
+    }
+
+    /// 終了時の元設定復元もSDK応答を無期限には待たない。タイムアウト時は
+    /// スナップショットを消さずに切断し、次回接続時の復旧へ引き継ぐ。
+    private func scheduleBaselineRestoreTimeout(
+        generation: Int,
+        sdkDevice: BLEDevice
+    ) {
+        symbologyCommandTimeoutTask?.cancel()
+        symbologyCommandTimeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: Self.symbologyCommandTimeout)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled,
+                  let self,
+                  generation == self.symbologyCommandGeneration,
+                  self.symbologyCommandInFlight,
+                  self.connectedSDKDevice?.uuid == sdkDevice.uuid else { return }
+
+            self.symbologyCommandTimeoutTask = nil
+            self.symbologyCommandGeneration += 1
+            self.symbologyCommandInFlight = false
+            self.configurationState = .unavailable
+            self.trace(
+                "Original scanner mode restore timed out "
+                    + "(generation \(generation)); recovery snapshot retained"
+            )
+            self.performManualDisconnect(sdkDevice)
+        }
     }
 
     /// 旧版はQR／Code 128の制限状態だけを記録し、変更前スナップショットを
@@ -1348,6 +1493,11 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         switch mode {
         case .unrestricted:
             return original
+        case .sessionCodes:
+            var restricted = original.mapValues { _ in 0 }
+            restricted["qrcode_on"] = 1
+            restricted["code128_on"] = 1
+            return restricted
         case .qrOnly, .code128Only:
             var restricted = original.mapValues { _ in 0 }
             restricted[mode == .qrOnly ? "qrcode_on" : "code128_on"] = 1

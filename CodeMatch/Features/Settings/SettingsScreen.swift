@@ -50,6 +50,8 @@ struct SettingsScreen: View {
     @AppStorage(FeedbackSettings.volumeKey) private var volume = FeedbackSettings.defaultVolume
     @AppStorage(FeedbackSettings.successSoundKey) private var successSound = SuccessSound.posBeep.rawValue
     @AppStorage(FeedbackSettings.failureSoundKey) private var failureSound = FailureSound.buzzer.rawValue
+    @AppStorage(AutoAdvanceSettings.enabledKey) private var autoAdvanceEnabled = AutoAdvanceSettings.defaultEnabled
+    @AppStorage(AutoAdvanceSettings.delaySecondsKey) private var autoAdvanceDelaySeconds = AutoAdvanceSettings.defaultDelay.rawValue
     @State private var player = FeedbackPlayer()
     @State private var showsScannerSetupGuide = false
 
@@ -70,6 +72,7 @@ struct SettingsScreen: View {
                     .padding(.horizontal, 4)
 
                     bluetoothScannerCard
+                    autoAdvanceCard
                     volumeCard
                     soundCard(
                         title: "成功音",
@@ -347,6 +350,55 @@ struct SettingsScreen: View {
         case .failed, .unavailable: AppTheme.red
         default: AppTheme.muted
         }
+    }
+
+    private var autoAdvanceCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Toggle(isOn: $autoAdvanceEnabled) {
+                Label {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("成功時の自動「次の照合」")
+                            .font(.headline)
+                            .foregroundStyle(AppTheme.ink)
+                        Text("一致結果を確認後、自動で次のQR読み取りへ進みます")
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.muted)
+                    }
+                } icon: {
+                    Image(systemName: "forward.end.fill")
+                        .foregroundStyle(AppTheme.green)
+                }
+            }
+            .tint(AppTheme.green)
+            .accessibilityIdentifier("autoAdvanceSettingsToggle")
+
+            VStack(alignment: .leading, spacing: 9) {
+                Text("カウントダウン")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.muted)
+
+                Picker("自動で進むまでの時間", selection: $autoAdvanceDelaySeconds) {
+                    ForEach(AutoAdvanceDelay.allCases) { delay in
+                        Text(delay.label).tag(delay.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("autoAdvanceDelayPicker")
+            }
+
+            Label(
+                autoAdvanceEnabled
+                    ? "一致画面に残り秒数を表示します。手動の「次の照合」もいつでも使えます。"
+                    : "初期設定はOFFです。ONにしても不一致時は自動で進みません。",
+                systemImage: autoAdvanceEnabled ? "timer" : "pause.circle"
+            )
+            .font(.caption)
+            .foregroundStyle(AppTheme.muted)
+            .lineSpacing(3)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .scannerCard()
     }
 
     private var volumeCard: some View {

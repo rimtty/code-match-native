@@ -1,5 +1,39 @@
 import AVFoundation
 
+enum AutoAdvanceDelay: Int, CaseIterable, Identifiable {
+    case oneSecond = 1
+    case threeSeconds = 3
+    case fiveSeconds = 5
+
+    var id: Int { rawValue }
+    var label: String { "\(rawValue)秒" }
+}
+
+/// 一致結果の表示後に次の照合へ進む動作を、設定画面と照合画面で共有する。
+enum AutoAdvanceSettings {
+    static let enabledKey = "autoAdvanceOnMatch"
+    static let delaySecondsKey = "autoAdvanceDelaySeconds"
+    static let defaultEnabled = false
+    static let defaultDelay = AutoAdvanceDelay.threeSeconds
+
+    static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: enabledKey) as? Bool ?? defaultEnabled
+    }
+
+    static func delay(in defaults: UserDefaults = .standard) -> AutoAdvanceDelay {
+        AutoAdvanceDelay(rawValue: defaults.integer(forKey: delaySecondsKey)) ?? defaultDelay
+    }
+
+    static func resetForUITestingIfRequested(
+        arguments: [String],
+        defaults: UserDefaults = .standard
+    ) {
+        guard arguments.contains("-resetAutoAdvance") else { return }
+        defaults.removeObject(forKey: enabledKey)
+        defaults.removeObject(forKey: delaySecondsKey)
+    }
+}
+
 enum ScanStep: Equatable {
     case qr
     case barcode

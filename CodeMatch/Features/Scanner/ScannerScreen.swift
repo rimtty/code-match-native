@@ -8,6 +8,8 @@ struct ScannerScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var showsDemoTools = false
     @State private var showsEndConfirmation = false
+    @AppStorage(AutoAdvanceSettings.enabledKey) private var autoAdvanceEnabled = AutoAdvanceSettings.defaultEnabled
+    @AppStorage(AutoAdvanceSettings.delaySecondsKey) private var autoAdvanceDelaySeconds = AutoAdvanceSettings.defaultDelay.rawValue
 
     init(
         historyStore: HistoryStore,
@@ -70,7 +72,18 @@ struct ScannerScreen: View {
         .onChange(of: bluetoothScanner.configurationState) { _, state in
             viewModel.handleBluetoothConfigurationState(state)
         }
+        .onChange(of: autoAdvanceEnabled) { _, isEnabled in
+            viewModel.setAutoAdvanceEnabled(isEnabled)
+        }
+        .onChange(of: autoAdvanceDelaySeconds) { _, seconds in
+            guard let delay = AutoAdvanceDelay(rawValue: seconds) else { return }
+            viewModel.setAutoAdvanceDelay(delay)
+        }
         .onAppear {
+            viewModel.setAutoAdvanceEnabled(autoAdvanceEnabled)
+            if let delay = AutoAdvanceDelay(rawValue: autoAdvanceDelaySeconds) {
+                viewModel.setAutoAdvanceDelay(delay)
+            }
             // 画面表示前から接続済みの場合にもBluetoothを初期入力として反映する。
             viewModel.handleBluetoothConnectionState(bluetoothScanner.state)
             viewModel.handleBluetoothConfigurationState(bluetoothScanner.configurationState)
@@ -100,34 +113,83 @@ struct ScannerScreen: View {
     }
 
     private var sessionStatusBar: some View {
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(sessionTitle)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.white.opacity(0.66))
-                    .lineLimit(1)
-                Text("\(matchedCount)件照合済み")
-                    .font(.title3.weight(.bold))
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(sessionTitle)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.66))
+                        .lineLimit(1)
+                    Text("\(matchedCount)件照合済み")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                        .accessibilityIdentifier("sessionMatchCount")
+                }
+
+                Spacer()
+
+                Button(viewModel.isEndingSession ? "終了中…" : "終了") {
+                    showsEndConfirmation = true
+                }
+                .disabled(viewModel.isEndingSession)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 9)
+                .background(AppTheme.lime, in: Capsule())
+                .accessibilityIdentifier("endSessionButton")
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 13)
+
+            Divider()
+                .overlay(.white.opacity(0.14))
+
+            HStack(spacing: 10) {
+                Label("成功時 自動で次へ", systemImage: "forward.end.fill")
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(.white)
-                    .contentTransition(.numericText())
-                    .accessibilityIdentifier("sessionMatchCount")
-            }
+                    .lineLimit(1)
 
-            Spacer()
+                Spacer(minLength: 4)
 
-            Button(viewModel.isEndingSession ? "終了中…" : "終了") {
-                showsEndConfirmation = true
+                if autoAdvanceEnabled {
+                    Menu {
+                        ForEach(AutoAdvanceDelay.allCases) { delay in
+                            Button {
+                                autoAdvanceDelaySeconds = delay.rawValue
+                            } label: {
+                                if autoAdvanceDelaySeconds == delay.rawValue {
+                                    Label(delay.label, systemImage: "checkmark")
+                                } else {
+                                    Text(delay.label)
+                                }
+                            }
+                        }
+                    } label: {
+                        Text("\(autoAdvanceDelaySeconds)秒")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.lime)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(.white.opacity(0.10), in: Capsule())
+                    }
+                    .accessibilityIdentifier("sessionAutoAdvanceDelayMenu")
+                } else {
+                    Text("OFF")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.56))
+                }
+
+                Toggle("成功時に自動で次の照合へ進む", isOn: $autoAdvanceEnabled)
+                    .labelsHidden()
+                    .tint(AppTheme.lime)
+                    .accessibilityIdentifier("sessionAutoAdvanceToggle")
             }
-            .disabled(viewModel.isEndingSession)
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(AppTheme.ink)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 18)
             .padding(.vertical, 9)
-            .background(AppTheme.lime, in: Capsule())
-            .accessibilityIdentifier("endSessionButton")
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 13)
         .background(AppTheme.ink)
         .accessibilityElement(children: .contain)
     }
@@ -378,7 +440,28 @@ struct ScannerScreen: View {
             }
 
             if viewModel.step.progress != 3, !viewModel.qrValue.isEmpty {
-                Button("次のコードを照合", action: viewModel.reset)
+                Button {
+                    viewModel.rereadQR()
+                } label: {
+                    Label("QRを読み取りなおす", systemImage: "arrow.counterclockwise")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 56)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(AppTheme.green)
+                .background(
+                    AppTheme.green.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 16)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(AppTheme.green.opacity(0.3), lineWidth: 1)
+                }
+                .accessibilityIdentifier("rereadQRButton")
+
+                Button("次のコードを照合") { viewModel.reset() }
                     .font(.headline)
                     .foregroundStyle(AppTheme.ink)
                     .frame(maxWidth: .infinity)
@@ -391,17 +474,61 @@ struct ScannerScreen: View {
     }
 
     private var nextActionBar: some View {
-        Button(action: viewModel.reset) {
-            Label("次のコードを照合", systemImage: "qrcode.viewfinder")
-                .font(.title3.weight(.bold))
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 78)
-                .contentShape(Rectangle())
+        VStack(spacing: 10) {
+            if let remaining = viewModel.autoAdvanceSecondsRemaining {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .stroke(AppTheme.green.opacity(0.18), lineWidth: 5)
+                        Circle()
+                            .trim(
+                                from: 0,
+                                to: Double(remaining) / Double(viewModel.autoAdvanceDelay.rawValue)
+                            )
+                            .stroke(AppTheme.green, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                        Text("\(remaining)")
+                            .font(.system(.title2, design: .rounded, weight: .black))
+                            .foregroundStyle(AppTheme.green)
+                            .contentTransition(.numericText(countsDown: true))
+                    }
+                    .frame(width: 52, height: 52)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("自動で次の照合へ進みます")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(AppTheme.ink)
+                        Text("あと\(remaining)秒・下のボタンで今すぐ進めます")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.muted)
+                            .contentTransition(.numericText(countsDown: true))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(12)
+                .background(AppTheme.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("自動で次の照合へ進みます。あと\(remaining)秒")
+                .accessibilityIdentifier("autoAdvanceCountdown")
+            }
+
+            Button {
+                viewModel.reset()
+            } label: {
+                Label(
+                    viewModel.autoAdvanceSecondsRemaining == nil ? "次のコードを照合" : "今すぐ次の照合へ",
+                    systemImage: "qrcode.viewfinder"
+                )
+                    .font(.title3.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 70)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .background(AppTheme.green, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .accessibilityIdentifier("resetButton")
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(.white)
-        .background(AppTheme.green, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .accessibilityIdentifier("resetButton")
         .padding(.horizontal, 18)
         .padding(.top, 12)
         .padding(.bottom, 12)

@@ -223,6 +223,24 @@ final class CodeMatcherTests: XCTestCase {
     }
 }
 
+final class AutoAdvanceSettingsTests: XCTestCase {
+    func testDefaultsAreOffWithAThreeSecondCountdown() {
+        let suiteName = "AutoAdvanceSettingsTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertFalse(AutoAdvanceSettings.isEnabled(in: defaults))
+        XCTAssertEqual(AutoAdvanceSettings.delay(in: defaults), .threeSeconds)
+
+        defaults.set(true, forKey: AutoAdvanceSettings.enabledKey)
+        defaults.set(5, forKey: AutoAdvanceSettings.delaySecondsKey)
+
+        XCTAssertTrue(AutoAdvanceSettings.isEnabled(in: defaults))
+        XCTAssertEqual(AutoAdvanceSettings.delay(in: defaults), .fiveSeconds)
+        XCTAssertEqual(AutoAdvanceDelay.allCases.map(\.rawValue), [1, 3, 5])
+    }
+}
+
 @MainActor
 final class BluetoothScannerServiceTests: XCTestCase {
     func testInitialGATTSetupCodesUseTheVerifiedInateckSequence() {
@@ -233,21 +251,28 @@ final class BluetoothScannerServiceTests: XCTestCase {
     }
 
     func testSymbologyModeStatusTextExplainsActiveRestriction() {
+        XCTAssertEqual(BluetoothScannerSymbologyMode(expectedCode: .qr), .sessionCodes)
+        XCTAssertEqual(BluetoothScannerSymbologyMode(expectedCode: .barcode), .sessionCodes)
+        XCTAssertEqual(BluetoothScannerSymbologyMode(expectedCode: nil), .unrestricted)
         XCTAssertEqual(
             BluetoothScannerSymbologyMode.unrestricted.statusText,
             "読取対象：接続前の設定へ復元済み"
         )
         XCTAssertEqual(
+            BluetoothScannerSymbologyMode.sessionCodes.statusText,
+            "読取対象：QR・Code 128（照合セッション）"
+        )
+        XCTAssertEqual(
             BluetoothScannerSymbologyMode.qrOnly.statusText,
-            "読取対象：QRのみ（照合ステップ1）"
+            "読取対象：QRのみ（旧設定から復旧中）"
         )
         XCTAssertEqual(
             BluetoothScannerSymbologyMode.code128Only.statusText,
-            "読取対象：Code 128のみ（照合ステップ2）"
+            "読取対象：Code 128のみ（旧設定から復旧中）"
         )
     }
 
-    func testRepeatedExpectedCodeDoesNotReconfigureReadyScanner() {
+    func testLogicalStepChangesDoNotReconfigureReadySessionMode() {
         let defaults = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let service = BluetoothScannerService(defaults: defaults)
@@ -260,10 +285,15 @@ final class BluetoothScannerServiceTests: XCTestCase {
             .sink { updates.append($0) }
 
         service.setExpectedCode(.qr)
+        XCTAssertEqual(updates, [.ready])
+        updates.removeAll()
+
+        service.setExpectedCode(.barcode)
         service.setExpectedCode(.qr)
 
-        XCTAssertEqual(updates, [.ready])
-        XCTAssertEqual(service.persistedSymbologyMode, .qrOnly)
+        XCTAssertTrue(updates.isEmpty)
+        XCTAssertEqual(service.expectedCode, .qr)
+        XCTAssertEqual(service.persistedSymbologyMode, .sessionCodes)
         withExtendedLifetime(observation) {}
     }
 
@@ -296,7 +326,7 @@ final class BluetoothScannerServiceTests: XCTestCase {
 
         let restricted = try XCTUnwrap(
             BluetoothScannerService.symbologySettingValues(
-                for: .code128Only,
+                for: .sessionCodes,
                 original: original
             )
         )
@@ -304,7 +334,7 @@ final class BluetoothScannerServiceTests: XCTestCase {
             restricted,
             [
                 "code39_on": 0,
-                "qrcode_on": 0,
+                "qrcode_on": 1,
                 "code128_on": 1,
                 "ean_13_on": 0,
                 "USPS_On": 0,
@@ -324,7 +354,7 @@ final class BluetoothScannerServiceTests: XCTestCase {
         )
 
         XCTAssertEqual(items.first(where: { $0["name"] == "qrcode_on" })?["area"], "42")
-        XCTAssertEqual(items.first(where: { $0["name"] == "qrcode_on" })?["value"], "0")
+        XCTAssertEqual(items.first(where: { $0["name"] == "qrcode_on" })?["value"], "1")
         XCTAssertEqual(items.first(where: { $0["name"] == "code128_on" })?["area"], "17")
         XCTAssertEqual(items.first(where: { $0["name"] == "code128_on" })?["value"], "1")
         XCTAssertEqual(items.first(where: { $0["name"] == "code39_on" })?["value"], "0")
@@ -355,12 +385,13 @@ final class BluetoothScannerServiceTests: XCTestCase {
         )
         let restricted = try XCTUnwrap(
             BluetoothScannerService.symbologySettingValues(
-                for: .code128Only,
+                for: .sessionCodes,
                 original: original
             )
         )
-        XCTAssertEqual(restricted.values.filter { $0 == 1 }.count, 1)
+        XCTAssertEqual(restricted.values.filter { $0 == 1 }.count, 2)
         XCTAssertEqual(restricted["code128_on"], 1)
+        XCTAssertEqual(restricted["qrcode_on"], 1)
 
         let restoreCommand = try XCTUnwrap(
             BluetoothScannerService.symbologySettingCommand(
@@ -488,7 +519,7 @@ final class BluetoothScannerServiceTests: XCTestCase {
         firstLaunch.connect(firstLaunch.devices[0])
         firstLaunch.setExpectedCode(.barcode)
 
-        XCTAssertEqual(firstLaunch.persistedSymbologyMode, .code128Only)
+        XCTAssertEqual(firstLaunch.persistedSymbologyMode, .sessionCodes)
         XCTAssertEqual(
             firstLaunch.persistedSymbologySnapshot?.values,
             [
@@ -500,10 +531,47 @@ final class BluetoothScannerServiceTests: XCTestCase {
             ]
         )
 
-        // Code 128待ちでプロセスが終了した状況を、同じUserDefaultsを使う
+        // 照合セッション中にプロセスが終了した状況を、同じUserDefaultsを使う
         // 新しいサービスインスタンスで再現する。照合画面がなくても再接続時に
         // 保存した照合開始前の全バーコード設定へ戻す。
         let relaunched = BluetoothScannerService(defaults: defaults)
+        relaunched.reconnectPreferredDevice()
+
+        XCTAssertTrue(relaunched.isReadyForScanning)
+        XCTAssertNil(relaunched.expectedCode)
+        XCTAssertEqual(relaunched.persistedSymbologyMode, .unrestricted)
+        XCTAssertNil(relaunched.persistedSymbologySnapshot)
+    }
+
+    func testRelaunchRecoversLegacyCode128OnlyStateFromStuckBuild() throws {
+        let defaults = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let deviceID = "SIMULATOR-BCST-47"
+        let snapshot = BluetoothScannerSymbologySnapshot(
+            deviceID: deviceID,
+            values: [
+                "code39_on": 1,
+                "code128_on": 1,
+                "ean_13_on": 1,
+                "qrcode_on": 1,
+                "datamatrix_on": 1
+            ]
+        )
+        defaults.set(deviceID, forKey: BluetoothScannerService.preferredDeviceIDKey)
+        defaults.set(deviceID, forKey: BluetoothScannerService.lastKnownDeviceIDKey)
+        defaults.set("BCST-47 (Simulator)", forKey: BluetoothScannerService.lastKnownDeviceNameKey)
+        defaults.set(
+            BluetoothScannerSymbologyMode.code128Only.rawValue,
+            forKey: BluetoothScannerService.symbologyRecoveryModeKey
+        )
+        defaults.set(
+            try JSONEncoder().encode(snapshot),
+            forKey: BluetoothScannerService.symbologySnapshotKey
+        )
+
+        let relaunched = BluetoothScannerService(defaults: defaults)
+        XCTAssertEqual(relaunched.persistedSymbologyMode, .code128Only)
+
         relaunched.reconnectPreferredDevice()
 
         XCTAssertTrue(relaunched.isReadyForScanning)
@@ -520,7 +588,7 @@ final class BluetoothScannerServiceTests: XCTestCase {
         service.connect(service.devices[0])
         service.setExpectedCode(.qr)
 
-        XCTAssertEqual(service.persistedSymbologyMode, .qrOnly)
+        XCTAssertEqual(service.persistedSymbologyMode, .sessionCodes)
 
         service.disconnect()
 
@@ -645,6 +713,95 @@ final class BluetoothScannerServiceTests: XCTestCase {
 
 @MainActor
 final class BluetoothScannerFlowTests: XCTestCase {
+    func testSuccessfulMatchCountsDownAndAutomaticallyStartsNextScan() async {
+        let context = makeContext(
+            autoAdvanceEnabled: true,
+            autoAdvanceTickDuration: .milliseconds(40)
+        )
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        let countdownUpdated = expectation(description: "countdown updates visibly")
+        let nextScanStarted = expectation(description: "next QR scan starts")
+        let countdownObservation = context.viewModel.$autoAdvanceSecondsRemaining
+            .dropFirst()
+            .sink { remaining in
+                if remaining == 2 { countdownUpdated.fulfill() }
+            }
+        let stepObservation = context.viewModel.$step
+            .dropFirst()
+            .sink { step in
+                if step == .qr { nextScanStarted.fulfill() }
+            }
+
+        context.viewModel.runDemo(shouldMatch: true)
+
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.viewModel.autoAdvanceSecondsRemaining, 3)
+
+        await fulfillment(of: [countdownUpdated, nextScanStarted], timeout: 2, enforceOrder: true)
+        XCTAssertEqual(context.viewModel.step, .qr)
+        XCTAssertNil(context.viewModel.autoAdvanceSecondsRemaining)
+        XCTAssertEqual(context.service.expectedCode, .qr)
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+        withExtendedLifetime((countdownObservation, stepObservation)) {}
+    }
+
+    func testTurningAutoAdvanceOffCancelsCountdownAndKeepsResultVisible() async {
+        let context = makeContext(
+            autoAdvanceEnabled: true,
+            autoAdvanceTickDuration: .milliseconds(30)
+        )
+        defer { context.cleanup() }
+
+        context.viewModel.runDemo(shouldMatch: true)
+        XCTAssertEqual(context.viewModel.autoAdvanceSecondsRemaining, 3)
+
+        context.viewModel.setAutoAdvanceEnabled(false)
+        try? await Task.sleep(for: .milliseconds(120))
+
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertNil(context.viewModel.autoAdvanceSecondsRemaining)
+    }
+
+    func testChangingCountdownToFiveSecondsRestartsVisibleCount() {
+        let context = makeContext(autoAdvanceEnabled: true)
+        defer { context.cleanup() }
+
+        context.viewModel.runDemo(shouldMatch: true)
+        XCTAssertEqual(context.viewModel.autoAdvanceSecondsRemaining, 3)
+
+        context.viewModel.setAutoAdvanceDelay(.fiveSeconds)
+
+        XCTAssertEqual(context.viewModel.autoAdvanceDelay, .fiveSeconds)
+        XCTAssertEqual(context.viewModel.autoAdvanceSecondsRemaining, 5)
+        context.viewModel.setAutoAdvanceEnabled(false)
+    }
+
+    func testChangingCountdownToOneSecondRestartsVisibleCount() {
+        let context = makeContext(autoAdvanceEnabled: true)
+        defer { context.cleanup() }
+
+        context.viewModel.runDemo(shouldMatch: true)
+        context.viewModel.setAutoAdvanceDelay(.oneSecond)
+
+        XCTAssertEqual(context.viewModel.autoAdvanceDelay, .oneSecond)
+        XCTAssertEqual(context.viewModel.autoAdvanceSecondsRemaining, 1)
+        context.viewModel.setAutoAdvanceEnabled(false)
+    }
+
+    func testMismatchNeverStartsAutoAdvanceCountdown() {
+        let context = makeContext(autoAdvanceEnabled: true)
+        defer { context.cleanup() }
+
+        context.viewModel.runDemo(shouldMatch: false)
+
+        XCTAssertEqual(context.viewModel.step, .result(.mismatch))
+        XCTAssertNil(context.viewModel.autoAdvanceSecondsRemaining)
+    }
+
     func testBluetoothRejectsCode128BeforeQRWithoutAdvancing() async {
         let context = makeContext()
         defer { context.cleanup() }
@@ -668,7 +825,8 @@ final class BluetoothScannerFlowTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(300))
         context.service.simulateScan(ScannerViewModel.sampleBarcodePayload)
         XCTAssertEqual(context.viewModel.step, .result(.match))
-        XCTAssertNil(context.service.expectedCode)
+        XCTAssertEqual(context.service.expectedCode, .barcode)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .sessionCodes)
     }
 
     func testBluetoothRejectsQRWhileWaitingForCode128() async {
@@ -686,6 +844,30 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertEqual(context.viewModel.step, .barcode)
         XCTAssertTrue(context.viewModel.barcodeValue.isEmpty)
         XCTAssertTrue(context.viewModel.message.contains("Code 128"))
+        XCTAssertTrue(context.service.isReadyForScanning)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .sessionCodes)
+    }
+
+    func testRereadQRClearsWrongQRAndReturnsBluetoothToQRWaiting() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.service.expectedCode, .barcode)
+
+        context.viewModel.rereadQR()
+
+        XCTAssertEqual(context.viewModel.step, .qr)
+        XCTAssertTrue(context.viewModel.qrValue.isEmpty)
+        XCTAssertTrue(context.viewModel.barcodeValue.isEmpty)
+        XCTAssertEqual(context.service.expectedCode, .qr)
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+        XCTAssertTrue(context.viewModel.message.contains("別の"))
     }
 
     func testBluetoothQRThenBarcodeCompletesMatchImmediately() async {
@@ -694,9 +876,14 @@ final class BluetoothScannerFlowTests: XCTestCase {
         context.service.startDiscovery()
         context.service.connect(context.service.devices[0])
         context.viewModel.handleBluetoothConnectionState(context.service.state)
+        var configurationUpdates: [BluetoothScannerConfigurationState] = []
+        let configurationObservation = context.service.$configurationState
+            .dropFirst()
+            .sink { configurationUpdates.append($0) }
 
         XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
         XCTAssertFalse(context.viewModel.isCameraRunning)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .sessionCodes)
 
         context.service.simulateScan(ScannerViewModel.sampleQRPayload + "\r\n")
         XCTAssertEqual(context.viewModel.step, .barcode)
@@ -708,11 +895,16 @@ final class BluetoothScannerFlowTests: XCTestCase {
         context.service.simulateScan(ScannerViewModel.sampleQRPayload + "\r\n")
         XCTAssertEqual(context.viewModel.step, .barcode)
         XCTAssertTrue(context.viewModel.barcodeValue.isEmpty)
+        XCTAssertTrue(configurationUpdates.isEmpty)
+        XCTAssertTrue(context.service.isReadyForScanning)
 
         context.service.simulateScan(ScannerViewModel.sampleBarcodePayload + "\r")
 
         XCTAssertEqual(context.viewModel.step, .result(.match))
         XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .sessionCodes)
+        XCTAssertTrue(configurationUpdates.isEmpty)
+        withExtendedLifetime(configurationObservation) {}
     }
 
     func testConnectedBluetoothBecomesDefaultButManualCameraSelectionIsPreserved() {
@@ -758,7 +950,7 @@ final class BluetoothScannerFlowTests: XCTestCase {
 
         XCTAssertEqual(context.viewModel.step, .barcode)
         XCTAssertEqual(context.service.expectedCode, .barcode)
-        XCTAssertEqual(context.service.persistedSymbologyMode, .code128Only)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .sessionCodes)
 
         context.viewModel.prepareForBackground()
 
@@ -770,7 +962,7 @@ final class BluetoothScannerFlowTests: XCTestCase {
 
         XCTAssertEqual(context.viewModel.step, .barcode)
         XCTAssertEqual(context.service.expectedCode, .barcode)
-        XCTAssertEqual(context.service.persistedSymbologyMode, .code128Only)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .sessionCodes)
     }
 
     func testEndingBluetoothSessionRestoresUnrestrictedBaseline() async {
@@ -781,7 +973,7 @@ final class BluetoothScannerFlowTests: XCTestCase {
         context.viewModel.handleBluetoothConnectionState(context.service.state)
 
         XCTAssertEqual(context.service.expectedCode, .qr)
-        XCTAssertEqual(context.service.persistedSymbologyMode, .qrOnly)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .sessionCodes)
 
         let completed = expectation(description: "Bluetooth session ended")
         context.viewModel.prepareForSessionEnd {
@@ -880,7 +1072,12 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertEqual(context.viewModel.qrValue, ScannerViewModel.sampleQRPayload)
     }
 
-    private func makeContext(camera: CameraScanner = CameraScanner()) -> (
+    private func makeContext(
+        camera: CameraScanner = CameraScanner(),
+        autoAdvanceEnabled: Bool = false,
+        autoAdvanceDelay: AutoAdvanceDelay = .threeSeconds,
+        autoAdvanceTickDuration: Duration = .seconds(1)
+    ) -> (
         service: BluetoothScannerService,
         viewModel: ScannerViewModel,
         store: HistoryStore,
@@ -897,7 +1094,10 @@ final class BluetoothScannerFlowTests: XCTestCase {
         let viewModel = ScannerViewModel(
             historyStore: store,
             bluetoothScanner: service,
-            camera: camera
+            camera: camera,
+            isAutoAdvanceEnabled: autoAdvanceEnabled,
+            autoAdvanceDelay: autoAdvanceDelay,
+            autoAdvanceTickDuration: autoAdvanceTickDuration
         )
         return (service, viewModel, store, {
             try? FileManager.default.removeItem(at: directory)
