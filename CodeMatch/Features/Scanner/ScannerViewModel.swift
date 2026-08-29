@@ -20,7 +20,7 @@ final class ScannerViewModel: ObservableObject {
     @Published private(set) var autoAdvanceSecondsRemaining: Int?
 
     let camera: CameraScanner
-    private let feedback = FeedbackPlayer()
+    private let feedback = FeedbackPlayer.shared
     private let historyStore: HistoryStore
     private let bluetoothScanner: BluetoothScannerService
     private var scanLocked = false

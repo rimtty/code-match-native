@@ -96,7 +96,11 @@ final class FeedbackPlayer {
     /// バンドル音源のプレイヤーキャッシュ(ファイル名 → プレイヤー)
     private var filePlayers: [String: AVAudioPlayer] = [:]
 
-    init() {
+    /// AVAudioEngineのセットアップは重く、生成のたびにオーディオ通知を発生させて
+    /// SwiftUIの再描画ループを誘発しうるため、アプリ全体で1インスタンスを共有する。
+    static let shared = FeedbackPlayer()
+
+    private init() {
         audioEngine.attach(audioPlayer)
         audioEngine.connect(audioPlayer, to: audioEngine.mainMixerNode, format: audioFormat)
         audioEngine.prepare()

@@ -57,7 +57,7 @@ struct SettingsScreen: View {
     @AppStorage(AppLanguage.storageKey) private var selectedLanguageRawValue = AppLanguage.japanese.rawValue
     @AppStorage(AutoAdvanceSettings.enabledKey) private var autoAdvanceEnabled = AutoAdvanceSettings.defaultEnabled
     @AppStorage(AutoAdvanceSettings.delaySecondsKey) private var autoAdvanceDelaySeconds = AutoAdvanceSettings.defaultDelay.rawValue
-    @State private var player = FeedbackPlayer()
+    private let player = FeedbackPlayer.shared
     @State private var showsScannerSetupGuide = false
 
     var body: some View {

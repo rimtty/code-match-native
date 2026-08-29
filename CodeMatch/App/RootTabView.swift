@@ -6,16 +6,24 @@ struct RootTabView: View {
     @StateObject private var cameraScanner: CameraScanner
     @Environment(\.scenePhase) private var scenePhase
 
-    init(cameraScanner: CameraScanner = CameraScanner()) {
+    init(cameraScanner: @autoclosure @escaping () -> CameraScanner = CameraScanner()) {
+        // このinitはCodeMatchApp.bodyの再評価ごとに呼ばれる。ストア生成・
+        // AVCaptureSessionのセットアップ・UIテスト用リセットの副作用を
+        // 毎回実行するとUIが再描画ループへ陥るため、@StateObjectの
+        // autoclosureへ包んで最初のレンダリング時の一度きりに限定する。
+        _historyStore = StateObject(wrappedValue: Self.makeHistoryStore())
+        _bluetoothScanner = StateObject(wrappedValue: BluetoothScannerService())
+        _cameraScanner = StateObject(wrappedValue: cameraScanner())
+    }
+
+    private static func makeHistoryStore() -> HistoryStore {
         let arguments = ProcessInfo.processInfo.arguments
         AutoAdvanceSettings.resetForUITestingIfRequested(arguments: arguments)
         let store = HistoryStore()
         if arguments.contains("-demoMatch") || arguments.contains("-demoMismatch") {
             store.beginSession()
         }
-        _historyStore = StateObject(wrappedValue: store)
-        _bluetoothScanner = StateObject(wrappedValue: BluetoothScannerService())
-        _cameraScanner = StateObject(wrappedValue: cameraScanner)
+        return store
     }
 
     var body: some View {
