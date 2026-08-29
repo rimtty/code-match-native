@@ -156,6 +156,13 @@ final class CodeMatcherTests: XCTestCase {
 
 @MainActor
 final class BluetoothScannerServiceTests: XCTestCase {
+    func testInitialGATTSetupCodesUseTheVerifiedInateckSequence() {
+        XCTAssertEqual(
+            BluetoothScannerSetupCode.allCases.map(\.rawValue),
+            ["/*EnterSet*/", "/*BLE_GATT*/", "/*ExitSave*/"]
+        )
+    }
+
     func testSymbologyModeStatusTextExplainsActiveRestriction() {
         XCTAssertEqual(
             BluetoothScannerSymbologyMode.unrestricted.statusText,
@@ -355,6 +362,90 @@ final class BluetoothScannerServiceTests: XCTestCase {
         XCTAssertFalse(service.isReadyForScanning)
         XCTAssertNil(service.expectedCode)
         XCTAssertEqual(service.persistedSymbologyMode, .unrestricted)
+    }
+
+    func testManualDisconnectKeepsKnownDeviceAvailableForReconnectAfterSearch() {
+        let defaults = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let service = BluetoothScannerService(defaults: defaults)
+        service.startDiscovery()
+        let device = service.devices[0]
+        service.connect(device)
+
+        service.disconnect()
+
+        XCTAssertNil(defaults.string(forKey: BluetoothScannerService.preferredDeviceIDKey))
+        XCTAssertEqual(service.reconnectableDevice, device)
+
+        // 実機SDKでは、iOSと接続済みのスキャナが広告を出さず検索結果が0件でも、
+        // SDKキャッシュと保存済み端末を捨てずに再接続できる必要がある。
+        service.startDiscovery()
+        XCTAssertEqual(service.reconnectableDevice, device)
+        service.reconnectKnownDevice()
+
+        XCTAssertTrue(service.isReadyForScanning)
+        XCTAssertEqual(service.connectedDevice, device)
+        XCTAssertEqual(
+            defaults.string(forKey: BluetoothScannerService.preferredDeviceIDKey),
+            device.id
+        )
+    }
+
+    func testKnownDeviceSurvivesServiceRelaunchAfterManualDisconnect() {
+        let defaults = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let service = BluetoothScannerService(defaults: defaults)
+        service.startDiscovery()
+        let device = service.devices[0]
+        service.connect(device)
+        service.disconnect()
+
+        let relaunched = BluetoothScannerService(defaults: defaults)
+
+        XCTAssertEqual(relaunched.reconnectableDevice, device)
+        relaunched.reconnectKnownDevice()
+        XCTAssertTrue(relaunched.isReadyForScanning)
+        XCTAssertEqual(relaunched.connectedDevice, device)
+    }
+
+    func testUpgradeMigratesLastConnectedDeviceFromDiagnosticsAfterOldManualDisconnect() throws {
+        let defaults = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let device = BluetoothScannerDevice(
+            id: "9BBF90F3-6D04-6D53-69D5-E101FF61E548",
+            name: "Nano 160D-636E-UNI"
+        )
+        let events = [
+            BluetoothScannerDiagnosticEvent(
+                date: Date(timeIntervalSince1970: 1),
+                message: "Connected: \(device.name) [\(device.id)]"
+            ),
+            BluetoothScannerDiagnosticEvent(
+                date: Date(timeIntervalSince1970: 2),
+                message: "Scanner Bluetooth mode confirmed: GATT (2)"
+            ),
+            BluetoothScannerDiagnosticEvent(
+                date: Date(timeIntervalSince1970: 3),
+                message: "Disconnected"
+            )
+        ]
+        defaults.set(
+            try JSONEncoder().encode(events),
+            forKey: BluetoothScannerService.diagnosticEventsKey
+        )
+        defaults.removeObject(forKey: BluetoothScannerService.preferredDeviceIDKey)
+
+        let upgraded = BluetoothScannerService(defaults: defaults)
+
+        XCTAssertEqual(upgraded.reconnectableDevice, device)
+        XCTAssertEqual(
+            defaults.string(forKey: BluetoothScannerService.lastKnownDeviceIDKey),
+            device.id
+        )
+        XCTAssertEqual(
+            defaults.string(forKey: BluetoothScannerService.lastKnownDeviceNameKey),
+            device.name
+        )
     }
 
     func testDuplicateCallbackIsSuppressedInsideDebounceWindow() {

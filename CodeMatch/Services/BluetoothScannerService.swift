@@ -107,6 +107,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     static let symbologyRecoveryModeKey = "bluetoothScanner.symbologyRecoveryMode"
     static let diagnosticEventsKey = "bluetoothScanner.diagnosticEvents"
     static let cachedScannerSettingsKey = "bluetoothScanner.cachedScannerSettings"
+    static let lastKnownDeviceIDKey = "bluetoothScanner.lastKnownDeviceID"
+    static let lastKnownDeviceNameKey = "bluetoothScanner.lastKnownDeviceName"
     static let discoveryTimeout: TimeInterval = 5
     static let connectionTimeout: TimeInterval = 30
     static let automaticReconnectTimeout: TimeInterval = 8
@@ -151,6 +153,16 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     var connectedDevice: BluetoothScannerDevice? { state.connectedDevice }
     var isConnected: Bool { connectedDevice != nil }
     var isReadyForScanning: Bool { isConnected && configurationState == .ready }
+    var reconnectableDevice: BluetoothScannerDevice? {
+        guard let id = defaults.string(forKey: Self.lastKnownDeviceIDKey), !id.isEmpty else {
+            return nil
+        }
+        return devices.first(where: { $0.id == id })
+            ?? BluetoothScannerDevice(
+                id: id,
+                name: defaults.string(forKey: Self.lastKnownDeviceNameKey) ?? "Inateck Scanner"
+            )
+    }
 
     var persistedSymbologyMode: BluetoothScannerSymbologyMode {
         guard let rawValue = defaults.string(forKey: Self.symbologyRecoveryModeKey),
@@ -173,6 +185,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             defaults.removeObject(forKey: Self.symbologyRecoveryModeKey)
             defaults.removeObject(forKey: Self.diagnosticEventsKey)
             defaults.removeObject(forKey: Self.cachedScannerSettingsKey)
+            defaults.removeObject(forKey: Self.lastKnownDeviceIDKey)
+            defaults.removeObject(forKey: Self.lastKnownDeviceNameKey)
         } else if let data = defaults.data(forKey: Self.diagnosticEventsKey),
                   let events = try? JSONDecoder().decode(
                     [BluetoothScannerDiagnosticEvent].self,
@@ -180,6 +194,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                   ) {
             diagnosticEvents = Array(events.suffix(20))
         }
+
+        migrateLastKnownDeviceFromDiagnosticsIfNeeded()
 
 #if INATECK_SDK
         trace("Inateck SDK implementation initialized")
@@ -198,6 +214,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             configurationState = .ready
             recordAppliedSymbologyMode(.unrestricted)
             defaults.set(device.id, forKey: Self.preferredDeviceIDKey)
+            rememberDevice(device)
         }
 #endif
     }
@@ -235,7 +252,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         pendingDiscovery = false
         sdkDiscoveryIsRunning = true
         devices = []
-        sdkDevices = [:]
+        mergeSDKCachedDevices()
+        appendReconnectableDeviceIfNeeded()
         state = .searching
 
         BLEManager.shared.scanDevices(timeoutAfter: Self.discoveryTimeout) { [weak self] scanState in
@@ -276,7 +294,10 @@ final class BluetoothScannerService: NSObject, ObservableObject {
 #if INATECK_SDK
         guard let sdkDevice = sdkDevices[device.id]
                 ?? BLEManager.shared.devices.first(where: { $0.uuid == device.id }) else {
-            state = .failed("スキャナが見つかりません。もう一度検索してください。")
+            rememberDevice(device)
+            reconnectDeviceID = device.id
+            trace("Known scanner is not in the SDK cache; discovering before reconnect")
+            startDiscovery()
             return
         }
 
@@ -308,6 +329,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                     self.connectedScannerSettings = nil
                     self.configurationState = .configuring
                     self.defaults.set(device.id, forKey: Self.preferredDeviceIDKey)
+                    self.rememberDevice(device)
                     self.state = .connected(device)
                     self.automaticReconnectAttempt = 0
                     self.trace("Connected: \(device.name) [\(device.id)]")
@@ -326,6 +348,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         if !devices.contains(device) { devices.append(device) }
         state = .connecting(device)
         defaults.set(device.id, forKey: Self.preferredDeviceIDKey)
+        rememberDevice(device)
         state = .connected(device)
         configurationState = .ready
         recordAppliedSymbologyMode(BluetoothScannerSymbologyMode(expectedCode: expectedCode))
@@ -384,6 +407,17 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         reconnectDeviceID = preferredID
         trace("Preferred-device reconnect requested: \(preferredID)")
         startDiscovery()
+    }
+
+    func reconnectKnownDevice() {
+        guard !isConnected, let device = reconnectableDevice else {
+            if !isConnected {
+                state = .failed("再接続できるスキャナがありません。スキャナを検索してください。")
+            }
+            return
+        }
+        trace("Manual reconnect requested for known scanner: \(device.name) [\(device.id)]")
+        connect(device)
     }
 
     func setApplicationActive(_ isActive: Bool) {
@@ -519,7 +553,63 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         return String(data: Data(bytes), encoding: .utf8)
     }
 
+    private func rememberDevice(_ device: BluetoothScannerDevice) {
+        defaults.set(device.id, forKey: Self.lastKnownDeviceIDKey)
+        defaults.set(device.name, forKey: Self.lastKnownDeviceNameKey)
+        appendDeviceIfNeeded(device)
+    }
+
+    /// 既存版で手動切断した直後はpreferred IDが消えており、専用の最終接続端末キーも
+    /// まだ存在しない。過去の「接続成功」診断だけを移行元にして、アップデート後も
+    /// 電源OFF／ONやGATT設定のやり直しなしで再接続候補を表示する。
+    private func migrateLastKnownDeviceFromDiagnosticsIfNeeded() {
+        guard defaults.string(forKey: Self.lastKnownDeviceIDKey) == nil else { return }
+
+        let prefix = "Connected: "
+        for event in diagnosticEvents.reversed() where event.message.hasPrefix(prefix) {
+            guard event.message.hasSuffix("]"),
+                  let bracket = event.message.lastIndex(of: "[") else { continue }
+
+            let idStart = event.message.index(after: bracket)
+            let idEnd = event.message.index(before: event.message.endIndex)
+            let id = String(event.message[idStart..<idEnd])
+            guard UUID(uuidString: id) != nil else { continue }
+
+            let nameStart = event.message.index(event.message.startIndex, offsetBy: prefix.count)
+            let rawName = event.message[nameStart..<bracket]
+            let name = rawName.trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty else { continue }
+
+            rememberDevice(BluetoothScannerDevice(id: id, name: name))
+            return
+        }
+    }
+
+    private func appendReconnectableDeviceIfNeeded() {
+        guard let device = reconnectableDevice else { return }
+        appendDeviceIfNeeded(device)
+    }
+
+    private func appendDeviceIfNeeded(_ device: BluetoothScannerDevice) {
+        if let index = devices.firstIndex(where: { $0.id == device.id }) {
+            devices[index] = device
+        } else {
+            devices.append(device)
+        }
+    }
+
 #if INATECK_SDK
+    private func mergeSDKCachedDevices() {
+        for sdkDevice in BLEManager.shared.devices {
+            let device = BluetoothScannerDevice(
+                id: sdkDevice.uuid,
+                name: sdkDevice.name ?? sdkDevice.productName ?? "Inateck Scanner"
+            )
+            sdkDevices[device.id] = sdkDevice
+            appendDeviceIfNeeded(device)
+        }
+    }
+
     private var bluetoothIsAuthorized: Bool {
         switch CBManager.authorization {
         case .denied, .restricted:
