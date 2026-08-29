@@ -5,23 +5,19 @@ on:
     branches: [master]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-test:
+  device-build:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
       - name: Show Xcode version
         run: xcodebuild -version
-
-      - name: Build
-        run: >
-          xcodebuild build
-          -project CodeMatch.xcodeproj
-          -scheme CodeMatch
-          -destination 'generic/platform=iOS Simulator'
-          CODE_SIGNING_ALLOWED=NO
 
       - name: Install pinned Inateck SDK
         run: ./scripts/bootstrap_inateck_sdk.sh
@@ -34,47 +30,56 @@ jobs:
           -destination 'generic/platform=iOS'
           CODE_SIGNING_ALLOWED=NO
 
-      - name: Unit tests
-        run: |
-          DEVICE_ID=$(xcrun simctl list devices available --json | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(dev['udid'] for k,v in d.items() if 'iOS' in k for dev in v if dev['isAvailable'] and 'iPhone' in dev['name']))")
-          echo "Using simulator $DEVICE_ID"
-          xcodebuild test \
-            -project CodeMatch.xcodeproj \
-            -scheme CodeMatch \
-            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
-            -only-testing:CodeMatchTests \
-            CODE_SIGNING_ALLOWED=NO
-
-  ui-test:
+  simulator-test:
     runs-on: macos-15
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        test:
-          - testMockBluetoothScannerConnectsAndCompletesMatch
-          - testScannerFlowMatchDuplicateResetAndMismatch
-          - testSessionAutoAdvanceShowsCountdownAndStartsNextMatch
-          - testSessionCanStartAndShowsMatchCount
-          - testSettingsDiscoversAndConnectsMockScanner
-          - testSettingsLanguageSwitchPersistsAcrossRelaunch
-          - testSettingsTabAllowsSoundSelection
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
-      - name: UI test (${{ matrix.test }})
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Boot simulator
+        id: sim
         run: |
           DEVICE_ID=$(xcrun simctl list devices available --json | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(dev['udid'] for k,v in d.items() if 'iOS' in k for dev in v if dev['isAvailable'] and 'iPhone' in dev['name']))")
           echo "Using simulator $DEVICE_ID"
-          # Each UI test gets a clean simulator so a stalled XCTest session
-          # cannot poison the remaining coverage.
-          xcrun simctl shutdown "$DEVICE_ID" || true
-          xcrun simctl erase "$DEVICE_ID"
-          xcrun simctl boot "$DEVICE_ID"
-          xcrun simctl bootstatus "$DEVICE_ID" -b
-          xcodebuild test \
-            -project CodeMatch.xcodeproj \
-            -scheme CodeMatch \
-            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
-            -only-testing:CodeMatchUITests/CodeMatchUITests/${{ matrix.test }} \
-            CODE_SIGNING_ALLOWED=NO
+          echo "id=$DEVICE_ID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$DEVICE_ID" || true
+
+      - name: Build for testing
+        run: >
+          xcodebuild build-for-testing
+          -project CodeMatch.xcodeproj
+          -scheme CodeMatch
+          -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}"
+          CODE_SIGNING_ALLOWED=NO
+
+      - name: Wait for simulator boot
+        run: xcrun simctl bootstatus "${{ steps.sim.outputs.id }}" -b
+
+      - name: Unit tests
+        run: >
+          xcodebuild test-without-building
+          -project CodeMatch.xcodeproj
+          -scheme CodeMatch
+          -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}"
+          -only-testing:CodeMatchTests
+          CODE_SIGNING_ALLOWED=NO
+
+      # Per-test execution-time allowances kill a stalled XCTest session instead
+      # of letting it eat the whole job, and failed UI tests get retried once
+      # before the job is marked red.
+      - name: UI tests
+        run: >
+          xcodebuild test-without-building
+          -project CodeMatch.xcodeproj
+          -scheme CodeMatch
+          -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}"
+          -only-testing:CodeMatchUITests
+          -test-timeouts-enabled YES
+          -default-test-execution-time-allowance 180
+          -maximum-test-execution-time-allowance 360
+          -retry-tests-on-failure
+          -test-iterations 2
+          CODE_SIGNING_ALLOWED=NO

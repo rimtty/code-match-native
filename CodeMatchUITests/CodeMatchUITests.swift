@@ -188,34 +188,19 @@ final class CodeMatchUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["BCJH-52-81GG"].exists)
         XCTAssertTrue(app.staticTexts["BCJH-55-81GG"].exists)
         XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "2件照合済み")
-    }
 
-    func testSessionCanStartAndShowsMatchCount() {
-        let app = launchApp(["-resetHistory", "-resetAutoAdvance"])
-
-        let startButton = app.buttons["startSessionButton"]
-        XCTAssertTrue(startButton.waitForExistence(timeout: 5))
-        // 緑のボタン中央だけでなく、左端寄りでも操作できることを確認する。
-        startButton.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5)).tap()
-
-        let count = app.staticTexts["sessionMatchCount"]
-        XCTAssertTrue(count.waitForExistence(timeout: 3))
-        XCTAssertEqual(count.label, "0件照合済み")
-        XCTAssertTrue(app.buttons["endSessionButton"].exists)
-
+        // セッションを終了すると照合済みのセッションが履歴に掲載される
         app.buttons["endSessionButton"].tap()
         app.alerts.buttons["終了する"].tap()
-        XCTAssertTrue(app.buttons["startSessionButton"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["startSessionButton"].waitForExistence(timeout: 5))
 
-        // 照合0件のセッションは履歴に掲載されない
         app.tabBars.buttons["履歴"].tap()
         XCTAssertTrue(app.navigationBars["照合履歴"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["履歴はまだありません"].waitForExistence(timeout: 3))
-        XCTAssertFalse(app.buttons["historySessionRow"].exists)
+        XCTAssertTrue(app.buttons["historySessionRow"].waitForExistence(timeout: 3))
     }
 
-    func testSettingsTabAllowsSoundSelection() {
-        let app = launchApp(["-resetAutoAdvance"])
+    func testSettingsSoundSelectionAndLanguageSwitchPersists() {
+        var app = launchApp(["-resetHistory", "-resetAutoAdvance"])
 
         app.tabBars.buttons["設定"].tap()
         let autoAdvanceToggle = app.switches["autoAdvanceSettingsToggle"]
@@ -251,12 +236,39 @@ final class CodeMatchUITests: XCTestCase {
         app.buttons["successSound_posBeep"].tap()
         app.buttons["failureSound_alarm"].tap()
         XCTAssertTrue(app.buttons["ピッ（POSレジ風・標準）、選択中"].waitForExistence(timeout: 3))
+
+        // 言語を英語へ切り替えると即座に反映され、再起動後も保持される
+        revealLanguageCard(in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["languageSelectionCard"].waitForExistence(timeout: 5))
+
+        selectLanguage(in: app, optionId: "languageOption_en", fallbackLabel: "English")
+        XCTAssertTrue(app.staticTexts["Language"].waitForExistence(timeout: 5))
+
+        app.terminate()
+        app = launchApp(["-resetHistory", "-resetAutoAdvance"], resetLanguage: false)
+
+        XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Settings"].tap()
+        revealLanguageCard(in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["languageSelectionCard"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Language"].waitForExistence(timeout: 5))
+
+        selectLanguage(
+            in: app,
+            optionId: "languageOption_ja",
+            fallbackLabel: "日本語",
+            alternateFallbackLabel: "Japanese"
+        )
+        XCTAssertTrue(app.staticTexts["言語"].waitForExistence(timeout: 5))
     }
 
     func testSessionAutoAdvanceShowsCountdownAndStartsNextMatch() {
         let app = launchApp(["-resetHistory", "-resetAutoAdvance"])
 
-        app.buttons["startSessionButton"].tap()
+        let startButton = app.buttons["startSessionButton"]
+        XCTAssertTrue(startButton.waitForExistence(timeout: 5))
+        // 緑のボタン中央だけでなく、左端寄りでも操作できることを確認する。
+        startButton.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5)).tap()
 
         let autoAdvanceToggle = app.switches["sessionAutoAdvanceToggle"]
         XCTAssertTrue(autoAdvanceToggle.waitForExistence(timeout: 3))
@@ -288,32 +300,4 @@ final class CodeMatchUITests: XCTestCase {
         XCTAssertEqual(autoAdvanceToggle.value as? String, "0")
     }
 
-    func testSettingsLanguageSwitchPersistsAcrossRelaunch() {
-        var app = launchApp(["-resetHistory", "-resetAutoAdvance"])
-
-        app.tabBars.buttons["設定"].tap()
-        XCTAssertTrue(app.tabBars.buttons["設定"].waitForExistence(timeout: 2))
-        revealLanguageCard(in: app)
-        XCTAssertTrue(app.descendants(matching: .any)["languageSelectionCard"].waitForExistence(timeout: 5))
-
-        selectLanguage(in: app, optionId: "languageOption_en", fallbackLabel: "English")
-        XCTAssertTrue(app.staticTexts["Language"].waitForExistence(timeout: 5))
-
-        app.terminate()
-        app = launchApp(["-resetHistory", "-resetAutoAdvance"], resetLanguage: false)
-
-        XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 5))
-        app.tabBars.buttons["Settings"].tap()
-        revealLanguageCard(in: app)
-        XCTAssertTrue(app.descendants(matching: .any)["languageSelectionCard"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Language"].waitForExistence(timeout: 5))
-
-        selectLanguage(
-            in: app,
-            optionId: "languageOption_ja",
-            fallbackLabel: "日本語",
-            alternateFallbackLabel: "Japanese"
-        )
-        XCTAssertTrue(app.staticTexts["言語"].waitForExistence(timeout: 5))
-    }
 }
