@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_accessibility_description">App settings for the Bluetooth scanner, automatic next comparison, audio, and display language.</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_eyebrow">SETTINGS</string>
+    <string name="settings_headline">App settings</string>
+    <string name="settings_description">Adjust the input source and feedback used for comparison.</string>
+
+    <string name="settings_setup_guide_title">Scanner connection guide</string>
+    <string name="settings_setup_guide_close">Close</string>
+    <string name="settings_setup_guide_open">Show connection guide</string>
+    <string name="settings_setup_step_1_title">Start setup</string>
+    <string name="settings_setup_step_1_description">Scan the setup code “/*EnterSet*/” once.</string>
+    <string name="settings_setup_step_2_title">Switch to GATT mode</string>
+    <string name="settings_setup_step_2_description">Scan the setup code “/*BLE_GATT*/” once.</string>
+    <string name="settings_setup_step_3_title">Save and exit setup</string>
+    <string name="settings_setup_step_3_description">Scan the setup code “/*ExitSave*/” once to save the configuration.</string>
+    <string name="settings_setup_step_accessibility">Step %1$d. %2$s. %3$s</string>
+
+    <string name="settings_scanner_title">Bluetooth scanner</string>
+    <string name="settings_scanner_description">Search for and connect a supported scanner. Scan values are never recorded in diagnostics.</string>
+    <string name="settings_start_discovery">Search for scanners</string>
+    <string name="settings_stop_discovery">Stop searching</string>
+    <string name="settings_devices_title">Scanners found</string>
+    <string name="settings_no_devices">No scanners found yet.</string>
+    <string name="settings_connect">Connect</string>
+    <string name="settings_disconnect">Disconnect</string>
+    <string name="settings_reconnect">Reconnect</string>
+    <string name="settings_device_selected">Selected</string>
+    <string name="settings_device_not_selected">Not selected</string>
+    <string name="settings_status_idle">Not connected</string>
+    <string name="settings_status_searching">Searching for scanners</string>
+    <string name="settings_status_connecting">Connecting to scanner</string>
+    <string name="settings_status_connected">Connected</string>
+    <string name="settings_status_unavailable">Scanner unavailable</string>
+    <string name="settings_status_failed">Connection failed</string>
+    <string name="settings_configuration_unavailable">Configuration: unavailable</string>
+    <string name="settings_configuration_configuring">Preparing configuration</string>
+    <string name="settings_configuration_ready">Configured. Ready to scan.</string>
+    <string name="settings_configuration_failed">Scanner configuration failed</string>
+
+    <string name="settings_diagnostics_title">Connection diagnostics</string>
+    <string name="settings_diagnostics_empty">No connection or configuration events yet.</string>
+    <string name="settings_diagnostic_connection">Connection</string>
+    <string name="settings_diagnostic_configuration">Configuration</string>
+    <string name="settings_diagnostic_error">Error</string>
+    <string name="settings_diagnostic_row">%1$d: %2$s event</string>
+    <string name="settings_diagnostic_accessibility">Diagnostic event %1$d. %2$s</string>
+
+    <string name="settings_camera_only_title">Camera input only</string>
+    <string name="settings_camera_only_description">Bluetooth scanners are unavailable in this release. Scan with the camera from the comparison screen.</string>
+
+    <string name="settings_auto_advance_title">Automatically start the next comparison on success</string>
+    <string name="settings_auto_advance_enabled_description">Start a countdown after a match, then begin the next comparison.</string>
+    <string name="settings_auto_advance_disabled_description">Off. Mismatches never advance automatically.</string>
+    <string name="settings_delay_title">Delay before next comparison</string>
+    <string name="settings_delay_seconds">%1$d sec</string>
+
+    <string name="settings_volume_title">Feedback volume</string>
+    <string name="settings_volume_percent">%1$d%%</string>
+    <string name="settings_volume_minimum">Low</string>
+    <string name="settings_volume_maximum">High</string>
+
+    <string name="settings_success_sound_title">Success sound</string>
+    <string name="settings_success_sound_description">Choose the sound played after a match.</string>
+    <string name="settings_success_sound_sample_1">Sample 1</string>
+    <string name="settings_success_sound_sample_2">Sample 2</string>
+    <string name="settings_success_sound_pos_beep">POS beep</string>
+    <string name="settings_success_sound_double_beep">Double beep</string>
+    <string name="settings_success_sound_chime">Chime</string>
+
+    <string name="settings_failure_sound_title">Failure sound</string>
+    <string name="settings_failure_sound_description">Choose the sound played for a mismatch or invalid scan.</string>
+    <string name="settings_failure_sound_sample">Failure sample</string>
+    <string name="settings_failure_sound_buzzer">Buzzer</string>
+    <string name="settings_failure_sound_alarm">Alarm</string>
+    <string name="settings_failure_sound_descend">Descending tone</string>
+
+    <string name="settings_preview_sound">Preview %1$s</string>
+    <string name="settings_choice_selected">Selected</string>
+    <string name="settings_choice_not_selected">Not selected</string>
+
+    <string name="settings_language_title">Display language</string>
+    <string name="settings_language_description">Choose the language used inside the app.</string>
+    <string name="settings_language_japanese">Japanese</string>
+    <string name="settings_language_english">English</string>
+</resources>

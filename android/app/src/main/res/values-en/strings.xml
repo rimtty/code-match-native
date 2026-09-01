@@ -4,6 +4,10 @@
     <string name="destination_scan">Scan</string>
     <string name="destination_history">History</string>
     <string name="destination_settings">Settings</string>
+    <string name="end_session_title">End this session?</string>
+    <string name="end_session_description">A session with no matching boxes will not be kept in history.</string>
+    <string name="end_session_confirm">End session</string>
+    <string name="cancel">Cancel</string>
 
     <string name="scan_screen_description">Scan a QR code and then a Code 128 barcode to compare them</string>
     <string name="scan_eyebrow">SCAN &amp; VERIFY</string>

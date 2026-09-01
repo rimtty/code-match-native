@@ -115,7 +115,7 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim
           disable-animations: true
           working-directory: android
-          script: ./gradlew connectedDebugAndroidTest --stacktrace
+          script: bash scripts/run-connected-tests.sh
 
   android-release-build:
     name: Android release build

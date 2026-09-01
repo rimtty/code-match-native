@@ -1,0 +1,178 @@
+package jp.rimtty.codematch.core.data
+
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import jp.rimtty.codematch.core.model.EndSessionOutcome
+import java.util.UUID
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class HistoryRepositoryTest {
+    private lateinit var database: CodeMatchDatabase
+    private lateinit var repository: HistoryRepository
+
+    @Before
+    fun setUp() {
+        database = CodeMatchDatabaseFactory.inMemory(applicationContext())
+        repository = HistoryRepository(database)
+    }
+
+    @After
+    fun tearDown() {
+        database.close()
+    }
+
+    @Test
+    fun beginSessionTrimsNameAndReusesActiveSession() = runBlocking {
+        val id = repository.beginSession(name = "  午前の照合  ", at = 100L)
+
+        assertEquals(id, repository.beginSession(name = "別名", at = 200L))
+        val active = repository.activeSession.first()
+        assertNotNull(active)
+        assertEquals(id, active?.id)
+        assertEquals("午前の照合", active?.name)
+        assertEquals(active, repository.observeSession(id).first())
+    }
+
+    @Test
+    fun blankNameIsStoredAsNull() = runBlocking {
+        val id = repository.beginSession(name = " \n\t", at = 100L)
+
+        assertNull(repository.observeSession(id).first()?.name)
+        assertEquals("", repository.observeSession(id).first()?.displayName)
+    }
+
+    @Test
+    fun recordMatchTrimsCodeReturnsOneBasedBoxNumberAndPreservesDuplicates() = runBlocking {
+        val id = repository.beginSession(at = 100L)
+
+        assertEquals(1, repository.recordMatch("  BCJH5281GG  ", at = 101L))
+        assertEquals(1, repository.recordMatch("OTHER00001", at = 102L))
+        assertEquals(2, repository.recordMatch("BCJH5281GG", at = 103L))
+
+        val session = repository.observeSession(id).first()
+        assertNotNull(session)
+        assertEquals(listOf("BCJH5281GG", "OTHER00001", "BCJH5281GG"), session?.entries?.map { it.code })
+        assertEquals(listOf(0L, 1L, 2L), session?.entries?.map { it.sequence })
+        assertEquals(listOf("BCJH5281GG", "OTHER00001"), session?.groupedEntries?.map { it.code })
+        assertEquals(2, session?.groupedEntries?.first()?.boxCount)
+        assertEquals(2, repository.activeSessionMatchCount("  BCJH5281GG "))
+    }
+
+    @Test
+    fun payloadsArePersistedWithEachDuplicateEntry() = runBlocking {
+        val id = repository.beginSession(at = 100L)
+
+        repository.recordMatch(
+            code = "ABC1234567",
+            qrPayload = "qr-1",
+            barcodePayload = "barcode-1",
+            at = 101L,
+        )
+        repository.recordMatch(
+            code = "ABC1234567",
+            qrPayload = "qr-2",
+            barcodePayload = "barcode-2",
+            at = 102L,
+        )
+
+        val entries = repository.observeSession(id).first()!!.entries
+        assertEquals(listOf("qr-1", "qr-2"), entries.map { it.qrPayload })
+        assertEquals(listOf("barcode-1", "barcode-2"), entries.map { it.barcodePayload })
+    }
+
+    @Test
+    fun endingEmptySessionDeletesItAndEndingNonEmptySessionStoresEndedAt() = runBlocking {
+        val emptyId = repository.beginSession(at = 100L)
+        assertEquals(EndSessionOutcome.DeletedEmpty(emptyId), repository.endActiveSession(at = 110L))
+        assertNull(repository.observeSession(emptyId).first())
+        assertEquals(EndSessionOutcome.NotFound, repository.endActiveSession(at = 120L))
+
+        val endedId = repository.beginSession(at = 200L)
+        repository.recordMatch("ABC1234567", at = 201L)
+        assertEquals(
+            EndSessionOutcome.Ended(endedId, 210L),
+            repository.endSession(endedId, at = 210L),
+        )
+        assertEquals(
+            EndSessionOutcome.AlreadyEnded(endedId, 210L),
+            repository.endSession(endedId, at = 220L),
+        )
+        assertFalse(repository.activeSession.first()?.id == endedId)
+        assertEquals(210L, repository.observeSession(endedId).first()?.endedAt)
+    }
+
+    @Test
+    fun sessionsAreNewestFirstAndRenameBlankBecomesNull() = runBlocking {
+        val firstId = repository.beginSession(name = "first", at = 100L)
+        repository.recordMatch("FIRST00001", at = 101L)
+        repository.endActiveSession(at = 110L)
+
+        val secondId = repository.beginSession(name = "second", at = 200L)
+        repository.recordMatch("SECOND0001", at = 201L)
+        repository.endActiveSession(at = 210L)
+        repository.renameSession(secondId, "  ")
+
+        assertEquals(listOf(secondId, firstId), repository.sessions.first().map { it.id })
+        assertEquals(null, repository.observeSession(secondId).first()?.name)
+        assertEquals("", repository.observeSession(secondId).first()?.displayName)
+    }
+
+    @Test
+    fun deletingSessionCascadesEntries() = runBlocking {
+        val id = repository.beginSession(at = 100L)
+        repository.recordMatch("ABC1234567", at = 101L)
+
+        assertTrue(repository.deleteSession(id))
+        assertEquals(0, database.entryDao().countForSession(id))
+        assertNull(repository.observeSession(id).first())
+        assertFalse(repository.deleteSession(id))
+    }
+
+    @Test
+    fun activeSessionIsRestoredAfterDatabaseRecreation() = runBlocking {
+        val context = applicationContext()
+        val databaseName = "history-${UUID.randomUUID()}.db"
+        val firstDatabase = CodeMatchDatabaseFactory.create(context, databaseName)
+        val firstRepository = HistoryRepository(firstDatabase)
+        val id = firstRepository.beginSession(name = "persisted", at = 100L)
+        firstRepository.recordMatch("ABC1234567", at = 101L)
+        firstDatabase.close()
+
+        val restoredDatabase = CodeMatchDatabaseFactory.create(context, databaseName)
+        try {
+            val restored = HistoryRepository(restoredDatabase).activeSession.first()
+            assertNotNull(restored)
+            assertEquals(id, restored?.id)
+            assertEquals(1, restored?.matchedCount)
+            assertTrue(restored?.isActive == true)
+        } finally {
+            restoredDatabase.close()
+            context.deleteDatabase(databaseName)
+        }
+    }
+
+    @Test
+    fun staleSessionIdCannotWriteIntoNewActiveSession() = runBlocking {
+        val firstId = repository.beginSession(at = 100L)
+        repository.endActiveSession(at = 101L)
+        repository.beginSession(at = 200L)
+
+        assertNull(repository.recordMatch("ABC1234567", sessionId = firstId, at = 201L))
+        assertEquals(0, repository.activeSession.first()?.matchedCount)
+    }
+
+    private fun applicationContext(): Context =
+        ApplicationProvider.getApplicationContext()
+}
