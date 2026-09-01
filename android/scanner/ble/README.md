@@ -52,3 +52,26 @@ The core guarantees:
   device-transfer rules must exclude that exact path.
 
 The unit tests run on the JVM and use no scanner hardware.
+
+## M4 adapter audit (2026-09-02)
+
+The upstream `Inateck-Technology-Inc/android_sdk` repository was inspected as
+an investigation input only. Its current demo contains an
+`inateck-scanner-ble-2-0-0.jar` (with FastBle, Gson, JNA, and an arm64 native
+library) and exposes `BleListManager`, `BleScannerDevice`, and `BleMessager`
+entry points. The repository currently does not provide a license file or
+license metadata, so the artifact is not a production dependency until its
+distribution terms and target-scanner compatibility are confirmed.
+
+The demo requests additional legacy/location/advertise/Internet permissions,
+which are intentionally not copied into this project. Its logging path also
+prints raw notification bytes before dispatch, and an unsolicited barcode
+callback contract was not established from the public API. That behavior is
+not suitable for this app's payload privacy or scan-delivery requirements.
+
+The demo's service/characteristic constants and command examples are useful
+leads for a physical investigation only. They are not protocol guarantees and
+must not be moved into this module. A future adapter must discover and record
+the target scanner's UUIDs, notification framing, scan callback semantics,
+setting inventory, and restoration behavior, then inject those observations
+through `BleTransport`, `BleSymbologyProfile`, and the adapter-selected codec.

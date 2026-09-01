@@ -84,6 +84,8 @@ class BleSymbologySession(
     )
 
     val state: BleSymbologySessionState get() = mutableState
+    /** Device identity this protocol session is bound to. */
+    val scannerDevice: ScannerDevice get() = device
     val configurationState: ConfigurationState get() = mutableConfiguration
     val expectedFormat: ScanFormat? get() = mutableExpectedFormat
     val physicalMode: BleSymbologyMode
@@ -244,6 +246,27 @@ class BleSymbologySession(
             return false
         }
         apply(Operation.START_SESSION, restricted, expectedFormat)
+        return true
+    }
+
+    /**
+     * Changes only the logical step while a physical session is active.
+     *
+     * QR and Code 128 remain enabled together on the scanner. This method is
+     * intentionally separate from [startSession] so a feature coordinator can
+     * mirror a reducer's QR -> Code 128 transition without accidentally
+     * emitting another GATT setting command.
+     */
+    fun setExpectedFormat(expectedFormat: ScanFormat): Boolean {
+        if (!sessionActive) return false
+        if (mutableState != BleSymbologySessionState.SessionReady &&
+            mutableState !is BleSymbologySessionState.ApplyingSession
+        ) return false
+        mutableExpectedFormat = expectedFormat
+        if (mutableState is BleSymbologySessionState.ApplyingSession) {
+            mutableState = BleSymbologySessionState.ApplyingSession(expectedFormat)
+        }
+        emit()
         return true
     }
 

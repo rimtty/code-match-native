@@ -80,10 +80,11 @@ class BleConnectionCoordinator(
 
     fun startDiscovery(): Boolean {
         if (connectionState == BleConnectionState.Searching) return false
-        val availability = transport.availability
-        if (availability !is BleAvailability.Ready) {
-            transition(connection = availability.asConnectionState())
-            diagnostics.error("Bluetooth is unavailable")
+        val readiness = readTransportReadiness()
+        val failure = readiness.failureReason(forConnection = false)
+        if (failure != null) {
+            transition(connection = readiness.asConnectionState(forConnection = false))
+            diagnostics.error(failure)
             return false
         }
         transition(connection = BleConnectionState.Searching)
@@ -367,6 +368,14 @@ class BleConnectionCoordinator(
         reconnecting: Boolean,
         startedAtMillis: Long = nowMillis(),
     ): Boolean {
+        val readiness = readTransportReadiness()
+        val failure = readiness.failureReason(forConnection = true)
+        if (failure != null) {
+            transition(connection = readiness.asConnectionState(forConnection = true))
+            diagnostics.error(failure)
+            return false
+        }
+
         val requestGeneration = ++nextRequestGeneration
         pendingConnectRequestGeneration = requestGeneration
         pendingConnectDevice = device
@@ -497,6 +506,34 @@ class BleConnectionCoordinator(
             diagnostics = diagnostics.snapshot(),
         )
         listener?.onStateChanged(mutableState)
+    }
+
+    /**
+     * A readiness getter is platform code. Treat an adapter exception as an
+     * unavailable transport instead of allowing it to escape through a UI
+     * action or a reconnect ticker.
+     */
+    private fun readTransportReadiness(): BleTransportReadiness = runCatching {
+        transport.readiness
+    }.getOrElse {
+        BleTransportReadiness(
+            availability = BleAvailability.Failed("Bluetooth readiness unavailable"),
+        )
+    }
+
+    private fun BleTransportReadiness.asConnectionState(
+        forConnection: Boolean,
+    ): BleConnectionState = when {
+        lifecycle == BleAdapterLifecycleState.DESTROYED ->
+            BleConnectionState.Unavailable("Bluetooth adapter is closed")
+        lifecycle == BleAdapterLifecycleState.BACKGROUND ->
+            BleConnectionState.Unavailable("Bluetooth adapter is inactive")
+        availability !is BleAvailability.Ready -> availability.asConnectionState()
+        !forConnection && discoveryPermission != BlePermissionState.GRANTED ->
+            BleConnectionState.Unavailable("Bluetooth discovery permission is required")
+        forConnection && connectionPermission != BlePermissionState.GRANTED ->
+            BleConnectionState.Unavailable("Bluetooth connection permission is required")
+        else -> BleConnectionState.Unavailable("Bluetooth is unavailable")
     }
 
     private fun BleAvailability.asConnectionState(): BleConnectionState = when (this) {

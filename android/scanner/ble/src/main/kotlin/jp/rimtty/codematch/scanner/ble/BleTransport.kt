@@ -25,6 +25,60 @@ sealed interface BleAvailability {
     data class Failed(val reason: String) : BleAvailability
 }
 
+/**
+ * Lifecycle state supplied by a platform adapter.
+ *
+ * The BLE core does not own an Android [Lifecycle] and must not import one.
+ * An adapter maps its host/activity lifecycle to this small value before
+ * starting discovery or a connection. A backgrounded or destroyed adapter is
+ * never considered usable, even if the radio is powered on.
+ */
+enum class BleAdapterLifecycleState {
+    FOREGROUND,
+    BACKGROUND,
+    DESTROYED,
+}
+
+/** Permission result supplied by the platform adapter, without Android types. */
+enum class BlePermissionState {
+    GRANTED,
+    DENIED,
+    UNKNOWN,
+}
+
+/**
+ * Adapter-owned readiness inputs for operations that require BLE access.
+ *
+ * `scanner:ble` intentionally does not name Android permission constants. The
+ * Android adapter can map BLUETOOTH_SCAN/CONNECT (or a vendor SDK's own gate)
+ * to these fields after observing the actual target SDK/device behavior. The
+ * defaults preserve the existing SDK-neutral test transports, which have no
+ * platform permission gate.
+ */
+data class BleTransportReadiness(
+    val lifecycle: BleAdapterLifecycleState = BleAdapterLifecycleState.FOREGROUND,
+    val availability: BleAvailability = BleAvailability.Ready,
+    val discoveryPermission: BlePermissionState = BlePermissionState.GRANTED,
+    val connectionPermission: BlePermissionState = BlePermissionState.GRANTED,
+) {
+    fun failureReason(forConnection: Boolean): String? = when {
+        lifecycle == BleAdapterLifecycleState.DESTROYED ->
+            "Bluetooth adapter is closed"
+        lifecycle == BleAdapterLifecycleState.BACKGROUND ->
+            "Bluetooth adapter is inactive"
+        availability !is BleAvailability.Ready ->
+            "Bluetooth is unavailable"
+        !forConnection && discoveryPermission != BlePermissionState.GRANTED ->
+            "Bluetooth discovery permission is required"
+        forConnection && connectionPermission != BlePermissionState.GRANTED ->
+            "Bluetooth connection permission is required"
+        else -> null
+    }
+
+    val isUsable: Boolean
+        get() = failureReason(forConnection = true) == null
+}
+
 /** A device discovered by the platform adapter. */
 data class BleDiscoveredDevice(
     val device: ScannerDevice,
@@ -118,6 +172,15 @@ fun interface BleTransportListener {
  */
 interface BleTransport {
     val availability: BleAvailability
+
+    /**
+     * Readiness is mapped by the platform adapter and remains overrideable for
+     * tests. No adapter is required to declare Android permissions until the
+     * real scanner and target-SDK behavior have been verified.
+     */
+    val readiness: BleTransportReadiness
+        get() = BleTransportReadiness(availability = availability)
+
     var listener: BleTransportListener?
 
     fun startDiscovery(): Boolean
