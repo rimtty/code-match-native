@@ -39,6 +39,8 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 15859902
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -71,6 +73,8 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 15859902
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -103,6 +107,8 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 15859902
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
