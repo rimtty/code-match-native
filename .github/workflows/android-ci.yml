@@ -1,0 +1,127 @@
+name: Android CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: android
+
+env:
+  JAVA_VERSION: "21"
+
+jobs:
+  android-unit-lint:
+    name: Android unit, lint, and debug build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Show tool versions
+        run: |
+          java -version
+          ./gradlew --version
+
+      - name: Assemble, lint, and run JVM tests
+        run: ./gradlew assembleDebug lintDebug testDebugUnitTest --stacktrace
+
+  android-emulator-test:
+    name: Android emulator tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [31, 37]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Compose and instrumentation tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: google_apis
+          arch: x86_64
+          profile: Pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim
+          disable-animations: true
+          working-directory: android
+          script: ./gradlew connectedDebugAndroidTest --stacktrace
+
+  android-release-build:
+    name: Android release build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble release
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Verify release manifest and dependency graph
+        shell: bash
+        run: |
+          ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > release-dependencies.txt
+          if grep -Fq ":scanner:fake" release-dependencies.txt; then
+            echo "Fake scanner leaked into the release dependency graph" >&2
+            exit 1
+          fi
+
+          merged_manifest="$(find app/build/intermediates -type f -path '*merged_manifest/release*AndroidManifest.xml' -print -quit)"
+          manifest_path="${merged_manifest:-app/src/main/AndroidManifest.xml}"
+          if grep -Eq 'android\.permission\.INTERNET|android:debuggable[[:space:]]*=[[:space:]]*"true"|scanner[:/.]fake' "$manifest_path"; then
+            echo "Release manifest contains an unexpected network, debug, or fake-scanner entry: $manifest_path" >&2
+            exit 1
+          fi
