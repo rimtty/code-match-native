@@ -3,7 +3,7 @@ package jp.rimtty.codematch.feature.history
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -155,10 +155,15 @@ fun HistoryContent(
         )
     }
 
-    Box(modifier.fillMaxSize().testTag(HistoryTestTags.CONTENT)) {
+    BoxWithConstraints(modifier.fillMaxSize().testTag(HistoryTestTags.CONTENT)) {
         if (layoutMode == HistoryLayoutMode.EXPANDED) {
+            // The app normally selects EXPANDED only for a wide window, but
+            // multi-window resizing can temporarily leave this destination
+            // with narrower constraints. Keep both panes visible rather than
+            // allowing the fixed list width to push detail completely offscreen.
+            val listPaneWidth = minOf(344.dp, maxWidth * 0.42f)
             Row(Modifier.fillMaxSize()) {
-                list(Modifier.width(344.dp))
+                list(Modifier.width(listPaneWidth))
                 VerticalDivider(modifier = Modifier.fillMaxHeight().width(1.dp))
                 detail(Modifier.weight(1f))
             }
