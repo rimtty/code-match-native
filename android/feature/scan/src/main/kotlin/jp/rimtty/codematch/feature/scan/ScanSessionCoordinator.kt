@@ -91,6 +91,9 @@ class ScanSessionCoordinator(
 
     /** Feed a camera callback or a scanner callback through source filtering. */
     fun submitScanPayload(payload: ScanPayload): ScanReduction? {
+        // CameraX/ML Kit and BLE callbacks may complete after lifecycle stop.
+        // Never let a delayed result mutate a backgrounded session.
+        if (isBackgrounded) return null
         if (payload.source != inputSource) return null
 
         val timestamp = payload.timestampMillis

@@ -59,6 +59,7 @@ dependencies {
     implementation(project(":feature:history"))
     implementation(project(":feature:settings"))
     implementation(project(":scanner:api"))
+    implementation(project(":scanner:camera"))
 
     val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)

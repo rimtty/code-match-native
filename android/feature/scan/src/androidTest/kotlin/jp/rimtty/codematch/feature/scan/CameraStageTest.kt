@@ -1,0 +1,131 @@
+package jp.rimtty.codematch.feature.scan
+
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import jp.rimtty.codematch.scanner.api.InputSource
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class CameraStageTest {
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    @Test
+    fun qrWaitingShowsSquareGuideAndAccessibleFocusInstruction() {
+        composeRule.setContent {
+            ScanScreen(
+                state = ScanUiState.fromSession(
+                    session = ScanSessionState(
+                        scan = ScanState.WaitingQr(),
+                        inputSource = InputSource.CAMERA,
+                    ),
+                    sessionActive = true,
+                ),
+                onAction = {},
+            )
+        }
+
+        composeRule.onNodeWithTag("scan_camera_stage").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(
+            InstrumentationRegistry.getInstrumentation().targetContext.getString(
+                R.string.scan_camera_stage_description,
+                InstrumentationRegistry.getInstrumentation().targetContext.getString(
+                    R.string.scan_camera_qr_guide,
+                ),
+                InstrumentationRegistry.getInstrumentation().targetContext.getString(
+                    R.string.scan_camera_tap_to_focus,
+                ),
+            ),
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun code128WaitingShowsWideGuide() {
+        composeRule.setContent {
+            ScanScreen(
+                state = ScanUiState.fromSession(
+                    session = ScanSessionState(
+                        scan = ScanState.WaitingCode128("QR"),
+                        inputSource = InputSource.CAMERA,
+                    ),
+                    sessionActive = true,
+                ),
+                onAction = {},
+            )
+        }
+
+        composeRule.onNodeWithTag("scan_camera_stage").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(
+            InstrumentationRegistry.getInstrumentation().targetContext.getString(
+                R.string.scan_camera_stage_description,
+                InstrumentationRegistry.getInstrumentation().targetContext.getString(
+                    R.string.scan_camera_code128_guide,
+                ),
+                InstrumentationRegistry.getInstrumentation().targetContext.getString(
+                    R.string.scan_camera_tap_to_focus,
+                ),
+            ),
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun tapOnStageEmitsNormalizedFocusPoint() {
+        var focusPoint: CameraFocusPoint? = null
+        composeRule.setContent {
+            CameraStage(
+                format = jp.rimtty.codematch.scanner.api.ScanFormat.QR,
+                running = true,
+                onFocus = { focusPoint = it },
+            )
+        }
+
+        composeRule.onNodeWithTag("scan_camera_stage").performTouchInput {
+            click()
+        }
+        composeRule.runOnIdle {
+            assertTrue(focusPoint != null)
+            assertEquals(.5f, focusPoint!!.xFraction, .02f)
+            assertEquals(.5f, focusPoint!!.yFraction, .02f)
+        }
+    }
+
+    @Test
+    fun permanentlyDeniedPermissionOffersSettingsAction() {
+        var openedSettings = false
+        composeRule.setContent {
+            ScanScreen(
+                state = ScanUiState.fromSession(
+                    session = ScanSessionState(
+                        scan = ScanState.WaitingQr(),
+                        inputSource = InputSource.CAMERA,
+                    ),
+                    sessionActive = true,
+                    cameraPermissionDenied = true,
+                    cameraPermissionState = CameraPermissionState.PERMANENTLY_DENIED,
+                ),
+                onAction = {},
+                onOpenCameraSettings = { openedSettings = true },
+            )
+        }
+
+        composeRule.onNodeWithTag("scan_camera_permission_permanently_denied")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("scan_camera_open_settings")
+            .performScrollTo()
+            .performClick()
+        composeRule.runOnIdle { assertTrue(openedSettings) }
+    }
+}

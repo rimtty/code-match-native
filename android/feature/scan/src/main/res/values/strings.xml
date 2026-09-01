@@ -30,7 +30,15 @@
     <string name="scan_camera_preparing">カメラを準備しています…</string>
     <string name="scan_camera_stopped">カメラは停止中です</string>
     <string name="scan_camera_denied">カメラの権限がありません。設定から許可すると読み取れます。</string>
+    <string name="scan_camera_permanently_denied">カメラの権限が無効です。設定から許可すると読み取れます。</string>
+    <string name="scan_camera_open_settings">設定を開く</string>
+    <string name="scan_camera_permission_requesting">カメラの権限を確認しています…</string>
+    <string name="scan_camera_start_failed">カメラを開始できませんでした。もう一度お試しください。</string>
     <string name="scan_camera_unavailable">この端末ではカメラ入力を利用できません。</string>
+    <string name="scan_camera_qr_guide">正方形の枠内にQRコードを合わせてください</string>
+    <string name="scan_camera_code128_guide">横長の枠内にCode 128を合わせてください</string>
+    <string name="scan_camera_tap_to_focus">画面をタップするとそこへフォーカスします</string>
+    <string name="scan_camera_stage_description">%1$s。%2$s。</string>
     <string name="scan_bluetooth_stage">Bluetoothスキャナ</string>
     <string name="scan_bluetooth_waiting">接続済みスキャナから読み取ります</string>
     <string name="scan_bluetooth_device_fallback">Bluetoothスキャナ</string>

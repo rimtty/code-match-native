@@ -28,6 +28,10 @@ data class ScanUiState(
     val lastInvalidReason: InvalidScanReason? = null,
     /** Demo controls are never shown unless both this and the composable flag are true. */
     val debugDemoEnabled: Boolean = false,
+    /** Canonical permission state; [cameraPermissionDenied] remains for API compatibility. */
+    val cameraPermissionState: CameraPermissionState = CameraPermissionState.UNKNOWN,
+    /** A recoverable start error is intentionally represented without an exception message. */
+    val cameraStartFailed: Boolean = false,
 ) {
     val scan: ScanState get() = session.scan
     val phase: ScanPhase get() = session.phase
@@ -40,6 +44,8 @@ data class ScanUiState(
     val countdownSeconds: Int? get() = session.autoAdvanceSecondsRemaining
     val autoAdvanceEnabled: Boolean get() = session.autoAdvanceEnabled
     val autoAdvanceDelay: AutoAdvanceDelay get() = session.autoAdvanceDelay
+    val cameraPermissionPermanentlyDenied: Boolean
+        get() = cameraPermissionState == CameraPermissionState.PERMANENTLY_DENIED
 
     companion object {
         fun fromSession(
@@ -56,6 +62,12 @@ data class ScanUiState(
             message: String? = null,
             lastInvalidReason: InvalidScanReason? = null,
             debugDemoEnabled: Boolean = false,
+            cameraPermissionState: CameraPermissionState = if (cameraPermissionDenied) {
+                CameraPermissionState.DENIED
+            } else {
+                CameraPermissionState.UNKNOWN
+            },
+            cameraStartFailed: Boolean = false,
         ): ScanUiState = ScanUiState(
             sessionActive = sessionActive,
             sessionNameDraft = sessionNameDraft,
@@ -65,8 +77,10 @@ data class ScanUiState(
             bluetoothDeviceName = bluetoothDeviceName,
             cameraAvailable = cameraAvailable,
             cameraPermissionDenied = cameraPermissionDenied,
+            cameraPermissionState = cameraPermissionState,
             isCameraRunning = isCameraRunning,
             isCameraStarting = isCameraStarting,
+            cameraStartFailed = cameraStartFailed,
             message = message,
             lastInvalidReason = lastInvalidReason,
             debugDemoEnabled = debugDemoEnabled,

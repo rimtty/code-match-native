@@ -22,6 +22,7 @@ import androidx.compose.ui.res.booleanResource
 import androidx.compose.ui.res.stringResource
 import jp.rimtty.codematch.history.HistoryRoute
 import jp.rimtty.codematch.scan.ScanRoute
+import jp.rimtty.codematch.scan.rememberAndroidCameraHost
 import jp.rimtty.codematch.settings.SettingsRoute
 
 private enum class AppDestination(
@@ -45,6 +46,7 @@ private enum class AppDestination(
 fun CodeMatchApp() {
     var selectedRoute by rememberSaveable { mutableStateOf(AppDestination.SCAN.route) }
     val selected = AppDestination.fromRoute(selectedRoute)
+    val cameraHost = rememberAndroidCameraHost()
 
     NavigationSuiteScaffold(
         layoutType = NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(
@@ -72,6 +74,7 @@ fun CodeMatchApp() {
             AppDestination.SCAN -> ScanRoute(
                 modifier = Modifier.fillMaxSize(),
                 showDebugDemoTools = booleanResource(R.bool.show_debug_demo_tools),
+                cameraHost = cameraHost,
             )
             AppDestination.HISTORY -> HistoryRoute(Modifier.fillMaxSize())
             AppDestination.SETTINGS -> SettingsRoute(Modifier.fillMaxSize())

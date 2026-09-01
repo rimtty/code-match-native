@@ -11,6 +11,7 @@ import jp.rimtty.codematch.core.model.MatchSession
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.feedback.FeedbackPlayer
 import jp.rimtty.codematch.feature.scan.ScanEffect
+import jp.rimtty.codematch.feature.scan.CameraPermissionState
 import jp.rimtty.codematch.feature.scan.ScanPhase
 import jp.rimtty.codematch.feature.scan.ScanSessionCoordinator
 import jp.rimtty.codematch.feature.scan.ScanSessionState
@@ -67,6 +68,8 @@ class ScanViewModel @Inject constructor(
     private var latestSettings: AppSettings = AppSettings()
     private var countdownJob: Job? = null
     private var endingSession = false
+    /** User intent survives a configuration change; the physical host does not. */
+    private var cameraResumeOnForeground = false
 
     init {
         initialize()
@@ -126,10 +129,14 @@ class ScanViewModel @Inject constructor(
 
     /** Update state after the camera host has successfully started capture. */
     fun onCameraStarted() {
+        if (_state.value.inputSource != InputSource.CAMERA || _state.value.expectedFormat == null) return
         _state.value = _state.value.copy(
             isCameraStarting = false,
             isCameraRunning = true,
             cameraPermissionDenied = false,
+            cameraPermissionState = CameraPermissionState.GRANTED,
+            cameraStartFailed = false,
+            cameraAvailable = true,
         )
     }
 
@@ -141,27 +148,79 @@ class ScanViewModel @Inject constructor(
         )
     }
 
+    /** Show the transient platform permission request state. */
+    fun onCameraPermissionRequesting() {
+        _state.value = _state.value.copy(
+            cameraPermissionState = CameraPermissionState.REQUESTING,
+            cameraPermissionDenied = false,
+            cameraStartFailed = false,
+        )
+    }
+
+    /** Synchronize a permission result observed by a host before a start request. */
+    fun onCameraPermissionGranted() {
+        _state.value = _state.value.copy(
+            cameraPermissionState = CameraPermissionState.GRANTED,
+            cameraPermissionDenied = false,
+            cameraStartFailed = false,
+        )
+    }
+
+    /** Reconcile permission state reported at host creation or lifecycle start. */
+    fun synchronizeCameraPermission(permission: CameraPermissionState) {
+        when (permission) {
+            CameraPermissionState.GRANTED -> onCameraPermissionGranted()
+            CameraPermissionState.DENIED -> onCameraPermissionDenied(permanently = false)
+            CameraPermissionState.PERMANENTLY_DENIED -> onCameraPermissionDenied(permanently = true)
+            CameraPermissionState.UNKNOWN,
+            CameraPermissionState.REQUESTING,
+            -> Unit
+        }
+    }
+
     /** Report a denied camera permission without leaking a platform type. */
-    fun onCameraPermissionDenied() {
+    fun onCameraPermissionDenied(permanently: Boolean = false) {
+        cameraResumeOnForeground = false
         _state.value = _state.value.copy(
             isCameraStarting = false,
             isCameraRunning = false,
             cameraPermissionDenied = true,
+            cameraPermissionState = if (permanently) {
+                CameraPermissionState.PERMANENTLY_DENIED
+            } else {
+                CameraPermissionState.DENIED
+            },
+            cameraStartFailed = false,
         )
     }
 
     /** Report that no usable camera is present on the current device. */
     fun onCameraUnavailable() {
+        cameraResumeOnForeground = false
         _state.value = _state.value.copy(
             isCameraStarting = false,
             isCameraRunning = false,
             cameraAvailable = false,
+            cameraStartFailed = false,
         )
     }
 
     /** Restore camera availability after a transient host/device error. */
     fun onCameraAvailable() {
-        _state.value = _state.value.copy(cameraAvailable = true)
+        _state.value = _state.value.copy(
+            cameraAvailable = true,
+            cameraStartFailed = false,
+        )
+    }
+
+    /** Report a recoverable camera start failure without surfacing exception text. */
+    fun onCameraStartFailed() {
+        cameraResumeOnForeground = false
+        _state.value = _state.value.copy(
+            isCameraStarting = false,
+            isCameraRunning = false,
+            cameraStartFailed = true,
+        )
     }
 
     /**
@@ -280,7 +339,15 @@ class ScanViewModel @Inject constructor(
         if (endingSession) return
         endingSession = true
         try {
+            cameraResumeOnForeground = false
             val id = activeSessionId
+            // The route asks the platform host to stop first. Reflect that
+            // boundary immediately as a defensive fallback for non-Compose
+            // callers of confirmEndSession().
+            _state.value = _state.value.copy(
+                isCameraStarting = false,
+                isCameraRunning = false,
+            )
             coordinator?.endSession()
             activeSessionId = null
             activeSessionName = null
@@ -301,7 +368,13 @@ class ScanViewModel @Inject constructor(
     private fun selectInputSource(source: InputSource) {
         val current = coordinator ?: return
         val selected = current.selectInputSource(source)
+        if (selected && source == InputSource.CAMERA) {
+            // Selecting a source is not the same as pressing Start camera;
+            // the host starts only after the explicit camera action.
+            cameraResumeOnForeground = false
+        }
         if (selected && source == InputSource.BLUETOOTH) {
+            cameraResumeOnForeground = false
             _state.value = _state.value.copy(
                 isCameraStarting = false,
                 isCameraRunning = false,
@@ -313,14 +386,20 @@ class ScanViewModel @Inject constructor(
     private fun requestCameraStart() {
         val current = coordinator ?: return
         if (current.state.expectedFormat == null || current.state.phase == ScanPhase.IDLE) return
+        if (_state.value.cameraPermissionPermanentlyDenied) return
+        if (_state.value.isCameraRunning || _state.value.isCameraStarting) return
+        cameraResumeOnForeground = true
         _state.value = _state.value.copy(
             isCameraStarting = true,
             isCameraRunning = false,
             cameraPermissionDenied = false,
+            cameraPermissionState = CameraPermissionState.UNKNOWN,
+            cameraStartFailed = false,
         )
     }
 
     private fun requestCameraStop() {
+        cameraResumeOnForeground = false
         _state.value = _state.value.copy(
             isCameraStarting = false,
             isCameraRunning = false,
@@ -337,7 +416,16 @@ class ScanViewModel @Inject constructor(
 
     private fun foregrounded() {
         coordinator?.onForegrounded()
-        publishCoordinatorState()
+        if (cameraResumeOnForeground &&
+            _state.value.sessionActive &&
+            _state.value.inputSource == InputSource.CAMERA &&
+            _state.value.expectedFormat != null &&
+            !_state.value.cameraPermissionPermanentlyDenied
+        ) {
+            requestCameraStart()
+        } else {
+            publishCoordinatorState()
+        }
     }
 
     private fun setAutoAdvanceEnabled(enabled: Boolean) {

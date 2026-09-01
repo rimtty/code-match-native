@@ -478,13 +478,17 @@ BLE以外は約31〜49人日、BLEはSDKとfirmwareの不確実性を除き約8�
 - 日英、音設定、auto-advance、PDF
 - Fake camera/BLEで状態遷移とCompose UI test
 
-ローカル検証済み: Kotlin/JVM test 68件、API 37エミュレーターとPixel 7（API 36）のinstrumentation/Compose test各27件、debug/release build、Lint、release依存グラフからのFake除外。エミュレーター実操作で日本語初回起動、per-app languageの日英切替、Fake一致、Room履歴保存、adaptive iconを確認し、Pixel 7でも初回日本語表示、launcher icon、プロセス再起動後の1箱履歴保持を確認した。API 31/36のhosted CI結果はPRで確認する。
+ローカル検証済み: Kotlin/JVM test 68件、API 37エミュレーターとPixel 7（API 36）のinstrumentation/Compose test各27件、debug/release build、Lint、release依存グラフからのFake除外。エミュレーター実操作で日本語初回起動、per-app languageの日英切替、Fake一致、Room履歴保存、adaptive iconを確認し、Pixel 7でも初回日本語表示、launcher icon、プロセス再起動後の1箱履歴保持を確認した。PR #14とmerge後masterでAndroid API 31/36およびiOS CIがすべて成功済み。
 
 ### M3: Camera production ready
 
 - 実Android端末でQR → Code 128
 - 権限、背景復帰、回転、focus、連続箱
-- BLE以外の全機能パリティ
+- BLE以外の完全パリティへ向けたcamera production gate
+
+実装済み: CameraX 1.6.2 Preview/ImageAnalysis、端末同梱ML Kit 17.3.0、QR/Code 128の工程別限定、`KEEP_ONLY_LATEST`とin-flight frame drop、表示枠と共通のROI、変換後四隅判定、elapsed realtime timestamp、AF/AE tap focus、権限状態、lifecycle停止、解析世代による停止後callback破棄。release APKから`INTERNET` / `ACCESS_NETWORK_STATE`権限が除外されることも確認済み。
+
+ローカル検証済み: 全JVM test、Lint、debug/release build、API 37エミュレーター全モジュール計31件のinstrumentation test、初回カメラ拒否、再要求、許可後のCameraX preview開始と背景復帰。Pixel 7（API 36）でも全モジュール計31件、CameraX preview開始、背景復帰、横画面再構成後のpreview再開を確認済み。M3完了ゲートとしてPixel 7でのQR → Code 128実読取、タップfocus、連続箱を残す。
 
 ### M4: Full parity
 

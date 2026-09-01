@@ -30,6 +30,7 @@ include(":feature:history")
 include(":feature:settings")
 
 include(":scanner:api")
+include(":scanner:camera")
 
 // The fake scanner is deliberately a debug-only dependency of :app. Keeping it
 // as a separate module makes the release dependency graph auditable.

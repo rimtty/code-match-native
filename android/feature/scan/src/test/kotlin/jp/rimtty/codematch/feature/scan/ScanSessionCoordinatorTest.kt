@@ -93,6 +93,21 @@ class ScanSessionCoordinatorTest {
     }
 
     @Test
+    fun delayedCameraPayloadIsIgnoredWhileBackgrounded() {
+        val coordinator = ScanSessionCoordinator(TestScanner())
+        coordinator.startSession()
+        coordinator.onBackgrounded()
+
+        val result = coordinator.submitScanPayload(
+            ScanPayload.qr(qrPayload, timestampMillis = 100L),
+        )
+
+        assertNull(result)
+        assertEquals(ScanPhase.WAITING_QR, coordinator.state.phase)
+        assertNull(coordinator.state.qrPayload)
+    }
+
+    @Test
     fun coordinatorCanStartWithRestoredMatchCount() {
         val coordinator = ScanSessionCoordinator(TestScanner(), existingMatchedCount = 4)
 

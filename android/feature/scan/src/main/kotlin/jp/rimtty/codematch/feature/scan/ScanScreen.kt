@@ -80,6 +80,12 @@ fun ScanScreen(
     modifier: Modifier = Modifier,
     /** Explicit opt-in for debug-only demo controls. Defaults to production-safe hidden. */
     showDebugDemoTools: Boolean = false,
+    /** Optional CameraX-free preview supplied by the application host. */
+    cameraPreview: CameraPreviewContent? = null,
+    /** Receives normalized taps for CameraX focus/metering. */
+    onCameraFocus: (CameraFocusPoint) -> Unit = {},
+    /** Opens the app's camera permission page for a permanently denied permission. */
+    onOpenCameraSettings: () -> Unit = {},
 ) {
     val screenDescription = stringResource(R.string.scan_accessibility_description)
     val countDescription = stringResource(R.string.scan_count_format, state.matchedCount)
@@ -136,6 +142,9 @@ fun ScanScreen(
                 onAction = onAction,
                 showDebugDemoTools = showDebugDemoTools,
                 contentPadding = innerPadding,
+                cameraPreview = cameraPreview,
+                onCameraFocus = onCameraFocus,
+                onOpenCameraSettings = onOpenCameraSettings,
             )
         } else {
             ScanStartContent(
@@ -154,7 +163,18 @@ fun ScanRoute(
     onAction: (ScanUiAction) -> Unit,
     modifier: Modifier = Modifier,
     showDebugDemoTools: Boolean = false,
-) = ScanScreen(state, onAction, modifier, showDebugDemoTools)
+    cameraPreview: CameraPreviewContent? = null,
+    onCameraFocus: (CameraFocusPoint) -> Unit = {},
+    onOpenCameraSettings: () -> Unit = {},
+) = ScanScreen(
+    state,
+    onAction,
+    modifier,
+    showDebugDemoTools,
+    cameraPreview,
+    onCameraFocus,
+    onOpenCameraSettings,
+)
 
 /** Alias kept small so app integration can choose either naming convention. */
 @Composable
@@ -163,7 +183,18 @@ fun ScanDestination(
     onAction: (ScanUiAction) -> Unit,
     modifier: Modifier = Modifier,
     showDebugDemoTools: Boolean = false,
-) = ScanScreen(state, onAction, modifier, showDebugDemoTools)
+    cameraPreview: CameraPreviewContent? = null,
+    onCameraFocus: (CameraFocusPoint) -> Unit = {},
+    onOpenCameraSettings: () -> Unit = {},
+) = ScanScreen(
+    state,
+    onAction,
+    modifier,
+    showDebugDemoTools,
+    cameraPreview,
+    onCameraFocus,
+    onOpenCameraSettings,
+)
 
 @Composable
 private fun ScanStartContent(
@@ -244,6 +275,9 @@ private fun ScanSessionContent(
     onAction: (ScanUiAction) -> Unit,
     showDebugDemoTools: Boolean,
     contentPadding: PaddingValues,
+    cameraPreview: CameraPreviewContent?,
+    onCameraFocus: (CameraFocusPoint) -> Unit,
+    onOpenCameraSettings: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -271,7 +305,13 @@ private fun ScanSessionContent(
             ScanState.Idle -> Unit
             is ScanState.WaitingQr,
             is ScanState.WaitingCode128,
-            -> ScanWaitingCard(state, onAction)
+            -> ScanWaitingCard(
+                state = state,
+                onAction = onAction,
+                cameraPreview = cameraPreview,
+                onCameraFocus = onCameraFocus,
+                onOpenCameraSettings = onOpenCameraSettings,
+            )
             is ScanState.Result -> ScanResultCard(state, onAction)
         }
 
@@ -469,6 +509,9 @@ private fun SourceChoice(
 private fun ScanWaitingCard(
     state: ScanUiState,
     onAction: (ScanUiAction) -> Unit,
+    cameraPreview: CameraPreviewContent?,
+    onCameraFocus: (CameraFocusPoint) -> Unit,
+    onOpenCameraSettings: () -> Unit,
 ) {
     val expected = state.expectedFormat ?: ScanFormat.QR
     val title = stringResource(
@@ -509,7 +552,29 @@ private fun ScanWaitingCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (state.inputSource == InputSource.CAMERA) {
+                CameraStage(
+                    format = expected,
+                    running = state.isCameraRunning,
+                    previewContent = cameraPreview,
+                    onFocus = onCameraFocus,
+                )
                 when {
+                    state.cameraPermissionPermanentlyDenied -> {
+                        Text(
+                            stringResource(R.string.scan_camera_permanently_denied),
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.testTag("scan_camera_permission_permanently_denied"),
+                        )
+                        TextButton(
+                            onClick = onOpenCameraSettings,
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("scan_camera_open_settings"),
+                        ) {
+                            Text(stringResource(R.string.scan_camera_open_settings))
+                        }
+                    }
                     state.cameraPermissionDenied -> {
                         Text(
                             stringResource(R.string.scan_camera_denied),
@@ -518,11 +583,28 @@ private fun ScanWaitingCard(
                             modifier = Modifier.testTag("scan_camera_permission_denied"),
                         )
                     }
+                    state.cameraPermissionState == CameraPermissionState.REQUESTING -> {
+                        Text(
+                            stringResource(R.string.scan_camera_permission_requesting),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.testTag("scan_camera_permission_requesting"),
+                        )
+                    }
+                    state.cameraStartFailed -> {
+                        Text(
+                            stringResource(R.string.scan_camera_start_failed),
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.testTag("scan_camera_start_failed"),
+                        )
+                    }
                     !state.cameraAvailable -> {
                         Text(
                             stringResource(R.string.scan_camera_unavailable),
                             color = MaterialTheme.colorScheme.error,
                             textAlign = TextAlign.Center,
+                            modifier = Modifier.testTag("scan_camera_unavailable"),
                         )
                     }
                 }
@@ -536,7 +618,10 @@ private fun ScanWaitingCard(
                             },
                         )
                     },
-                    enabled = state.cameraAvailable && !state.cameraPermissionDenied,
+                    enabled = state.cameraAvailable &&
+                        (!state.cameraPermissionPermanentlyDenied ||
+                            state.isCameraRunning ||
+                            state.isCameraStarting),
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 52.dp)
