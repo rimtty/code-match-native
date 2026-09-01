@@ -25,6 +25,7 @@ import jp.rimtty.codematch.feature.scan.CameraPermissionState
 import jp.rimtty.codematch.feature.scan.CameraPreviewContent
 import jp.rimtty.codematch.feature.scan.ScanScreen
 import jp.rimtty.codematch.feature.scan.ScanUiAction
+import jp.rimtty.codematch.navigation.CodeMatchBackHandler
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
 
@@ -184,6 +185,20 @@ fun ScanRoute(
     LaunchedEffect(state.sessionActive) {
         if (!state.sessionActive) showEndSessionDialog = false
     }
+
+    CodeMatchBackHandler(
+        enabled = state.sessionActive || showEndSessionDialog,
+        onBack = {
+            if (showEndSessionDialog) {
+                showEndSessionDialog = false
+            } else if (state.sessionActive) {
+                // Back is a potentially destructive operation while a
+                // session is active, so use the same confirmation as the
+                // explicit End session action.
+                showEndSessionDialog = true
+            }
+        },
+    )
 
     val dispatch: (ScanUiAction) -> Unit = remember(viewModel) {
         { action ->

@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -26,6 +27,7 @@ import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchSession
 import jp.rimtty.codematch.feature.history.HistoryContent
 import jp.rimtty.codematch.feature.history.HistoryLayoutMode
+import jp.rimtty.codematch.navigation.CodeMatchBackHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -45,9 +47,12 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var selectedSessionId by remember { mutableStateOf<String?>(null) }
-    var selectedGroupCode by remember { mutableStateOf<String?>(null) }
-    var selectedEntryId by remember { mutableStateOf<String?>(null) }
+    // IDs are saveable so a compact detail remains selected after Activity
+    // recreation. CodeMatchApp additionally keeps this destination's state
+    // while the user switches between top-level destinations.
+    var selectedSessionId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedGroupCode by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedEntryId by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingDocument by remember { mutableStateOf<PendingDocument?>(null) }
 
     val createDocument = rememberLauncherForActivityResult(
@@ -71,8 +76,11 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
     // A deleted session should not leave a stale detail pane selected. This
     // also handles Room's first emission after process recreation.
     val selectedSessionExists = state.sessions.any { it.id == selectedSessionId }
-    LaunchedEffect(selectedSessionId, selectedSessionExists) {
-        if (selectedSessionId != null && !selectedSessionExists) {
+    LaunchedEffect(selectedSessionId, selectedSessionExists, state.loaded) {
+        // Do not clear a restored ID while Room is still on the ViewModel's
+        // empty initial value. Once the first repository emission arrives,
+        // a genuinely deleted/stale session is safe to clear.
+        if (state.loaded && selectedSessionId != null && !selectedSessionExists) {
             selectedSessionId = null
             selectedGroupCode = null
             selectedEntryId = null
@@ -85,6 +93,26 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
         } else {
             HistoryLayoutMode.COMPACT
         }
+        val selection = HistoryNavigationSelection(
+            sessionId = selectedSessionId,
+            groupCode = selectedGroupCode,
+            entryId = selectedEntryId,
+        )
+        val goBack: () -> Unit = {
+            val previous = HistoryNavigationSelection(
+                sessionId = selectedSessionId,
+                groupCode = selectedGroupCode,
+                entryId = selectedEntryId,
+            ).pop()
+            selectedSessionId = previous.sessionId
+            selectedGroupCode = previous.groupCode
+            selectedEntryId = previous.entryId
+        }
+
+        CodeMatchBackHandler(
+            enabled = selection.canNavigateBack(layoutMode),
+            onBack = goBack,
+        )
 
         HistoryContent(
             sessions = state.sessions,
@@ -112,13 +140,7 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
                 selectedEntryId = null
             },
             onEntrySelected = { entryId -> selectedEntryId = entryId },
-            onBack = {
-                when {
-                    selectedEntryId != null -> selectedEntryId = null
-                    selectedGroupCode != null -> selectedGroupCode = null
-                    else -> selectedSessionId = null
-                }
-            },
+            onBack = goBack,
             onSavePdf = { session ->
                 preparePdfForSave(
                     session = session,
@@ -140,6 +162,29 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
             },
             modifier = Modifier.fillMaxSize(),
         )
+    }
+}
+
+/**
+ * The compact history destination behaves like a list/detail back stack.
+ * Expanded layouts keep the list visible, so only nested group/box details
+ * consume system back there.
+ */
+internal data class HistoryNavigationSelection(
+    val sessionId: String? = null,
+    val groupCode: String? = null,
+    val entryId: String? = null,
+) {
+    fun canNavigateBack(layoutMode: HistoryLayoutMode): Boolean = when (layoutMode) {
+        HistoryLayoutMode.COMPACT -> sessionId != null || groupCode != null || entryId != null
+        HistoryLayoutMode.EXPANDED -> groupCode != null || entryId != null
+    }
+
+    fun pop(): HistoryNavigationSelection = when {
+        entryId != null -> copy(entryId = null)
+        groupCode != null -> copy(groupCode = null)
+        sessionId != null -> copy(sessionId = null)
+        else -> this
     }
 }
 

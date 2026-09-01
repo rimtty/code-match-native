@@ -14,7 +14,9 @@ import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCase
 import androidx.camera.core.UseCaseGroup
+import androidx.camera.core.ViewPort
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.camera.view.transform.CoordinateTransform
@@ -28,11 +30,99 @@ import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
+import com.google.android.gms.tasks.Task
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
 import jp.rimtty.codematch.scanner.api.ScanPayload
+import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+
+/**
+ * Platform seams used by [CameraScanner]. Production callers use the public
+ * constructor; the internal constructor lets JVM tests control provider
+ * completion and ML Kit client creation without a real camera service.
+ */
+internal class CameraScannerDependencies(
+    val providerFutureFactory: (Context) -> CameraProviderFuture = ::defaultCameraProviderFuture,
+    val scannerFactory: (ScanFormat) -> BarcodeScanner = ::createBarcodeScanner,
+    val mainExecutorFactory: (Context) -> Executor = { ContextCompat.getMainExecutor(it) },
+    val analysisExecutorFactory: () -> ExecutorService = ::newCameraAnalysisExecutor,
+)
+
+/** Small adapter around CameraX's Guava future for deterministic tests. */
+internal interface CameraProviderFuture {
+    fun addListener(listener: () -> Unit, executor: Executor)
+    fun get(): CameraProviderAdapter
+}
+
+/** CameraX provider operations needed by the scanner binding state machine. */
+internal interface CameraProviderAdapter {
+    fun hasBackCamera(): Boolean
+    fun unbind(vararg useCases: UseCase)
+    fun bindToLifecycle(owner: LifecycleOwner, useCaseGroup: UseCaseGroup): Camera
+}
+
+private class ProcessCameraProviderFuture(
+    private val future: com.google.common.util.concurrent.ListenableFuture<ProcessCameraProvider>,
+) : CameraProviderFuture {
+    override fun addListener(listener: () -> Unit, executor: Executor) {
+        future.addListener({ listener() }, executor)
+    }
+
+    override fun get(): CameraProviderAdapter = ProcessCameraProviderAdapter(future.get())
+}
+
+private class ProcessCameraProviderAdapter(
+    private val provider: ProcessCameraProvider,
+) : CameraProviderAdapter {
+    override fun hasBackCamera(): Boolean =
+        provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)
+
+    override fun unbind(vararg useCases: UseCase) {
+        provider.unbind(*useCases)
+    }
+
+    override fun bindToLifecycle(owner: LifecycleOwner, useCaseGroup: UseCaseGroup): Camera =
+        provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, useCaseGroup)
+}
+
+private fun defaultCameraProviderFuture(context: Context): CameraProviderFuture =
+    ProcessCameraProviderFuture(ProcessCameraProvider.getInstance(context))
+
+private fun createBarcodeScanner(format: ScanFormat): BarcodeScanner {
+    val options = BarcodeScannerOptions.Builder()
+        .setBarcodeFormats(format.toMlKitFormat())
+        .build()
+    return BarcodeScanning.getClient(options)
+}
+
+private fun newCameraAnalysisExecutor(): ExecutorService = Executors.newSingleThreadExecutor {
+    Thread(it, "CodeMatch-camera-analysis").apply { isDaemon = true }
+}
+
+private data class ViewPortSnapshot(
+    val width: Int,
+    val height: Int,
+    val aspectNumerator: Int,
+    val aspectDenominator: Int,
+    val rotation: Int,
+    val scaleType: Int,
+    val layoutDirection: Int,
+)
+
+private fun PreviewView.viewPortSnapshot(viewPort: ViewPort): ViewPortSnapshot {
+    val aspectRatio = viewPort.aspectRatio
+    return ViewPortSnapshot(
+        width = width,
+        height = height,
+        aspectNumerator = aspectRatio.numerator,
+        aspectDenominator = aspectRatio.denominator,
+        rotation = viewPort.rotation,
+        scaleType = viewPort.scaleType,
+        layoutDirection = viewPort.layoutDirection,
+    )
+}
 
 /**
  * CameraX + bundled ML Kit barcode adapter for the QR -> Code 128 workflow.
@@ -46,23 +136,38 @@ import java.util.concurrent.Executors
  * after [unbind] or after a lifecycle stop; [close] is terminal and releases
  * the analyzer executor. No image is copied, persisted, or logged.
  */
-class CameraScanner(
+class CameraScanner private constructor(
     context: Context,
     private val onPayload: (ScanPayload) -> Unit,
     private val onStateChanged: (CameraCaptureState) -> Unit = {},
     private val onError: (CameraError) -> Unit = {},
+    private val dependencies: CameraScannerDependencies,
 ) : AutoCloseable {
+    constructor(
+        context: Context,
+        onPayload: (ScanPayload) -> Unit,
+        onStateChanged: (CameraCaptureState) -> Unit = {},
+        onError: (CameraError) -> Unit = {},
+    ) : this(context, onPayload, onStateChanged, onError, CameraScannerDependencies())
+
+    internal constructor(
+        context: Context,
+        dependencies: CameraScannerDependencies,
+        onPayload: (ScanPayload) -> Unit,
+        onStateChanged: (CameraCaptureState) -> Unit = {},
+        onError: (CameraError) -> Unit = {},
+    ) : this(context, onPayload, onStateChanged, onError, dependencies)
+
     private val appContext = context.applicationContext
-    private val mainExecutor = ContextCompat.getMainExecutor(appContext)
-    private val analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor {
-        Thread(it, "CodeMatch-camera-analysis").apply { isDaemon = true }
-    }
+    private val mainExecutor = dependencies.mainExecutorFactory(appContext)
+    private val analysisExecutor: ExecutorService = dependencies.analysisExecutorFactory()
     private val analyzer = MlKitImageAnalyzer(
         previewViewProvider = { previewView },
         guideProvider = { guide },
         onPayload = onPayload,
         onError = onError,
         mainExecutor = mainExecutor,
+        scannerFactory = dependencies.scannerFactory,
     )
 
     private val lifecycleObserver = object : DefaultLifecycleObserver {
@@ -86,7 +191,7 @@ class CameraScanner(
 
     private var lifecycleOwner: LifecycleOwner? = null
     private var previewView: PreviewView? = null
-    private var provider: ProcessCameraProvider? = null
+    private var provider: CameraProviderAdapter? = null
     private var previewUseCase: Preview? = null
     private var analysisUseCase: ImageAnalysis? = null
     private var camera: Camera? = null
@@ -148,7 +253,9 @@ class CameraScanner(
         this.guide = guide ?: CameraGuide.forFormat(expectedFormat)
         updateExpectedFormat(expectedFormat)
 
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+        if (_captureState != CameraCaptureState.ERROR &&
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        ) {
             requestBind()
         }
     }
@@ -310,7 +417,7 @@ class CameraScanner(
     }
 
     private fun requestBind() {
-        if (isClosed) return
+        if (isClosed || _captureState == CameraCaptureState.ERROR) return
         val owner = lifecycleOwner ?: return
         val currentPreview = previewView ?: return
         val format = expectedFormat ?: return
@@ -339,6 +446,7 @@ class CameraScanner(
             }
             return
         }
+        val viewPortSnapshot = currentPreview.viewPortSnapshot(viewPort)
 
         if (!hasCameraPermission()) {
             setCaptureState(CameraCaptureState.PERMISSION_REQUIRED)
@@ -349,7 +457,7 @@ class CameraScanner(
         val generation = ++bindGeneration
         pendingBindGeneration = generation
         val future = try {
-            ProcessCameraProvider.getInstance(appContext)
+            dependencies.providerFutureFactory(appContext)
         } catch (_: Exception) {
             pendingBindGeneration = null
             reportBindFailure(
@@ -362,7 +470,7 @@ class CameraScanner(
         try {
             future.addListener(
                 {
-                    var cameraProvider: ProcessCameraProvider? = null
+                    var cameraProvider: CameraProviderAdapter? = null
                     var preview: Preview? = null
                     var analysis: ImageAnalysis? = null
                     if (pendingBindGeneration == generation) pendingBindGeneration = null
@@ -385,7 +493,10 @@ class CameraScanner(
                     // with the stale viewport would make ML Kit coordinates
                     // disagree with the displayed crop, so retry from the
                     // current view state.
-                    if (currentPreview.viewPort != viewPort) {
+                    val currentViewPort = currentPreview.viewPort
+                    if (currentViewPort == null ||
+                        currentPreview.viewPortSnapshot(currentViewPort) != viewPortSnapshot
+                    ) {
                         requestBind()
                         return@addListener
                     }
@@ -393,7 +504,7 @@ class CameraScanner(
                     try {
                         val resolvedProvider = future.get()
                         cameraProvider = resolvedProvider
-                        if (!resolvedProvider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) {
+                        if (!resolvedProvider.hasBackCamera()) {
                             setCaptureState(CameraCaptureState.UNAVAILABLE)
                             onError(
                                 CameraError(
@@ -436,7 +547,6 @@ class CameraScanner(
                         resolvedProvider.unbind(builtPreview, builtAnalysis)
                         val boundCamera = resolvedProvider.bindToLifecycle(
                             owner,
-                            CameraSelector.DEFAULT_BACK_CAMERA,
                             useCaseGroup,
                         )
                         provider = resolvedProvider
@@ -548,7 +658,7 @@ class CameraScanner(
     }
 
     private fun cleanupFailedBind(
-        cameraProvider: ProcessCameraProvider?,
+        cameraProvider: CameraProviderAdapter?,
         preview: Preview?,
         analysis: ImageAnalysis?,
     ) {
@@ -579,12 +689,24 @@ class CameraScanner(
 // @RequiresOptIn markers. Lint therefore requires the explicit Android-side
 // suppression at the adapter boundary; the use is intentional and isolated.
 @SuppressLint("UnsafeOptInUsageError")
-private class MlKitImageAnalyzer(
+internal class MlKitImageAnalyzer(
     private val previewViewProvider: () -> PreviewView?,
     private val guideProvider: () -> CameraGuide,
     private val onPayload: (ScanPayload) -> Unit,
     private val onError: (CameraError) -> Unit,
     private val mainExecutor: java.util.concurrent.Executor,
+    private val scannerFactory: (ScanFormat) -> BarcodeScanner = ::createBarcodeScanner,
+    private val processFrame: (BarcodeScanner, ImageProxy) -> Task<List<Barcode>> =
+        { scanner, imageProxy ->
+            val mediaImage = imageProxy.image
+                ?: throw IllegalArgumentException("ImageProxy has no media image")
+            scanner.process(
+                InputImage.fromMediaImage(
+                    mediaImage,
+                    imageProxy.imageInfo.rotationDegrees,
+                ),
+            )
+        },
 ) : ImageAnalysis.Analyzer, AutoCloseable {
     private val gate = AnalysisFrameGate()
     private val transformFactory = ImageProxyTransformFactory()
@@ -623,7 +745,7 @@ private class MlKitImageAnalyzer(
         }
 
         val replacement = try {
-            format?.let(::createScanner)
+            format?.let(scannerFactory)
         } catch (_: Exception) {
             null
         }
@@ -682,8 +804,7 @@ private class MlKitImageAnalyzer(
         val localScanner = scanner
         val localFormat = expectedFormat
         val localGeneration = generation
-        val mediaImage = imageProxy.image
-        if (closed || localScanner == null || localFormat == null || mediaImage == null) {
+        if (closed || localScanner == null || localFormat == null) {
             imageProxy.close()
             gate.release()
             closeRetiredIfIdle()
@@ -691,11 +812,7 @@ private class MlKitImageAnalyzer(
         }
 
         try {
-            val inputImage = InputImage.fromMediaImage(
-                mediaImage,
-                imageProxy.imageInfo.rotationDegrees,
-            )
-            localScanner.process(inputImage)
+            processFrame(localScanner, imageProxy)
                 .addOnSuccessListener(mainExecutor) { barcodes ->
                     if (!closed && localGeneration == generation && localFormat == expectedFormat) {
                         deliverFirstAcceptedBarcode(barcodes, imageProxy, localFormat)
@@ -850,12 +967,6 @@ private class MlKitImageAnalyzer(
         toClose.forEach(BarcodeScanner::close)
     }
 
-    private fun createScanner(format: ScanFormat): BarcodeScanner {
-        val options = BarcodeScannerOptions.Builder()
-            .setBarcodeFormats(format.toMlKitFormat())
-            .build()
-        return BarcodeScanning.getClient(options)
-    }
 }
 
 private fun Int.toScanFormat(): ScanFormat? = when (this) {
