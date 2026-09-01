@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import jp.rimtty.codematch.core.model.MatchEntry
 import jp.rimtty.codematch.core.model.MatchSession
 import org.junit.Assert.assertEquals
@@ -22,10 +23,11 @@ class HistoryScreenTest {
 
     @Test
     fun emptyStateIsDisplayedWithHistorySemantics() {
+        val emptyTitle = targetString(R.string.history_empty_title)
         composeRule.setContent { HistoryScreen(emptyList()) }
 
         composeRule.onNodeWithTag(HistoryTestTags.SCREEN).assertIsDisplayed()
-        composeRule.onNodeWithText("履歴はまだありません").assertIsDisplayed()
+        composeRule.onNodeWithText(emptyTitle).assertIsDisplayed()
     }
 
     @Test
@@ -56,6 +58,7 @@ class HistoryScreenTest {
 
     @Test
     fun entryDetailDisplaysParsedAndLegacyPayloadValues() {
+        val qrParsed = targetString(R.string.history_qr_parsed)
         val entry = MatchEntry(
             code = "BCJH-52-81GG",
             qrPayload = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
@@ -66,8 +69,11 @@ class HistoryScreenTest {
         }
 
         composeRule.onNodeWithTag(HistoryTestTags.ENTRY_DETAIL).assertIsDisplayed()
-        composeRule.onNodeWithText("納品書情報（QR解析）").assertIsDisplayed()
+        composeRule.onNodeWithText(qrParsed).assertIsDisplayed()
         composeRule.onNodeWithText("DCLP675300").assertIsDisplayed()
         composeRule.onNodeWithText("1N5X0C").performScrollTo().assertIsDisplayed()
     }
+
+    private fun targetString(resourceId: Int): String =
+        InstrumentationRegistry.getInstrumentation().targetContext.getString(resourceId)
 }
