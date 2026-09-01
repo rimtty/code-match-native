@@ -69,7 +69,9 @@ class ScanScreenTest {
             InstrumentationRegistry.getInstrumentation().targetContext
                 .getString(R.string.scan_wait_code128_title),
         ).assertIsDisplayed()
-        composeRule.onNodeWithTag("scan_reread_qr").performClick()
+        composeRule.onNodeWithTag("scan_reread_qr")
+            .performScrollTo()
+            .performClick()
 
         composeRule.runOnIdle {
             assertTrue(actions.contains(ScanUiAction.RereadQr))
