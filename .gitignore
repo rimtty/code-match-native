@@ -15,3 +15,13 @@ local.properties
 *.iml
 .externalNativeBuild/
 .cxx/
+
+# Android/Gradle
+android/.gradle/
+android/.idea/
+android/.kotlin/
+android/local.properties
+android/**/build/
+android/captures/
+android/.externalNativeBuild/
+android/.cxx/

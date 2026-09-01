@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Code Match</string>
+    <string name="destination_scan">Scan</string>
+    <string name="destination_history">History</string>
+    <string name="destination_settings">Settings</string>
+
+    <string name="scan_screen_description">Scan a QR code and then a Code 128 barcode to compare them</string>
+    <string name="scan_eyebrow">SCAN &amp; VERIFY</string>
+    <string name="scan_headline">Start a comparison</string>
+    <string name="scan_description">Scan a QR code followed by a Code 128 barcode to record matching boxes.</string>
+    <string name="session_name_label">Session name (optional)</string>
+    <string name="session_name_placeholder">For example: Morning delivery</string>
+    <string name="scan_skeleton_badge">M1 foundation skeleton</string>
+    <string name="scan_skeleton_description">The camera and matching logic will be connected in the next phase. This screen verifies the navigation and Material 3 foundation.</string>
+    <string name="start_session">Start recording</string>
+    <string name="session_started">Session started</string>
+    <string name="scan_waiting_for_qr">Ready to scan a QR code</string>
+
+    <string name="history_screen_description">History of comparison sessions with matching results</string>
+    <string name="history_headline">Comparison history</string>
+    <string name="history_empty_title">No history yet</string>
+    <string name="history_empty_description">Matching comparison results will appear here grouped by session.</string>
+
+    <string name="settings_screen_description">App settings for automatic next comparison and language</string>
+    <string name="settings_headline">Settings</string>
+    <string name="auto_advance_title">Automatically start the next comparison</string>
+    <string name="auto_advance_description">Enable the countdown after a match (off by default)</string>
+    <string name="language_title">Display language</string>
+    <string name="language_description">日本語 (default) / English</string>
+    <string name="settings_skeleton_note">Audio, haptics, Bluetooth, and PDF settings will be added with their feature implementations.</string>
+</resources>

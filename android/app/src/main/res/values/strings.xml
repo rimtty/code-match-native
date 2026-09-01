@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Code Match</string>
+    <string name="destination_scan">照合</string>
+    <string name="destination_history">履歴</string>
+    <string name="destination_settings">設定</string>
+
+    <string name="scan_screen_description">QRコードとCode 128を順番に読み取って照合する画面</string>
+    <string name="scan_eyebrow">SCAN &amp; VERIFY</string>
+    <string name="scan_headline">照合を開始</string>
+    <string name="scan_description">QRコード、続けてCode 128を読み取り、一致した箱を記録します。</string>
+    <string name="session_name_label">セッション名（任意）</string>
+    <string name="session_name_placeholder">例：午前便</string>
+    <string name="scan_skeleton_badge">M1 基盤スケルトン</string>
+    <string name="scan_skeleton_description">カメラと照合ロジックは次の工程で接続します。ここでは画面遷移とMaterial 3の土台を確認できます。</string>
+    <string name="start_session">記録を開始する</string>
+    <string name="session_started">セッションを開始しました</string>
+    <string name="scan_waiting_for_qr">QRコードを読み取る準備ができました</string>
+
+    <string name="history_screen_description">一致した照合セッションの履歴画面</string>
+    <string name="history_headline">照合履歴</string>
+    <string name="history_empty_title">履歴はまだありません</string>
+    <string name="history_empty_description">一致した照合結果がここにセッション単位で表示されます。</string>
+
+    <string name="settings_screen_description">自動次工程と言語などのアプリ設定画面</string>
+    <string name="settings_headline">設定</string>
+    <string name="auto_advance_title">自動で次の照合へ</string>
+    <string name="auto_advance_description">一致後のカウントダウンを有効にする（初期値：オフ）</string>
+    <string name="language_title">表示言語</string>
+    <string name="language_description">日本語（初期値） / English</string>
+    <string name="settings_skeleton_note">音、触覚、Bluetooth、PDFの設定は各機能実装時に追加します。</string>
+</resources>
