@@ -212,19 +212,7 @@ class BleSymbologySession(
      * later QR/Code128 change updates only the logical expected format.
      */
     fun startSession(expectedFormat: ScanFormat): Boolean {
-        if (sessionActive) {
-            if (mutableState == BleSymbologySessionState.SessionReady ||
-                mutableState is BleSymbologySessionState.ApplyingSession
-            ) {
-                mutableExpectedFormat = expectedFormat
-                if (mutableState is BleSymbologySessionState.ApplyingSession) {
-                    mutableState = BleSymbologySessionState.ApplyingSession(expectedFormat)
-                }
-                emit()
-                return true
-            }
-            return false
-        }
+        if (sessionActive) return setExpectedFormat(expectedFormat)
         val original = freshSnapshot
         if (mutableState != BleSymbologySessionState.Ready || original == null) return false
         if (!original.hasRequiredSessionSymbols()) return false

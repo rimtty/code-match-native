@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import android.view.Surface
+import android.view.View
 import androidx.annotation.MainThread
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -90,12 +91,25 @@ class CameraScanner(
     private var analysisUseCase: ImageAnalysis? = null
     private var camera: Camera? = null
     private var bindGeneration: Long = 0L
+    /** Generation of the provider future currently allowed to bind. */
+    private var pendingBindGeneration: Long? = null
     private var viewPortRetryPending = false
+    private var targetRotation: Int? = null
     private var isClosed = false
     private var _expectedFormat: ScanFormat? = null
     private var guide: CameraGuide = CameraGuide.forFormat(null)
     private var customGuide: CameraGuide? = null
     private var _captureState: CameraCaptureState = CameraCaptureState.IDLE
+
+    /** Keep target rotation current when the activity handles orientation in place. */
+    private val previewLayoutListener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+        if (!isClosed) {
+            updateTargetRotation()
+            if (previewUseCase == null && analysisUseCase == null) {
+                requestBind()
+            }
+        }
+    }
 
     /** The format currently requested by the scan state machine. */
     val expectedFormat: ScanFormat?
@@ -126,6 +140,7 @@ class CameraScanner(
             unbind()
             this.lifecycleOwner = lifecycleOwner
             this.previewView = previewView
+            previewView.addOnLayoutChangeListener(previewLayoutListener)
             lifecycleOwner.lifecycle.addObserver(this.lifecycleObserver)
         }
 
@@ -157,7 +172,15 @@ class CameraScanner(
         check(!isClosed) { "CameraScanner is closed" }
         _expectedFormat = format
         if (customGuide == null) guide = CameraGuide.forFormat(format)
-        analyzer.updateExpectedFormat(format)
+        if (!analyzer.updateExpectedFormat(format)) {
+            setCaptureState(CameraCaptureState.ERROR)
+            return
+        }
+        // A retry after a previous provider/model failure is allowed to move
+        // back into the normal binding state once its analyzer is available.
+        if (_captureState == CameraCaptureState.ERROR) {
+            setCaptureState(CameraCaptureState.IDLE)
+        }
 
         if (format == null) {
             unbindUseCases()
@@ -188,10 +211,12 @@ class CameraScanner(
     fun unbind() {
         if (isClosed) return
         bindGeneration += 1
+        previewView?.removeOnLayoutChangeListener(previewLayoutListener)
         lifecycleOwner?.lifecycle?.removeObserver(lifecycleObserver)
         unbindUseCases()
         lifecycleOwner = null
         previewView = null
+        targetRotation = null
     }
 
     /**
@@ -274,10 +299,12 @@ class CameraScanner(
         if (isClosed) return
         isClosed = true
         bindGeneration += 1
+        previewView?.removeOnLayoutChangeListener(previewLayoutListener)
         lifecycleOwner?.lifecycle?.removeObserver(lifecycleObserver)
         unbindUseCases()
         lifecycleOwner = null
         previewView = null
+        targetRotation = null
         analyzer.close()
         analysisExecutor.shutdown()
     }
@@ -289,6 +316,7 @@ class CameraScanner(
         val format = expectedFormat ?: return
         if (!owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
         if (previewUseCase != null && analysisUseCase != null) return
+        if (pendingBindGeneration != null) return
 
         val viewPort = currentPreview.viewPort
         if (viewPort == null) {
@@ -300,8 +328,11 @@ class CameraScanner(
                 currentPreview.post {
                     viewPortRetryPending = false
                     if (!isClosed && owner === lifecycleOwner &&
-                        currentPreview === previewView && expectedFormat == format
+                        currentPreview === previewView &&
+                        owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
                     ) {
+                        // Re-read the current format. It may have changed
+                        // while this retry was queued (QR -> Code 128).
                         requestBind()
                     }
                 }
@@ -316,87 +347,142 @@ class CameraScanner(
 
         setCaptureState(CameraCaptureState.STARTING)
         val generation = ++bindGeneration
-        val future = ProcessCameraProvider.getInstance(appContext)
-        future.addListener(
-            {
-                if (isClosed || generation != bindGeneration ||
-                    owner !== lifecycleOwner || currentPreview !== previewView ||
-                    expectedFormat != format ||
-                    !owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-                ) {
-                    return@addListener
-                }
-
-                try {
-                    val cameraProvider = future.get()
-                    if (!cameraProvider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) {
-                        setCaptureState(CameraCaptureState.UNAVAILABLE)
-                        onError(
-                            CameraError(
-                                code = CameraErrorCode.BACK_CAMERA_UNAVAILABLE,
-                                message = "A usable back camera is not available",
-                            ),
-                        )
+        pendingBindGeneration = generation
+        val future = try {
+            ProcessCameraProvider.getInstance(appContext)
+        } catch (_: Exception) {
+            pendingBindGeneration = null
+            reportBindFailure(
+                generation = generation,
+                code = CameraErrorCode.PROVIDER_UNAVAILABLE,
+                message = "Camera provider is not available",
+            )
+            return
+        }
+        try {
+            future.addListener(
+                {
+                    var cameraProvider: ProcessCameraProvider? = null
+                    var preview: Preview? = null
+                    var analysis: ImageAnalysis? = null
+                    if (pendingBindGeneration == generation) pendingBindGeneration = null
+                    if (isClosed || generation != bindGeneration ||
+                        owner !== lifecycleOwner || currentPreview !== previewView ||
+                        !owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                    ) {
+                        return@addListener
+                    }
+                    // A logical QR -> Code 128 change can happen while the
+                    // provider future is pending. updateExpectedFormat() could
+                    // not enqueue a second bind while this generation owned
+                    // the slot, so restart now with the current format.
+                    if (expectedFormat != format) {
+                        requestBind()
+                        return@addListener
+                    }
+                    // A rotation or size change can replace PreviewView's
+                    // ViewPort while the provider future is pending. Binding
+                    // with the stale viewport would make ML Kit coordinates
+                    // disagree with the displayed crop, so retry from the
+                    // current view state.
+                    if (currentPreview.viewPort != viewPort) {
+                        requestBind()
                         return@addListener
                     }
 
-                    val targetRotation = currentPreview.display?.rotation ?: Surface.ROTATION_0
-                    val preview = Preview.Builder()
-                        .setTargetRotation(targetRotation)
-                        .build()
-                    val analysis = ImageAnalysis.Builder()
-                        .setTargetRotation(targetRotation)
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .setImageQueueDepth(1)
-                        .build()
+                    try {
+                        val resolvedProvider = future.get()
+                        cameraProvider = resolvedProvider
+                        if (!resolvedProvider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) {
+                            setCaptureState(CameraCaptureState.UNAVAILABLE)
+                            onError(
+                                CameraError(
+                                    code = CameraErrorCode.BACK_CAMERA_UNAVAILABLE,
+                                    message = "A usable back camera is not available",
+                                ),
+                            )
+                            return@addListener
+                        }
 
-                    currentPreview.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                    currentPreview.scaleType = PreviewView.ScaleType.FILL_CENTER
-                    preview.setSurfaceProvider(currentPreview.surfaceProvider)
-                    analysis.setAnalyzer(analysisExecutor, analyzer)
+                        val targetRotation = currentPreview.display?.rotation ?: Surface.ROTATION_0
+                        this@CameraScanner.targetRotation = targetRotation
+                        val builtPreview = Preview.Builder()
+                            .setTargetRotation(targetRotation)
+                            .build()
+                        preview = builtPreview
+                        val builtAnalysis = ImageAnalysis.Builder()
+                            .setTargetRotation(targetRotation)
+                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                            .setImageQueueDepth(1)
+                            .build()
+                        analysis = builtAnalysis
 
-                    // Preview and analysis must share PreviewView's ViewPort.
-                    // CoordinateTransform is only valid when its source and
-                    // target use the same crop/rotation coordinate system.
-                    val useCaseGroup = UseCaseGroup.Builder()
-                        .addUseCase(preview)
-                        .addUseCase(analysis)
-                        .setViewPort(viewPort)
-                        .build()
+                        currentPreview.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                        currentPreview.scaleType = PreviewView.ScaleType.FILL_CENTER
+                        builtPreview.setSurfaceProvider(currentPreview.surfaceProvider)
+                        builtAnalysis.setAnalyzer(analysisExecutor, analyzer)
 
-                    // Unbind only these use cases. Calling unbindAll() here
-                    // could interrupt another feature using the same provider.
-                    cameraProvider.unbind(preview, analysis)
-                    val boundCamera = cameraProvider.bindToLifecycle(
-                        owner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
-                        useCaseGroup,
-                    )
-                    provider = cameraProvider
-                    previewUseCase = preview
-                    analysisUseCase = analysis
-                    camera = boundCamera
-                    setCaptureState(CameraCaptureState.RUNNING)
-                } catch (_: SecurityException) {
-                    setCaptureState(CameraCaptureState.PERMISSION_DENIED)
-                    onError(
-                        CameraError(
-                            code = CameraErrorCode.USE_CASE_BIND_FAILED,
-                            message = "Camera permission was not available",
-                        ),
-                    )
-                } catch (_: Exception) {
-                    setCaptureState(CameraCaptureState.ERROR)
-                    onError(
-                        CameraError(
-                            code = CameraErrorCode.USE_CASE_BIND_FAILED,
-                            message = "Camera capture could not be started",
-                        ),
-                    )
-                }
-            },
-            mainExecutor,
-        )
+                        // Preview and analysis must share PreviewView's ViewPort.
+                        // CoordinateTransform is only valid when its source and
+                        // target use the same crop/rotation coordinate system.
+                        val useCaseGroup = UseCaseGroup.Builder()
+                            .addUseCase(builtPreview)
+                            .addUseCase(builtAnalysis)
+                            .setViewPort(viewPort)
+                            .build()
+
+                        // Unbind only these use cases. Calling unbindAll() here
+                        // could interrupt another feature using the same provider.
+                        resolvedProvider.unbind(builtPreview, builtAnalysis)
+                        val boundCamera = resolvedProvider.bindToLifecycle(
+                            owner,
+                            CameraSelector.DEFAULT_BACK_CAMERA,
+                            useCaseGroup,
+                        )
+                        provider = resolvedProvider
+                        previewUseCase = preview
+                        analysisUseCase = analysis
+                        camera = boundCamera
+                        setCaptureState(CameraCaptureState.RUNNING)
+                    } catch (_: SecurityException) {
+                        cleanupFailedBind(cameraProvider, preview, analysis)
+                        setCaptureState(CameraCaptureState.PERMISSION_DENIED)
+                        onError(
+                            CameraError(
+                                code = CameraErrorCode.PERMISSION_DENIED,
+                                message = "Camera permission was not available",
+                            ),
+                        )
+                    } catch (_: java.util.concurrent.ExecutionException) {
+                        cleanupFailedBind(cameraProvider, preview, analysis)
+                        setCaptureState(CameraCaptureState.ERROR)
+                        onError(
+                            CameraError(
+                                code = CameraErrorCode.PROVIDER_UNAVAILABLE,
+                                message = "Camera provider could not be initialized",
+                            ),
+                        )
+                    } catch (_: Exception) {
+                        cleanupFailedBind(cameraProvider, preview, analysis)
+                        setCaptureState(CameraCaptureState.ERROR)
+                        onError(
+                            CameraError(
+                                code = CameraErrorCode.USE_CASE_BIND_FAILED,
+                                message = "Camera capture could not be started",
+                            ),
+                        )
+                    }
+                },
+                mainExecutor,
+            )
+        } catch (_: Exception) {
+            if (pendingBindGeneration == generation) pendingBindGeneration = null
+            reportBindFailure(
+                generation = generation,
+                code = CameraErrorCode.PROVIDER_UNAVAILABLE,
+                message = "Camera provider could not be initialized",
+            )
+        }
     }
 
     private fun unbindUseCases() {
@@ -404,6 +490,7 @@ class CameraScanner(
         // provider future can complete after a lifecycle stop and must not
         // bind use cases back onto the stopped owner.
         bindGeneration += 1
+        pendingBindGeneration = null
         // Invalidate callbacks before detaching the use cases. A completed
         // ML Kit Task may still call its listener after CameraX unbinds; its
         // generation check must then discard the result.
@@ -427,6 +514,7 @@ class CameraScanner(
         previewUseCase = null
         analysisUseCase = null
         camera = null
+        targetRotation = null
         viewPortRetryPending = false
         if (_captureState == CameraCaptureState.RUNNING ||
             _captureState == CameraCaptureState.STARTING
@@ -445,6 +533,45 @@ class CameraScanner(
         if (_captureState == state) return
         _captureState = state
         onStateChanged(state)
+    }
+
+    private fun updateTargetRotation() {
+        val currentPreview = previewView ?: return
+        val rotation = currentPreview.display?.rotation ?: Surface.ROTATION_0
+        if (targetRotation == rotation) return
+        targetRotation = rotation
+        // Results from a frame analyzed under the previous orientation must
+        // not be checked against the new PreviewView transform.
+        analyzer.invalidateInFlightCallbacks()
+        previewUseCase?.setTargetRotation(rotation)
+        analysisUseCase?.setTargetRotation(rotation)
+    }
+
+    private fun cleanupFailedBind(
+        cameraProvider: ProcessCameraProvider?,
+        preview: Preview?,
+        analysis: ImageAnalysis?,
+    ) {
+        if (cameraProvider != null && (preview != null || analysis != null)) {
+            runCatching {
+                cameraProvider.unbind(*listOfNotNull(preview, analysis).toTypedArray())
+            }
+        }
+        analysis?.clearAnalyzer()
+        if (provider === cameraProvider) provider = null
+        if (previewUseCase === preview) previewUseCase = null
+        if (analysisUseCase === analysis) analysisUseCase = null
+        camera = null
+    }
+
+    private fun reportBindFailure(
+        generation: Long,
+        code: CameraErrorCode,
+        message: String,
+    ) {
+        if (isClosed || generation != bindGeneration) return
+        setCaptureState(CameraCaptureState.ERROR)
+        onError(CameraError(code = code, message = message))
     }
 }
 
@@ -473,6 +600,9 @@ private class MlKitImageAnalyzer(
     @Volatile
     private var generation: Long = 0L
 
+    /** Serializes concurrent format changes while a replacement client is built. */
+    private var updateSequence: Long = 0L
+
     @Volatile
     private var closed = false
 
@@ -482,15 +612,14 @@ private class MlKitImageAnalyzer(
         }
     }
 
-    fun updateExpectedFormat(format: ScanFormat?) {
-        var closeImmediately: BarcodeScanner? = null
+    fun updateExpectedFormat(format: ScanFormat?): Boolean {
+        val sequence: Long
         synchronized(lock) {
-            if (closed) {
-                return
-            }
+            if (closed) return false
             if (format == expectedFormat && (format == null || scanner != null)) {
-                return
+                return true
             }
+            sequence = ++updateSequence
         }
 
         val replacement = try {
@@ -499,27 +628,49 @@ private class MlKitImageAnalyzer(
             null
         }
 
+        var closeImmediately: BarcodeScanner? = null
+        var failed = false
         synchronized(lock) {
             if (closed) {
                 replacement?.close()
-                return
+                return false
             }
-            // Another format update may have won while the ML Kit client was
-            // being created. Keep the newer client and retire this one.
-            if (format == expectedFormat && (format == null || scanner != null)) {
+            if (sequence != updateSequence) {
                 replacement?.close()
-                return
+                return expectedFormat == format && (format == null || scanner != null)
             }
-            expectedFormat = format
-            generation += 1
-            closeImmediately = scanner
-            scanner = replacement
-            if (closeImmediately != null && gate.isBusy) {
-                retiredScanners += closeImmediately!!
-                closeImmediately = null
+            if (format != null && replacement == null) {
+                expectedFormat = format
+                generation += 1
+                closeImmediately = scanner
+                scanner = null
+                if (closeImmediately != null && gate.isBusy) {
+                    retiredScanners += closeImmediately!!
+                    closeImmediately = null
+                }
+                failed = true
+            } else {
+                expectedFormat = format
+                generation += 1
+                closeImmediately = scanner
+                scanner = replacement
+                if (closeImmediately != null && gate.isBusy) {
+                    retiredScanners += closeImmediately!!
+                    closeImmediately = null
+                }
             }
         }
         closeImmediately?.close()
+        if (failed) {
+            onError(
+                CameraError(
+                    code = CameraErrorCode.SCANNER_UNAVAILABLE,
+                    message = "Barcode analyzer could not be created",
+                ),
+            )
+            return false
+        }
+        return true
     }
 
     override fun analyze(imageProxy: ImageProxy) {

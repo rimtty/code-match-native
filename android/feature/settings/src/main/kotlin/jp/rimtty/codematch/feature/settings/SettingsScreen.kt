@@ -1065,7 +1065,9 @@ private fun AutoAdvanceCard(
                     onCheckedChange = {
                         onAction(SettingsUiAction.SetAutoAdvanceEnabled(it))
                     },
-                    modifier = Modifier.testTag(SettingsTestTags.AUTO_ADVANCE_SWITCH),
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag(SettingsTestTags.AUTO_ADVANCE_SWITCH),
                 )
             }
             Text(

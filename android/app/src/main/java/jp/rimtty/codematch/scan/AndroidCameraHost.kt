@@ -121,7 +121,11 @@ private class AndroidCameraHost(
 
         permissionState = CameraPermissionState.GRANTED
         scanner.updateExpectedFormat(request.format)
-        return CameraStartResult.Started
+        return when (scanner.captureState) {
+            CameraCaptureState.UNAVAILABLE -> CameraStartResult.Unavailable
+            CameraCaptureState.ERROR -> CameraStartResult.Failed
+            else -> CameraStartResult.Started
+        }
     }
 
     override fun stop() {
@@ -205,8 +209,13 @@ private class AndroidCameraHost(
     private fun onCameraError(error: CameraError) {
         when (error.code) {
             CameraErrorCode.BACK_CAMERA_UNAVAILABLE -> callbacks?.onUnavailable()
+            CameraErrorCode.PERMISSION_DENIED -> {
+                permissionState = CameraPermissionState.DENIED
+                callbacks?.onPermissionDenied(permanently = false)
+            }
             CameraErrorCode.PROVIDER_UNAVAILABLE,
             CameraErrorCode.USE_CASE_BIND_FAILED,
+            CameraErrorCode.SCANNER_UNAVAILABLE,
             -> callbacks?.onFailed()
 
             // A single unreadable frame or unsupported focus operation must

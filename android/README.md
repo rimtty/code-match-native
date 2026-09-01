@@ -1,6 +1,6 @@
 # Code Match Android
 
-Android版Code Matchの独立Gradleプロジェクトです。iOS版と同じ照合契約を、Android標準の操作とJetpack Compose / Material 3で実装します。
+Android版Code Matchの独立Gradleプロジェクトです。iOS版と同じ照合契約を、Android標準の操作とJetpack Compose / Material 3で実装します。現在のreleaseはカメラ入力のみで、BLE安全コアは対象scanner実機とAndroid向けSDKの調査が終わるまで接続しません。
 
 ## 開発環境
 
@@ -61,16 +61,16 @@ checkerは依存ライブラリを追加せず、lockfile、SBOM、その他の�
 供給元と署名ポリシーを固定してから別途導入します。現時点の再現可能なゲートは
 Gradle Wrapper validation、release依存グラフ検査、checkerによるsource/APK/AAB検査です。
 
-エミュレーターは状態遷移とCompose UIの継続検証に使います。カメラの読み取り完了判定はPixelなどの実Android端末で行います。USBデバッグ端末を接続した実機確認では、QR → Code 128、権限、回転、背景復帰、音・触覚を確認します。
+エミュレーターは状態遷移とCompose UIの継続検証に使います。カメラの読み取り完了判定はPixelなどの実Android端末で行います。実端末で行う確認項目、証跡、未実施の扱いは [実機確認ランブック](../docs/android/REAL_DEVICE_RUNBOOK.md) に従ってください。現時点では、このREADMEや自動テストの結果だけでQR/Code 128の実読取、focus、連続箱、BLE通信の成功を宣言しません。
 
 GitHub ActionsではAPI 31と、Linux x86_64向けに提供される最新runtime（現時点はAPI 36）を実行します。compile/target SDK 37はbuild jobで保証し、API 37 runtimeはApple Silicon上のローカルエミュレーターで補完します。
+
+## 現在の検証境界
+
+実装と証跡の対応表は [Android版の現在地](../docs/android/STATUS.md) にまとめています。プライバシー・権限・backup・FileProviderの境界は [Android版プライバシー境界](../docs/android/PRIVACY.md) を正本とします。候補SDKのライセンス、ABI、target SDK、rawログ、scan callbackの評価は [Android BLE SDK評価メモ](../docs/android/BLE_SDK_EVALUATION.md) に記録しており、未解決のためproduction adapterを同梱しません。
 
 ## Fake scannerの境界
 
 Fake scannerは`scanner/fake`へ置き、`app`からは`debugImplementation`だけで参照します。`releaseImplementation`や`implementation`では参照しないため、リリース依存グラフとAPKにFake入口を含めない構成です。CIの`android-release-build` jobがこの境界を確認します。
 
 `scanner/ble`には、command直列化、timeout後の停止、完全設定snapshot、復元前Ready禁止、payload正規化と重複抑制だけをSDK/UUID非依存で置いています。Android BluetoothGattまたはInateck SDKへ接続するproduction adapterは、対象scanner、firmware、Android向けSDKと実通信形式の調査が完了するまで追加しません。カメラは実行時`CAMERA`権限だけを要求し、端末同梱ML Kitを使います。依存ライブラリ由来の`INTERNET` / `ACCESS_NETWORK_STATE`宣言もmanifest mergeで除外し、release APK/AABをオフライン境界に保ちます。Fakeはdebugだけで、production BLE未接続の現段階ではNearby/Bluetooth権限を宣言しません。M4で実機adapterを追加する場合は、必要時の`BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`だけを許可し、checkerの`--allow-production-ble-permissions`モードを使います。
-
-## 現在の検証境界
-
-M3ではCameraX 1.6.2と端末同梱ML Kit Barcode Scanning 17.3.0を接続し、QR / Code 128限定解析、共通ROI、タップfocus、権限拒否、背景停止、古いcallback破棄を実装しています。API 37エミュレーターでは全モジュール計31件のinstrumentation test、初回拒否からの再要求、許可後のCameraX preview開始と背景復帰を確認済みです。Pixel 7（Android 16 / API 36）でも全モジュール計31件、CameraX preview開始、背景化後と横画面再構成後のpreview再開を確認しました。M3完了判定にはPixel 7でのQR → Code 128実読取、タップfocus、連続箱確認を残しています。M4準備としてBLE安全コアのJVM検証を追加しましたが、対象scannerとの実通信、設定形式の確定、永続snapshot接続、Pixel/Samsung実機復元は未完了です。Release版にFake scanner、未検証BLE adapter、開発用操作は含めません。

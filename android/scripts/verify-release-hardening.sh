@@ -964,6 +964,31 @@ validate_source_privacy() {
     fi
 }
 
+validate_release_source_boundary() {
+    local release_scanner_module="$app_dir/src/release/java/jp/rimtty/codematch/di/ScannerModule.kt"
+    local default_debug_flag="$app_dir/src/main/res/values/bools.xml"
+    local unsafe_app_dependencies
+
+    # The release source set must remain camera-only until a reviewed BLE
+    # adapter is available. This source check complements the APK/Dex scan:
+    # it catches a release wiring mistake even when artifacts are not built.
+    require_file "$release_scanner_module"
+    require_file "$default_debug_flag"
+    rg -q 'UnavailableExternalScanner' "$release_scanner_module" || \
+        die "release scanner binding must use UnavailableExternalScanner"
+    ! rg -q -i 'scanner[.]fake|FakeExternalScanner|debug[[:alnum:]_-]*(menu|entry)|demo[[:alnum:]_-]*(menu|entry)' \
+        "$release_scanner_module" || \
+        die "release scanner binding contains a Fake/debug entry"
+    rg -q '<bool[[:space:]]+name="show_debug_demo_tools">false</bool>' "$default_debug_flag" || \
+        die "default show_debug_demo_tools must be false for release"
+
+    unsafe_app_dependencies="$(rg -n \
+        '(^|[^[:alnum:]_])(implementation|api|runtimeOnly|compileOnly)[[:space:]]*[(].*project[(][[:space:]]*[\"]:scanner:fake[\"]' \
+        "$app_dir/build.gradle.kts" || true)"
+    [[ -z "$unsafe_app_dependencies" ]] || \
+        die "app has a non-debug dependency on scanner:fake:\n$unsafe_app_dependencies"
+}
+
 validate_dependency_report() {
     [[ -z "$dependency_report" ]] && {
         note "no dependency report supplied; source dependency coordinate scan passed"
@@ -994,6 +1019,7 @@ validate_data_extraction_rules "$data_extraction_rules"
 validate_file_paths "$file_paths"
 validate_source_manifest "$source_manifest"
 validate_source_privacy
+validate_release_source_boundary
 validate_dependency_report
 
 if [[ "$release_manifest" != "$source_manifest" ]]; then

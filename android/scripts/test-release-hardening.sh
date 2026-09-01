@@ -80,4 +80,16 @@ assert_manifest_mutation_is_rejected \
     "@xml/transferable_backup_rules" \
     "must reference @xml/backup_rules"
 
+assert_manifest_mutation_is_rejected \
+    "allow-backup" \
+    'android:allowBackup="false"' \
+    'android:allowBackup="true"' \
+    "must set android:allowBackup=false"
+
+assert_manifest_mutation_is_rejected \
+    "nearby-permission" \
+    'android.permission.CAMERA' \
+    'android.permission.BLUETOOTH_SCAN' \
+    "contains forbidden permission android.permission.BLUETOOTH_SCAN"
+
 printf '[release-hardening-test] positive and fail-closed source checks passed\n'

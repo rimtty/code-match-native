@@ -7,7 +7,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import jp.rimtty.codematch.scanner.api.InputSource
@@ -98,6 +100,25 @@ class CameraStageTest {
             assertTrue(focusPoint != null)
             assertEquals(.5f, focusPoint!!.xFraction, .02f)
             assertEquals(.5f, focusPoint!!.yFraction, .02f)
+        }
+    }
+
+    @Test
+    fun semanticFocusActionEmitsCenterPointForNonPointerUsers() {
+        var focusPoint: CameraFocusPoint? = null
+        composeRule.setContent {
+            CameraStage(
+                format = jp.rimtty.codematch.scanner.api.ScanFormat.QR,
+                running = true,
+                onFocus = { focusPoint = it },
+            )
+        }
+
+        composeRule.onNodeWithTag("scan_camera_stage")
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        composeRule.runOnIdle {
+            assertEquals(CameraFocusPoint(.5f, .5f), focusPoint)
         }
     }
 

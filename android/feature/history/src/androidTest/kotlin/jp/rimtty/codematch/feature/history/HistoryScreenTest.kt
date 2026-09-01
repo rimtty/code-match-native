@@ -1,12 +1,17 @@
 package jp.rimtty.codematch.feature.history
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import jp.rimtty.codematch.core.model.MatchEntry
@@ -72,6 +77,39 @@ class HistoryScreenTest {
         composeRule.onNodeWithText(qrParsed).assertIsDisplayed()
         composeRule.onNodeWithText("DCLP675300").assertIsDisplayed()
         composeRule.onNodeWithText("1N5X0C").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun expandedLayoutKeepsListAndDetailVisibleForWideWindows() {
+        val session = MatchSession(
+            id = "session",
+            startedAt = 1_000L,
+            endedAt = 2_000L,
+            name = "Morning",
+            entries = listOf(
+                MatchEntry(
+                    id = "box-1",
+                    code = "BCJH-52-81GG",
+                    matchedAt = 1_500L,
+                ),
+            ),
+        )
+        composeRule.setContent {
+            HistoryContent(
+                sessions = listOf(session),
+                selectedSessionId = session.id,
+                layoutMode = HistoryLayoutMode.EXPANDED,
+            )
+        }
+
+        composeRule.onNodeWithTag(HistoryTestTags.SCREEN).assertIsDisplayed()
+        composeRule.onNodeWithTag(HistoryTestTags.SESSION_DETAIL).assertIsDisplayed()
+        composeRule.onNodeWithTag(HistoryTestTags.SESSION_ROW).assertIsDisplayed()
+        composeRule.onNodeWithTag(HistoryTestTags.SESSION_ROW)
+            .assertHeightIsAtLeast(48.dp)
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.ContentDescription))
+        composeRule.onNodeWithTag("${HistoryTestTags.SESSION_ROW}.delete")
+            .assertHeightIsAtLeast(48.dp)
     }
 
     private fun targetString(resourceId: Int): String =

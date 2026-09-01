@@ -2,6 +2,7 @@ package jp.rimtty.codematch.feature.settings
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.AppSettings
@@ -56,6 +58,28 @@ class SettingsScreenTest {
         composeRule.onAllNodesWithTag(SettingsTestTags.FAILURE_SOUND).assertCountEquals(4)
         composeRule.onAllNodesWithTag(SettingsTestTags.DELAY_CHOICE).assertCountEquals(3)
         composeRule.onAllNodesWithTag(SettingsTestTags.LANGUAGE_CHOICE).assertCountEquals(2)
+    }
+
+    @Test
+    fun primarySettingsControlsKeepAccessibleTouchTargets() {
+        composeRule.setContent {
+            MaterialTheme {
+                SettingsScreen(SettingsUiState(), onAction = {})
+            }
+        }
+
+        composeRule.onNodeWithTag(SettingsTestTags.SETUP_GUIDE_CLOSE)
+            .assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithTag(SettingsTestTags.SETUP_NEXT)
+            .performScrollTo()
+            .assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithTag(SettingsTestTags.AUTO_ADVANCE_SWITCH)
+            .performScrollTo()
+            .assertHeightIsAtLeast(48.dp)
+        composeRule.onAllNodesWithTag(SettingsTestTags.LANGUAGE_CHOICE)
+            .get(0)
+            .performScrollTo()
+            .assertHeightIsAtLeast(48.dp)
     }
 
     @Test
