@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_accessibility_description">アプリの設定。Bluetoothスキャナ、自動次工程、音量、効果音、表示言語を変更できます。</string>
+    <string name="settings_title">設定</string>
+    <string name="settings_eyebrow">SETTINGS</string>
+    <string name="settings_headline">アプリの設定</string>
+    <string name="settings_description">照合に使う入力元とフィードバックを調整します。</string>
+
+    <string name="settings_setup_guide_title">スキャナの接続ガイド</string>
+    <string name="settings_setup_guide_close">閉じる</string>
+    <string name="settings_setup_guide_open">接続ガイドを表示</string>
+    <string name="settings_setup_step_1_title">設定を開始</string>
+    <string name="settings_setup_step_1_description">設定コード「/*EnterSet*/」を1回読み取ります。</string>
+    <string name="settings_setup_step_2_title">GATTモードへ切り替え</string>
+    <string name="settings_setup_step_2_description">設定コード「/*BLE_GATT*/」を1回読み取ります。</string>
+    <string name="settings_setup_step_3_title">設定を保存して終了</string>
+    <string name="settings_setup_step_3_description">設定コード「/*ExitSave*/」を1回読み取り、設定を保存します。</string>
+    <string name="settings_setup_step_accessibility">手順%1$d。%2$s。%3$s</string>
+
+    <string name="settings_scanner_title">Bluetoothスキャナ</string>
+    <string name="settings_scanner_description">対応スキャナを検索して接続します。読み取り値は診断情報に記録しません。</string>
+    <string name="settings_start_discovery">スキャナを検索</string>
+    <string name="settings_stop_discovery">検索を停止</string>
+    <string name="settings_devices_title">見つかったスキャナ</string>
+    <string name="settings_no_devices">スキャナが見つかっていません。</string>
+    <string name="settings_connect">接続</string>
+    <string name="settings_disconnect">切断</string>
+    <string name="settings_reconnect">再接続</string>
+    <string name="settings_device_selected">選択中</string>
+    <string name="settings_device_not_selected">未選択</string>
+    <string name="settings_status_idle">未接続</string>
+    <string name="settings_status_searching">スキャナを検索中</string>
+    <string name="settings_status_connecting">スキャナに接続中</string>
+    <string name="settings_status_connected">接続済み</string>
+    <string name="settings_status_unavailable">スキャナを利用できません</string>
+    <string name="settings_status_failed">接続に失敗しました</string>
+    <string name="settings_configuration_unavailable">設定状態：利用できません</string>
+    <string name="settings_configuration_configuring">設定を準備中</string>
+    <string name="settings_configuration_ready">設定済み。読み取りを開始できます。</string>
+    <string name="settings_configuration_failed">スキャナ設定に失敗しました</string>
+
+    <string name="settings_diagnostics_title">接続診断</string>
+    <string name="settings_diagnostics_empty">接続と設定のイベントはまだありません。</string>
+    <string name="settings_diagnostic_connection">接続</string>
+    <string name="settings_diagnostic_configuration">設定</string>
+    <string name="settings_diagnostic_error">エラー</string>
+    <string name="settings_diagnostic_row">%1$d：%2$sイベント</string>
+    <string name="settings_diagnostic_accessibility">診断イベント%1$d。%2$s</string>
+
+    <string name="settings_camera_only_title">カメラ入力のみ</string>
+    <string name="settings_camera_only_description">このリリースではBluetoothスキャナを使用できません。照合画面のカメラで読み取ってください。</string>
+
+    <string name="settings_auto_advance_title">成功時に自動で次の照合へ</string>
+    <string name="settings_auto_advance_enabled_description">一致後にカウントダウンして次の照合を開始します。</string>
+    <string name="settings_auto_advance_disabled_description">オフ。不一致時は自動で進みません。</string>
+    <string name="settings_delay_title">次へ進むまでの時間</string>
+    <string name="settings_delay_seconds">%1$d秒</string>
+
+    <string name="settings_volume_title">フィードバック音量</string>
+    <string name="settings_volume_percent">%1$d%%</string>
+    <string name="settings_volume_minimum">小</string>
+    <string name="settings_volume_maximum">大</string>
+
+    <string name="settings_success_sound_title">成功音</string>
+    <string name="settings_success_sound_description">一致したときに再生する音を選びます。</string>
+    <string name="settings_success_sound_sample_1">サンプル1</string>
+    <string name="settings_success_sound_sample_2">サンプル2</string>
+    <string name="settings_success_sound_pos_beep">POSビープ</string>
+    <string name="settings_success_sound_double_beep">ダブルビープ</string>
+    <string name="settings_success_sound_chime">チャイム</string>
+
+    <string name="settings_failure_sound_title">失敗音</string>
+    <string name="settings_failure_sound_description">不一致や無効な読み取りで再生する音を選びます。</string>
+    <string name="settings_failure_sound_sample">失敗サンプル</string>
+    <string name="settings_failure_sound_buzzer">ブザー</string>
+    <string name="settings_failure_sound_alarm">アラーム</string>
+    <string name="settings_failure_sound_descend">下降音</string>
+
+    <string name="settings_preview_sound">%1$sを試聴</string>
+    <string name="settings_choice_selected">選択中</string>
+    <string name="settings_choice_not_selected">未選択</string>
+
+    <string name="settings_language_title">表示言語</string>
+    <string name="settings_language_description">アプリ内の表示言語を選びます。</string>
+    <string name="settings_language_japanese">日本語</string>
+    <string name="settings_language_english">English</string>
+</resources>

@@ -3,8 +3,11 @@ package jp.rimtty.codematch
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import jp.rimtty.codematch.feature.history.HistoryTestTags
+import jp.rimtty.codematch.feature.settings.SettingsTestTags
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -20,17 +23,13 @@ class NavigationTest {
             composeRule.activity.getString(R.string.destination_history),
             useUnmergedTree = true,
         ).performClick()
-        composeRule.onNodeWithContentDescription(
-            composeRule.activity.getString(R.string.history_screen_description),
-        ).assertIsDisplayed()
+        composeRule.onNodeWithTag(HistoryTestTags.SCREEN).assertIsDisplayed()
 
         composeRule.onNodeWithContentDescription(
             composeRule.activity.getString(R.string.destination_settings),
             useUnmergedTree = true,
         ).performClick()
-        composeRule.onNodeWithContentDescription(
-            composeRule.activity.getString(R.string.settings_screen_description),
-        ).assertIsDisplayed()
+        composeRule.onNodeWithTag(SettingsTestTags.SCREEN).assertIsDisplayed()
 
         composeRule.onNodeWithContentDescription(
             composeRule.activity.getString(R.string.destination_scan),
@@ -47,15 +46,11 @@ class NavigationTest {
             composeRule.activity.getString(R.string.destination_history),
             useUnmergedTree = true,
         ).performClick()
-        composeRule.onNodeWithContentDescription(
-            composeRule.activity.getString(R.string.history_screen_description),
-        ).assertIsDisplayed()
+        composeRule.onNodeWithTag(HistoryTestTags.SCREEN).assertIsDisplayed()
 
         composeRule.activityRule.scenario.recreate()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithContentDescription(
-            composeRule.activity.getString(R.string.history_screen_description),
-        ).assertIsDisplayed()
+        composeRule.onNodeWithTag(HistoryTestTags.SCREEN).assertIsDisplayed()
     }
 }

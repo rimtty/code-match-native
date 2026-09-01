@@ -20,7 +20,7 @@ code-match-native/
     └── ios-ci.yml           # iOSのdevice buildとSimulatorテスト
 ```
 
-Android版はルートの独立した `android/` Gradleプロジェクトで開発します。現在はMaterial 3の画面基盤、純Kotlinの照合・解析ロジック、共有fixtureテスト、debug専用Fake scanner境界まで実装済みです。ビルドとテストの手順は [android/README.md](android/README.md) を参照してください。
+Android版はルートの独立した `android/` Gradleプロジェクトで開発します。現在は純Kotlinの照合・解析、Room/DataStore、照合・履歴・設定のMaterial 3画面、PDF出力、音・触覚、日英切替、debug専用Fake scanner境界まで実装済みです。ビルドとテストの手順は [android/README.md](android/README.md) を参照してください。
 
 Swift版の全機能をAndroidネイティブのUI/UXへ移植する段階的な方針は、[Android/Kotlinポーティング実装計画](docs/android/IMPLEMENTATION_PLAN.md) を参照してください。BLE実装は抽象層とモックを先行し、対象スキャナーを入手してから実通信と設定復元を実機検証します。
 

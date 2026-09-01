@@ -19,3 +19,7 @@ android {
 // Fake scanner implementations belong here during M2 development. The app
 // consumes this module through debugImplementation only; no release variant
 // may depend on it.
+dependencies {
+    implementation(project(":scanner:api"))
+    testImplementation(libs.junit)
+}

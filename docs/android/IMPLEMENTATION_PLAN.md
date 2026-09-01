@@ -478,6 +478,8 @@ BLE以外は約31〜49人日、BLEはSDKとfirmwareの不確実性を除き約8�
 - 日英、音設定、auto-advance、PDF
 - Fake camera/BLEで状態遷移とCompose UI test
 
+ローカル検証済み: Kotlin/JVM test 68件、API 37エミュレーターとPixel 7（API 36）のinstrumentation/Compose test各27件、debug/release build、Lint、release依存グラフからのFake除外。エミュレーター実操作で日本語初回起動、per-app languageの日英切替、Fake一致、Room履歴保存、adaptive iconを確認し、Pixel 7でも初回日本語表示、launcher icon、プロセス再起動後の1箱履歴保持を確認した。API 31/36のhosted CI結果はPRで確認する。
+
 ### M3: Camera production ready
 
 - 実Android端末でQR → Code 128

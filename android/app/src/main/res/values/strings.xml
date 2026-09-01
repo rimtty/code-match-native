@@ -4,6 +4,10 @@
     <string name="destination_scan">照合</string>
     <string name="destination_history">履歴</string>
     <string name="destination_settings">設定</string>
+    <string name="end_session_title">セッションを終了しますか？</string>
+    <string name="end_session_description">照合が0件の場合、このセッションは履歴に残りません。</string>
+    <string name="end_session_confirm">終了する</string>
+    <string name="cancel">キャンセル</string>
 
     <string name="scan_screen_description">QRコードとCode 128を順番に読み取って照合する画面</string>
     <string name="scan_eyebrow">SCAN &amp; VERIFY</string>
