@@ -4,8 +4,17 @@ import AppKit
 import CoreImage
 import Foundation
 
-let outputDirectory = CommandLine.arguments.dropFirst().first ?? "TestResources/Generated"
-let outputURL = URL(fileURLWithPath: outputDirectory, isDirectory: true)
+let scriptURL = URL(fileURLWithPath: #filePath).standardizedFileURL
+let repositoryRoot = scriptURL
+    .deletingLastPathComponent()
+    .deletingLastPathComponent()
+    .deletingLastPathComponent()
+let defaultOutputURL = repositoryRoot
+    .appendingPathComponent("shared/test-fixtures/images", isDirectory: true)
+let outputURL = CommandLine.arguments.dropFirst().first.map {
+    URL(fileURLWithPath: $0, isDirectory: true)
+} ?? defaultOutputURL
+print("Generating test codes in \(outputURL.path)")
 try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
 
 let context = CIContext()

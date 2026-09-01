@@ -1,4 +1,4 @@
-name: CI
+name: iOS CI
 
 on:
   push:
@@ -6,8 +6,12 @@ on:
   pull_request:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ios-ci-${{ github.ref }}
   cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: ios
 
 jobs:
   device-build:
@@ -59,7 +63,7 @@ jobs:
         with:
           key: deriveddata-${{ steps.xcode.outputs.key }}-${{ github.sha }}
           restore-keys: deriveddata-${{ steps.xcode.outputs.key }}-
-          deriveddata-directory: DerivedData
+          deriveddata-directory: ios/DerivedData
 
       - name: Build for testing
         run: >

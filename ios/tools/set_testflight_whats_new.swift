@@ -3,7 +3,7 @@
 // App Store Connect API, so releases need no browser.
 //
 // Usage:
-//   swift tools/set_testflight_whats_new.swift <buildNumber> <notesFile> [locale]
+//   swift ios/tools/set_testflight_whats_new.swift <buildNumber> <notesFile> [locale]
 //
 //   <buildNumber>  CFBundleVersion as shown in App Store Connect (e.g. 3)
 //   <notesFile>    path to a UTF-8 text file with the What to Test notes

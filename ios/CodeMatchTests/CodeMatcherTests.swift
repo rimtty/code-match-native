@@ -106,6 +106,18 @@ final class CameraPreviewTests: XCTestCase {
 }
 
 final class CodeMatcherTests: XCTestCase {
+    private struct SharedMatchingFixtures: Decodable {
+        let schemaVersion: Int
+        let cases: [SharedMatchingCase]
+    }
+
+    private struct SharedMatchingCase: Decodable {
+        let id: String
+        let qrPayload: String
+        let barcodePayload: String
+        let expected: String
+    }
+
     // 実ラベルからデコードした実データ
     private let qrPayload = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private let barcodePayload = "BCJH-52-81GG@1N5X0C"
@@ -131,6 +143,43 @@ final class CodeMatcherTests: XCTestCase {
 
     func testRealPairMatches() {
         XCTAssertEqual(CodeMatcher.compare(qrPayload: qrPayload, barcodePayload: barcodePayload), .match)
+    }
+
+    func testSharedMatchingFixtures() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fixtureURL = repositoryRoot
+            .appendingPathComponent("shared/test-fixtures/matching-cases.json")
+        let fixtures = try JSONDecoder().decode(
+            SharedMatchingFixtures.self,
+            from: Data(contentsOf: fixtureURL)
+        )
+
+        XCTAssertEqual(fixtures.schemaVersion, 1)
+        XCTAssertFalse(fixtures.cases.isEmpty)
+
+        for fixture in fixtures.cases {
+            let expected: MatchResult
+            switch fixture.expected {
+            case "match":
+                expected = .match
+            case "mismatch":
+                expected = .mismatch
+            default:
+                XCTFail("Unknown shared fixture result: \(fixture.expected)")
+                continue
+            }
+            XCTAssertEqual(
+                CodeMatcher.compare(
+                    qrPayload: fixture.qrPayload,
+                    barcodePayload: fixture.barcodePayload
+                ),
+                expected,
+                "Shared fixture failed: \(fixture.id)"
+            )
+        }
     }
 
     func testDifferentPartNumberMismatches() {
