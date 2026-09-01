@@ -128,7 +128,7 @@ enum CodeMatcher {
 }
 
 /// 納品書兼現品票QR(66桁固定長レコード)の解析結果。
-/// フィールド位置は docs/qr-barcode-spec-analysis.html の実データ解析に基づく。
+/// フィールド位置は docs/PRODUCT_SPEC.md と実データ解析に基づく。
 struct KanbanQRRecord: Equatable {
     let cardNumber: String        // 1-10桁: カード番号
     let partNumber: String        // 11-20桁: 品目番号

@@ -1,47 +1,30 @@
-# Code Match for iOS
+# Code Match Native
 
-`code-match` SPAの基本機能を、SwiftUIとAVFoundationで再実装したiOSネイティブアプリです。iOSカメラまたはInateck BCST-47 Bluetoothスキャナで、納品書兼現品票のQRコードを先に、現品票のCode 128バーコードを次に読み取ります。QRの固定長レコードから抽出した品目番号(10桁)とバーコードの`@`より前の品番を照合します（データ仕様は [docs/qr-barcode-spec-analysis.html](docs/qr-barcode-spec-analysis.html) を参照）。一致したコードは作業セッション単位の履歴として端末内だけに保存され、端末外へ送信しません。
+`code-match` のモバイル向けネイティブ実装を管理するモノレポです。現在はiOS版を提供しており、Android版はまだ追加していません。iOSとAndroidはそれぞれのネイティブ技術で実装し、照合仕様とテストデータを共有します。
 
-## すぐに実行する
+## リポジトリ構成
 
-1. [CodeMatch.xcodeproj](CodeMatch.xcodeproj) をXcodeで開く。
-2. Schemeに `CodeMatch`、実行先にiOS 17以降の端末またはiOS 26.5シミュレーターを選ぶ。
-3. Bluetoothスキャナを使う実機ビルドでは、先に `./scripts/bootstrap_inateck_sdk.sh` を実行する。
-4. 実機へ入れる場合は、Target `CodeMatch` の Signing & Capabilities でTeamを選ぶ。
-5. `⌘R` で起動する。
+```text
+code-match-native/
+├── ios/                     # SwiftUI / AVFoundationによるiOSアプリ
+├── shared/
+│   ├── test-fixtures/       # 両プラットフォームで使う照合ケースと読取画像
+│   └── tools/               # 共有テスト資源の生成ツール
+├── docs/
+│   ├── PRODUCT_SPEC.md      # プラットフォーム共通の振る舞い
+│   └── ios/                 # iOS固有の設計・実機検証手順
+└── .github/workflows/
+    └── ios-ci.yml           # iOSのdevice buildとSimulatorテスト
+```
 
-シミュレーターには利用可能な背面カメラがないため、画面下部の「カメラなしで判定をテスト」から一致・不一致のUI、音声、状態遷移を確認できます。実際の読み取りはカメラ搭載のiPhone/iPadで確認してください。
+Android開発を開始するときは、ルートに独立した `android/` Gradleプロジェクトと `android-ci.yml` を追加します。iOSプロジェクトを再移動したり、AVFoundationやBluetooth SDKのコードを共有層へ持ち込む必要はありません。
 
-## iPhone実機で確認する
+## iOS版
 
-1. ロック解除したiPhoneをUSB-CでMacへ接続し、iPhone側でMacを信頼する。
-2. XcodeでTarget `CodeMatch` の Signing & Capabilitiesを開き、自分のTeamを選ぶ。
-3. Xcode上部の実行先で接続したiPhoneを選び、`⌘R` を押す。
-4. 必要に応じてiPhoneの「設定 > プライバシーとセキュリティ > デベロッパモード」を有効にする。
-5. 起動後にカメラを許可し、`TestResources/Generated` の画像を別画面または紙から読み取る。
-
-初回のDeveloper Mode有効化ではiPhoneの再起動と確認操作が必要です。
-
-## 実装済み
-
-- 「記録を開始する」から始める作業セッションと、照合中に固定表示される一致件数
-- 一致したコード・照合時刻・開始/終了時刻の端末内履歴
-- 過去のセッション一覧と、一致コードを確認・コピーできる詳細画面
-- QR → Code 128 → 自動照合の迷いにくい2スキャンフロー
-- `AVCaptureMetadataOutput` による完全ローカル読み取り
-- Inateck BCST-47の検索・接続・自動再接続と、BluetoothによるQR／Code 128読み取り
-- カメラ／Bluetooth入力切替、切断時の読取状態維持とカメラ復帰
-- Code 128の同一値2フレーム確認による誤検出抑制
-- タップフォーカス、連続オートフォーカス
-- 一致時の成功音・触覚、不一致時の4回警告音・触覚
-- カメラ権限拒否、カメラ非搭載時のエラー表示
-- Dynamic Type、VoiceOver用ラベル、44pt以上の主要操作領域
-- Privacy Manifest、カメラ利用目的、App Icon
-- 比較・履歴保存の単体テストと、セッション開始を含む基本フローのUIテスト
-
-## テスト
+Xcodeで [ios/CodeMatch.xcodeproj](ios/CodeMatch.xcodeproj) を開きます。詳しい起動方法、実装済み機能、テスト方法は [ios/README.md](ios/README.md) を参照してください。
 
 ```sh
+cd ios
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 xcodebuild test \
   -project CodeMatch.xcodeproj \
@@ -49,14 +32,12 @@ xcodebuild test \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-実機読み取り用のサンプルコードは `TestResources/Generated` にあります。再生成する場合:
+## 共通仕様
+
+QR → Code 128 → 照合という業務フローと品番の正規化ルールは [共通プロダクト仕様](docs/PRODUCT_SPEC.md) に定義しています。実データ由来の入力例と期待結果は [shared/test-fixtures/matching-cases.json](shared/test-fixtures/matching-cases.json) にあり、将来のKotlinテストでも同じケースを利用できます。
+
+テスト用画像を再生成する場合は、macOSでリポジトリルートから次を実行します。
 
 ```sh
-swift tools/generate_test_codes.swift TestResources/Generated
+swift shared/tools/generate_test_codes.swift
 ```
-
-設計判断、実装手順、受け入れ基準は [docs/IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md) を参照してください。
-
-BCST-47のSDK準備、Simulatorモック、iPhone実機での検証手順は [docs/BLUETOOTH_SCANNER_TEST.md](docs/BLUETOOTH_SCANNER_TEST.md) を参照してください。
-
-シミュレーターで確認済みの画面は [初期画面](docs/screenshots/initial-screen.png) と [一致結果](docs/screenshots/match-result.png) に保存しています。App Store Connect用画像を作る際の構成確認にも利用できます。

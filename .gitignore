@@ -5,7 +5,13 @@ xcuserdata/
 *.xcuserstate
 *.xcresult
 tmp/
-Vendor/Inateck/
+ios/Vendor/Inateck/
 docs/qr-barcode-spec-analysis.html
 docs/qr-barcode-spec-analysis.pdf
 build/
+.gradle/
+.idea/
+local.properties
+*.iml
+.externalNativeBuild/
+.cxx/

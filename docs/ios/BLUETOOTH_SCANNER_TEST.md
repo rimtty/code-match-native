@@ -5,10 +5,10 @@
 Inateckの公式iOS SDKはリポジトリへ再配布せず、実機ビルドの前に固定コミットから取得します。
 
 ```sh
-./scripts/bootstrap_inateck_sdk.sh
+./ios/scripts/bootstrap_inateck_sdk.sh
 ```
 
-スクリプトは `03aa36d0e204997130afaca00c2176aa7e5089af` を取得し、framework本体のSHA-256を検証して `Vendor/Inateck` へ配置します。このディレクトリはGit管理対象外です。公式リポジトリにライセンスファイルが見当たらないため、App Store配布やバイナリ同梱の前にInateckへ再配布許諾、正式ライセンス、現行SDK、XCFramework提供可否を確認してください。
+スクリプトは `03aa36d0e204997130afaca00c2176aa7e5089af` を取得し、framework本体のSHA-256を検証して `ios/Vendor/Inateck` へ配置します。このディレクトリはGit管理対象外です。公式リポジトリにライセンスファイルが見当たらないため、App Store配布やバイナリ同梱の前にInateckへ再配布許諾、正式ライセンス、現行SDK、XCFramework提供可否を確認してください。
 
 SDKのframework本体はarm64のiPhoneOS用です。Simulatorビルドでは `INATECK_SDK` を定義せずframeworkもリンクしないため、アプリ内モックを使用します。
 
@@ -27,7 +27,7 @@ UIテスト向け起動引数 `-demoBluetoothConnected` を指定すると、モ
 ## iPhoneとBCST-47での確認
 
 1. Mac側でBCST-47の接続を解除するか、MacのBluetoothを一時的にオフにして自動再接続を止める。
-2. `./scripts/bootstrap_inateck_sdk.sh` を実行してから、XcodeでiPhone実機へインストールする。
+2. リポジトリルートで `./ios/scripts/bootstrap_inateck_sdk.sh` を実行してから、XcodeでiPhone実機へインストールする。
 3. 初回起動時にBluetooth利用を許可する。
 4. 設定タブの「初回接続ガイドを開く」を押し、画面に表示される設定用Code 128を次の順に1回ずつ読む。通常表示で反応しない場合は「全画面で大きく表示」を押し、iPhoneを横向きにして長辺いっぱいのコードを読む。
    1. 設定を開始: `/*EnterSet*/`

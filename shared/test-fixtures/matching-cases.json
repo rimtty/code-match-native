@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "standard-match",
+      "qrPayload": "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
+      "barcodePayload": "BCJH-52-81GG@1N5X0C",
+      "expected": "match"
+    },
+    {
+      "id": "different-part-number",
+      "qrPayload": "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
+      "barcodePayload": "BCJH-55-81GG@1KVV0C",
+      "expected": "mismatch"
+    },
+    {
+      "id": "management-code-is-ignored",
+      "qrPayload": "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
+      "barcodePayload": "BCJH-52-81GG@ZZZZZZ",
+      "expected": "match"
+    },
+    {
+      "id": "non-standard-qr-containment",
+      "qrPayload": "PART:BCJH-52-81GG;QTY:12",
+      "barcodePayload": "BCJH-52-81GG@1N5X0C",
+      "expected": "match"
+    },
+    {
+      "id": "empty-values",
+      "qrPayload": "",
+      "barcodePayload": "",
+      "expected": "mismatch"
+    }
+  ]
+}

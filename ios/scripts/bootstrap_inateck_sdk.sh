@@ -7,10 +7,10 @@ readonly SDK_COMMIT="03aa36d0e204997130afaca00c2176aa7e5089af"
 readonly FRAMEWORK_BINARY_SHA256="8d831f550e470085f0362e5f94cce1d5fe681afef80eb592576648a5d63c388a"
 
 script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-repository_root=$(CDPATH= cd -- "$script_directory/.." && pwd)
+ios_root=$(CDPATH= cd -- "$script_directory/.." && pwd)
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/codematch-inateck.XXXXXX")
 checkout_directory="$temporary_directory/ios_sdk"
-destination_directory="$repository_root/Vendor/Inateck"
+destination_directory="$ios_root/Vendor/Inateck"
 source_framework="$checkout_directory/SDKDemo/InateckScannerBleKit.framework"
 
 cleanup() {

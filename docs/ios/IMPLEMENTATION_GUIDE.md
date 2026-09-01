@@ -6,7 +6,7 @@ Web版 `/Users/rimd2r/rimtty/code-match/app/page.tsx` を基準にしました�
 
 1. 正方形のQRコードを読み取る。
 2. 同じカメラセッションでCode 128バーコードを読み取る。
-3. QRの固定長レコード11〜20桁目の品目番号と、バーコードの`@`より前の品番を正規化して一致判定する（詳細は `qr-barcode-spec-analysis.html`）。
+3. QRの固定長レコード11〜20桁目の品目番号と、バーコードの`@`より前の品番を正規化して一致判定する（共通ルールは [`../PRODUCT_SPEC.md`](../PRODUCT_SPEC.md)）。
 4. 一致は緑と成功フィードバック、不一致は赤と4回の警告音・触覚で通知する。
 5. バーコード待機中にQRの取り違えへ気づいた場合は「QRを読み取りなおす」でQRだけを破棄し、同じ作業セッションのまま別のQRを読み取る。
 6. 「次のコードを照合」で読み取り値とカメラ状態をリセットし、同じ作業セッションを継続する。
@@ -59,10 +59,10 @@ App Iconは「Code 128を想起させる白いバーコード＋ライムの照�
 
 1. iPhoneのロックを解除してUSB-CケーブルでMacへ接続する。
 2. iPhoneに「このコンピュータを信頼しますか？」が出たら「信頼」を選び、パスコードを入力する。
-3. Xcodeで `CodeMatch.xcodeproj` を開き、Target `CodeMatch` の Signing & CapabilitiesでApple AccountのTeamを選ぶ。
+3. Xcodeで `ios/CodeMatch.xcodeproj` を開き、Target `CodeMatch` の Signing & CapabilitiesでApple AccountのTeamを選ぶ。
 4. Xcode上部の実行先から接続したiPhoneを選び、`⌘R` を押す。
 5. Developer Modeを求められた場合は、iPhoneの「設定 > プライバシーとセキュリティ > デベロッパモード」を有効にして再起動する。
-6. 初回起動でカメラを許可し、`TestResources/Generated` のQRとバーコードを別の画面または紙に表示して読み取る。
+6. 初回起動でカメラを許可し、`shared/test-fixtures/images` のQRとバーコードを別の画面または紙に表示して読み取る。
 
 Macへの接続後は、XcodeのDevices and Simulatorsで「Connect via network」を有効にすれば、同じネットワーク上でのワイヤレス実行も可能です。初回設定とトラブル時はUSB-C接続を推奨します。
 
