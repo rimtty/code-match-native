@@ -35,6 +35,40 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** Logical feedback states emitted by the scan integration. */
+internal enum class ScanFeedbackEvent {
+    SCAN_ACCEPTED,
+    INVALID_SCAN,
+    MATCH,
+    MISMATCH,
+}
+
+/**
+ * Maps one reducer reduction to at most one cue for each logical state.
+ *
+ * A successful or mismatching Code 128 reduction contains ScanAccepted plus a
+ * terminal result. The terminal result owns that reduction's cue, so the
+ * accepted blip is emitted only for a non-terminal read. This avoids an
+ * interrupting terminal cue cancelling the accepted audio and haptic twice.
+ */
+internal object ScanFeedbackEventMapper {
+    fun map(
+        effects: List<ScanEffect>,
+        result: MatchResult?,
+    ): List<ScanFeedbackEvent> = when {
+        effects.any { it is ScanEffect.InvalidScan } ->
+            listOf(ScanFeedbackEvent.INVALID_SCAN)
+        effects.any { it is ScanEffect.RecordMatch } ->
+            listOf(ScanFeedbackEvent.MATCH)
+        result == MatchResult.MISMATCH &&
+            effects.any { it === ScanEffect.ScanAccepted } ->
+            listOf(ScanFeedbackEvent.MISMATCH)
+        effects.any { it === ScanEffect.ScanAccepted } ->
+            listOf(ScanFeedbackEvent.SCAN_ACCEPTED)
+        else -> emptyList()
+    }
+}
+
 /**
  * Application-side owner for one scan session.
  *
@@ -295,6 +329,19 @@ class ScanViewModel @Inject constructor(
         created.onStateChanged = { publishCoordinatorState() }
         created.onEffects = ::handleEffects
         created.onInputSourceChanged = { publishCoordinatorState() }
+        created.onBluetoothFallback = {
+            publishCoordinatorState()
+            if (_state.value.sessionActive &&
+                _state.value.expectedFormat != null &&
+                _state.value.cameraAvailable &&
+                !_state.value.cameraPermissionPermanentlyDenied
+            ) {
+                // A transport failure is different from the user's manual
+                // camera choice: resume capture automatically while keeping
+                // the current QR/Code 128 step and any accepted QR value.
+                requestCameraStart()
+            }
+        }
         coordinator = created
         publishCoordinatorState()
 
@@ -472,25 +519,53 @@ class ScanViewModel @Inject constructor(
     }
 
     private fun handleEffects(effects: List<ScanEffect>) {
-        effects.forEach { effect ->
-            when (effect) {
-                is ScanEffect.RecordMatch -> {
+        val currentResult = coordinator?.state?.result
+        val invalid = effects.filterIsInstance<ScanEffect.InvalidScan>().firstOrNull()
+        when {
+            invalid != null -> {
+                // The feature renders this typed reason through localized
+                // resources. Do not surface scanner/exception text here.
+                _state.value = _state.value.copy(
+                    message = null,
+                    lastInvalidReason = invalid.reason,
+                )
+            }
+            effects.any { it === ScanEffect.ScanAccepted } -> {
+                _state.value = _state.value.copy(
+                    message = null,
+                    lastInvalidReason = null,
+                )
+            }
+        }
+
+        ScanFeedbackEventMapper.map(effects, currentResult).forEach { event ->
+            when (event) {
+                ScanFeedbackEvent.SCAN_ACCEPTED ->
+                    feedbackPlayer.playScanAccepted(latestSettings.feedbackVolume)
+                ScanFeedbackEvent.INVALID_SCAN ->
+                    feedbackPlayer.playInvalidScan(latestSettings.feedbackVolume)
+                ScanFeedbackEvent.MATCH -> {
                     feedbackPlayer.playSuccess(
                         latestSettings.successSound,
                         latestSettings.feedbackVolume,
-                        includeHaptic = true,
                     )
-                    persistMatch(effect)
+                    // Reducer output contains one RecordMatch at most. Taking
+                    // the first one protects the integration from accidental
+                    // duplicate terminal effects without dropping a valid row.
+                    effects.filterIsInstance<ScanEffect.RecordMatch>()
+                        .firstOrNull()
+                        ?.let(::persistMatch)
                 }
-                ScanEffect.ScanAccepted -> {
-                    if (coordinator?.state?.result == MatchResult.MISMATCH) {
-                        feedbackPlayer.playFailure(
-                            latestSettings.failureSound,
-                            latestSettings.feedbackVolume,
-                            includeHaptic = true,
-                        )
-                    }
-                }
+                ScanFeedbackEvent.MISMATCH ->
+                    feedbackPlayer.playFailure(
+                        latestSettings.failureSound,
+                        latestSettings.feedbackVolume,
+                    )
+            }
+        }
+
+        effects.forEach { effect ->
+            when (effect) {
                 is ScanEffect.AutoAdvanceStarted -> startCountdown()
                 ScanEffect.AutoAdvanceCancelled,
                 ScanEffect.AutoAdvanceCompleted,

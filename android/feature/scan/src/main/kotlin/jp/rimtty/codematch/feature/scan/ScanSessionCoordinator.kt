@@ -53,6 +53,8 @@ class ScanSessionCoordinator(
     var onStateChanged: ((ScanSessionState) -> Unit)? = null
     var onEffects: ((List<ScanEffect>) -> Unit)? = null
     var onInputSourceChanged: ((InputSource) -> Unit)? = null
+    /** Invoked only when a lost/unready Bluetooth link forces camera fallback. */
+    var onBluetoothFallback: (() -> Unit)? = null
 
     init {
         scanner.listener = this
@@ -236,6 +238,7 @@ class ScanSessionCoordinator(
         if (inputSource != InputSource.BLUETOOTH) return
         setInputSource(InputSource.CAMERA)
         applyExpectedFormat(null)
+        onBluetoothFallback?.invoke()
     }
 
     private fun applyEffects(effects: List<ScanEffect>) {
@@ -270,8 +273,8 @@ class ScanSessionCoordinator(
     private fun setInputSource(source: InputSource) {
         if (inputSource == source) return
         inputSource = source
-        onInputSourceChanged?.invoke(source)
         state = state.copy(inputSource = source)
+        onInputSourceChanged?.invoke(source)
     }
 }
 

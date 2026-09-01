@@ -46,6 +46,8 @@ class ScanSessionCoordinatorTest {
     fun disconnectFallsBackToCameraWithoutDiscardingCurrentQrStep() {
         val scanner = TestScanner().apply { markReady() }
         val coordinator = ScanSessionCoordinator(scanner)
+        var fallbackRequests = 0
+        coordinator.onBluetoothFallback = { fallbackRequests++ }
         coordinator.startSession()
         coordinator.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.BLUETOOTH))
         assertEquals(ScanPhase.WAITING_CODE_128, coordinator.state.phase)
@@ -55,6 +57,20 @@ class ScanSessionCoordinatorTest {
         assertEquals(InputSource.CAMERA, coordinator.inputSource)
         assertEquals(ScanPhase.WAITING_CODE_128, coordinator.state.phase)
         assertEquals(qrPayload, coordinator.state.qrPayload)
+        assertEquals(1, fallbackRequests)
+    }
+
+    @Test
+    fun manualCameraSelectionDoesNotRequestAutomaticFallbackStart() {
+        val scanner = TestScanner().apply { markReady() }
+        val coordinator = ScanSessionCoordinator(scanner)
+        var fallbackRequests = 0
+        coordinator.onBluetoothFallback = { fallbackRequests++ }
+        coordinator.startSession()
+
+        assertTrue(coordinator.selectInputSource(InputSource.CAMERA))
+
+        assertEquals(0, fallbackRequests)
     }
 
     @Test

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="history_title">照合履歴</string>
+    <string name="history_empty_title">履歴はまだありません</string>
+    <string name="history_empty_description">照合タブで記録を開始すると、一致したコードがセッション単位で保存されます。</string>
+    <string name="history_delete">削除</string>
+    <string name="history_session_in_progress">照合中のセッション</string>
+    <string name="history_session_ended">終了済み</string>
+    <string name="history_session_name">セッション名</string>
+    <string name="history_start">開始</string>
+    <string name="history_end">終了</string>
+    <string name="history_status">状態</string>
+    <string name="history_inspection_boxes">検査箱数</string>
+    <string name="history_part_count">品番数</string>
+    <string name="history_name_placeholder">名前を入力（任意）</string>
+    <string name="history_save_pdf">PDFで保存</string>
+    <string name="history_share_pdf">共有する</string>
+    <string name="history_matched_codes">一致したコード</string>
+    <string name="history_no_matches_title">一致履歴はありません</string>
+    <string name="history_no_matches_description">このセッションではまだ一致したコードがありません。</string>
+    <string name="history_details_not_found">履歴が見つかりません</string>
+    <string name="history_number">番号</string>
+    <string name="history_first_match">最初の照合</string>
+    <string name="history_last_match">最後の照合</string>
+    <string name="history_box_records">各箱の照合記録</string>
+    <string name="history_item_number">品目番号</string>
+    <string name="history_qr_parsed">納品書情報（QR解析）</string>
+    <string name="history_barcode_parsed">現品票情報（バーコード解析）</string>
+    <string name="history_full_qr">QRコード（納品書兼現品票）全文</string>
+    <string name="history_full_barcode">Code 128（現品票）全文</string>
+    <string name="history_no_record">記録なし（旧バージョンで照合）</string>
+    <string name="history_back">戻る</string>
+    <string name="history_box">箱</string>
+    <string name="history_matched_at">照合時刻</string>
+    <string name="history_part_number">品番</string>
+    <string name="history_card_number">カード番号</string>
+    <string name="history_suffix">枝番</string>
+    <string name="history_delivery_quantity">納入数量</string>
+    <string name="history_instructed_quantity">指示数</string>
+    <string name="history_factory">工場</string>
+    <string name="history_warehouse">受入部品庫</string>
+    <string name="history_supply_point">供給先</string>
+    <string name="history_management_code">管理コード</string>
+    <string name="history_not_available">-</string>
+
+    <string name="history_accessibility_separator">、</string>
+    <string name="history_finished_duration">終了済み・約%1$s分</string>
+    <plurals name="history_box_count">
+        <item quantity="other">%1$s箱</item>
+    </plurals>
+    <string name="history_group_accessibility">#%1$d %2$s、%3$s</string>
+    <string name="history_matched_at_single">%1$s：%2$s</string>
+    <string name="history_matched_at_range">%1$s：%2$s 〜 %3$s</string>
+    <string name="history_box_index">%1$d箱目</string>
+    <string name="history_entry_box_number">#%1$d箱目</string>
+    <string name="history_group_number">#%1$d</string>
+    <string name="history_part_with_suffix">%1$s（%2$s %3$s）</string>
+</resources>

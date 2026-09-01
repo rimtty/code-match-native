@@ -55,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import jp.rimtty.codematch.core.export.HistoryExportTextFormatter
 import jp.rimtty.codematch.core.matching.CodeMatcher
 import jp.rimtty.codematch.core.matching.KanbanQrRecord
 import jp.rimtty.codematch.core.matching.TagBarcodeRecord
@@ -165,7 +166,7 @@ fun HistoryContent(
             list(Modifier.fillMaxSize())
         } else {
             Column(Modifier.fillMaxSize()) {
-                BackButton(language = language, onBack = onBack)
+                BackButton(onBack = onBack)
                 detail(Modifier.weight(1f))
             }
         }
@@ -180,7 +181,7 @@ private fun HistorySessionList(
     onDeleteSession: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val labels = HistoryUiText.labels(language)
+    val labels = HistoryUiResources.labels()
     Column(
         modifier = modifier
             .testTag(HistoryTestTags.SCREEN)
@@ -244,8 +245,8 @@ private fun SessionRow(
     onClick: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val labels = HistoryUiText.labels(language)
-    val summary = HistoryUiText.sessionAccessibilitySummary(session, language)
+    val labels = HistoryUiResources.labels()
+    val summary = HistoryUiResources.sessionAccessibilitySummary(session, language)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -278,8 +279,8 @@ private fun SessionRow(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Text(
-                        text = session.matchedCount.toString(),
+                Text(
+                    text = HistoryExportTextFormatter.integer(session.matchedCount, language),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
@@ -309,7 +310,7 @@ private fun SessionRow(
                 )
                 Text(
                     text = if (session.isActive) labels.sessionInProgress
-                    else HistoryUiText.durationText(session, language),
+                    else HistoryUiResources.durationText(session, language),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (session.isActive) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -339,7 +340,7 @@ fun HistorySessionDetail(
     onSharePdf: (MatchSession) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val labels = HistoryUiText.labels(language)
+    val labels = HistoryUiResources.labels()
     if (session == null) {
         EmptyDetailState(labels, modifier.testTag(HistoryTestTags.SESSION_DETAIL))
         return
@@ -434,12 +435,11 @@ private fun SessionOverview(
                 }
                 SummaryRow(
                     labels.inspectionBoxes,
-                    if (language == AppLanguage.JAPANESE) "${session.matchedCount}${labels.box}"
-                    else "${session.matchedCount} ${labels.box}",
+                    HistoryUiResources.boxCount(session.matchedCount, language),
                 )
                 SummaryRow(
                     labels.partCount,
-                    session.groupedEntries.size.toString(),
+                    HistoryExportTextFormatter.integer(session.groupedEntries.size, language),
                 )
             }
         }
@@ -496,7 +496,13 @@ private fun GroupRow(
     language: AppLanguage,
     onClick: () -> Unit,
 ) {
-    val labels = HistoryUiText.labels(language)
+    val labels = HistoryUiResources.labels()
+    val groupAccessibilitySummary = HistoryUiResources.groupAccessibilitySummary(
+        number = number,
+        code = group.code,
+        count = group.boxCount,
+        language = language,
+    )
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -504,22 +510,26 @@ private fun GroupRow(
             .heightIn(min = 64.dp)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) {
-                contentDescription = "#${number} ${group.code}, ${group.boxCount} ${labels.box}"
+                contentDescription = groupAccessibilitySummary
                 role = Role.Button
             }
             .testTag(HistoryTestTags.GROUP_ROW),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("#$number", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text(
+                    HistoryUiResources.groupNumber(number),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
                 Spacer(Modifier.weight(1f))
                 Text(
-                    text = if (group.boxCount > 1) {
-                        "${labels.matchedAt}: ${HistoryUiText.time(group.firstMatchedAt, language)} – " +
-                            HistoryUiText.time(group.lastMatchedAt, language)
-                    } else {
-                        "${labels.matchedAt}: ${HistoryUiText.time(group.firstMatchedAt, language)}"
-                    },
+                    text = HistoryUiResources.matchedAt(
+                        firstMillis = group.firstMatchedAt,
+                        lastMillis = group.lastMatchedAt,
+                        hasRange = group.boxCount > 1,
+                        language = language,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -535,8 +545,7 @@ private fun GroupRow(
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    text = if (language == AppLanguage.JAPANESE) "${group.boxCount}${labels.box}"
-                    else "${group.boxCount} ${labels.box}",
+                    text = HistoryUiResources.boxCount(group.boxCount, language),
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
                 )
@@ -554,15 +563,15 @@ fun HistoryGroupDetail(
     onEntrySelected: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val labels = HistoryUiText.labels(language)
+    val labels = HistoryUiResources.labels()
     LazyColumn(
         modifier = modifier.fillMaxSize().testTag(HistoryTestTags.GROUP_DETAIL),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
     ) {
         item {
             SectionCard {
-                SummaryRow(labels.number, "#$groupNumber")
-                SummaryRow(labels.inspectionBoxes, boxCountText(group.boxCount, labels, language))
+                SummaryRow(labels.number, HistoryUiResources.groupNumber(groupNumber))
+                SummaryRow(labels.inspectionBoxes, HistoryUiResources.boxCount(group.boxCount, language))
                 SummaryRow(labels.firstMatch, HistoryUiText.dateTime(group.firstMatchedAt, language))
                 if (group.boxCount > 1) {
                     SummaryRow(labels.lastMatch, HistoryUiText.dateTime(group.lastMatchedAt, language))
@@ -600,8 +609,7 @@ fun HistoryGroupDetail(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = if (language == AppLanguage.JAPANESE) "${index + 1}${labels.box}目"
-                        else "${labels.box} ${index + 1}",
+                        text = HistoryUiResources.boxIndex(index + 1),
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
                     )
@@ -625,7 +633,7 @@ fun HistoryEntryDetail(
     language: AppLanguage = AppLanguage.JAPANESE,
     modifier: Modifier = Modifier,
 ) {
-    val labels = HistoryUiText.labels(language)
+    val labels = HistoryUiResources.labels()
     val qr = entry.qrPayload?.let(KanbanQrRecord::parse)
     val barcode = entry.barcodePayload?.let(TagBarcodeRecord::parse)
     LazyColumn(
@@ -636,8 +644,7 @@ fun HistoryEntryDetail(
             SectionCard {
                 SummaryRow(
                     labels.box,
-                    if (language == AppLanguage.JAPANESE) "#${boxNumber}${labels.box}目"
-                    else "#${boxNumber}",
+                    HistoryUiResources.entryBoxNumber(boxNumber),
                 )
                 SummaryRow(labels.matchedAt, HistoryUiText.dateTime(entry.matchedAt, language))
             }
@@ -657,14 +664,18 @@ fun HistoryEntryDetail(
                     SummaryRow(labels.cardNumber, qr.cardNumber)
                     SummaryRow(
                         labels.itemNumber,
-                        CodeMatcher.formatPartNumber(qr.partNumber) +
-                            (qr.partSuffix?.let { " (${labels.suffix} $it)" } ?: ""),
+                        qr.partSuffix?.let {
+                            HistoryUiResources.partWithSuffix(
+                                CodeMatcher.formatPartNumber(qr.partNumber),
+                                it,
+                            )
+                        } ?: CodeMatcher.formatPartNumber(qr.partNumber),
                     )
                     SummaryRow(labels.deliveryQuantity, HistoryUiText.quantity(qr.deliveryQuantity, language))
                     SummaryRow(labels.instructedQuantity, HistoryUiText.quantity(qr.instructedQuantity, language))
-                    SummaryRow(labels.factory, qr.factoryCode ?: "-")
-                    SummaryRow(labels.warehouse, qr.warehouseCode ?: "-")
-                    SummaryRow(labels.supplyPoint, qr.supplyPointCode ?: "-")
+                    SummaryRow(labels.factory, qr.factoryCode ?: HistoryUiResources.notAvailable())
+                    SummaryRow(labels.warehouse, qr.warehouseCode ?: HistoryUiResources.notAvailable())
+                    SummaryRow(labels.supplyPoint, qr.supplyPointCode ?: HistoryUiResources.notAvailable())
                 }
             }
         }
@@ -672,7 +683,7 @@ fun HistoryEntryDetail(
             item {
                 SectionCard(title = labels.barcodeParsed) {
                     SummaryRow(labels.partNumber, barcode.partNumber)
-                    SummaryRow(labels.managementCode, barcode.managementCode ?: "-")
+                    SummaryRow(labels.managementCode, barcode.managementCode ?: HistoryUiResources.notAvailable())
                 }
             }
         }
@@ -729,11 +740,19 @@ private fun SectionCard(title: String? = null, content: @Composable ColumnScope.
 @Composable
 private fun SummaryRow(label: String, value: String, valueColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface) {
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        verticalAlignment = Alignment.Top,
     ) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.42f))
-        Text(value, color = valueColor, modifier = Modifier.weight(0.58f))
+        Text(
+            label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(0.42f).padding(vertical = 6.dp),
+        )
+        Text(
+            value,
+            color = valueColor,
+            modifier = Modifier.weight(0.58f).padding(vertical = 6.dp),
+        )
     }
 }
 
@@ -775,8 +794,8 @@ private fun EmptyDetailState(labels: HistoryUiLabels, modifier: Modifier = Modif
 }
 
 @Composable
-private fun BackButton(language: AppLanguage, onBack: () -> Unit) {
-    val labels = HistoryUiText.labels(language)
+private fun BackButton(onBack: () -> Unit) {
+    val labels = HistoryUiResources.labels()
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
             Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = labels.back)
@@ -787,6 +806,3 @@ private fun BackButton(language: AppLanguage, onBack: () -> Unit) {
 
 private fun sortSessions(sessions: List<MatchSession>): List<MatchSession> =
     sessions.sortedWith(compareByDescending<MatchSession> { it.startedAt }.thenByDescending { it.id })
-
-private fun boxCountText(count: Int, labels: HistoryUiLabels, language: AppLanguage): String =
-    if (language == AppLanguage.JAPANESE) "$count${labels.box}" else "$count ${labels.box}"
