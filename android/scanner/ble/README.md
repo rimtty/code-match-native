@@ -39,5 +39,16 @@ The core guarantees:
   emitted; malformed envelopes and invalid UTF-8 are rejected;
 - diagnostic events contain only sanitized connection/configuration outcomes,
   never scan payload text.
+- `BleSymbologySnapshotSerializer` persists a versioned envelope containing
+  only the adapter-selected profile identity, device ID, complete reported
+  symbology inventory, and capture time. Every item keeps its `name`, `area`,
+  value, optional flag, and stringified extra fields in original order.
+- `BleSymbologySnapshotStore` is an app-private Preferences DataStore adapter.
+  Its atomic write/clear operations are suitable for the session's save-before-
+  apply and clear-after-restore lifecycle. Corrupt values, unsupported schema
+  versions, and device/profile mismatches return an explicit rejection and are
+  never treated as an empty store. The DataStore file is
+  `files/datastore/codematch-ble-symbology.preferences_pb`; the app backup and
+  device-transfer rules must exclude that exact path.
 
 The unit tests run on the JVM and use no scanner hardware.

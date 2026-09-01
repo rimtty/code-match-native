@@ -33,10 +33,15 @@ data class BleSymbologyProfile(
     val settingsCharacteristicUuid: String,
     /** The adapter must explicitly select the wire codec for this scanner. */
     val codec: BleSymbologyCodec,
+    /** Stable adapter/profile identity used to bind persistent recovery data. */
+    val identity: String,
 ) {
     init {
         require(settingsCharacteristicUuid.isNotBlank()) {
             "settingsCharacteristicUuid must be supplied by the adapter"
+        }
+        require(identity.isNotBlank()) {
+            "identity must be supplied by the adapter"
         }
     }
 }

@@ -118,8 +118,20 @@ object SymbologySettings {
         val root = runCatching { JsonParser.parseString(settingsJson).asJsonObject }.getOrNull()
             ?: return null
         val rawItems = root.array("data") ?: root.array("info") ?: return null
-        val parsed = rawItems.mapNotNull(::parseItem)
-            .filter(::isSymbologyItem)
+        val parsed = buildList {
+            rawItems.forEach { element ->
+                val parsedItem = parseItem(element)
+                if (looksLikeSymbologyItem(element) && parsedItem == null) {
+                    // A malformed reported symbology must invalidate the
+                    // entire inventory. Silently dropping it would make an
+                    // exact restore impossible after session restriction.
+                    return null
+                }
+                if (parsedItem != null && isSymbologyItem(parsedItem)) {
+                    add(parsedItem)
+                }
+            }
+        }
         if (parsed.isEmpty()) return null
         return SymbologySnapshot(deviceId, parsed, capturedAtMillis)
     }
@@ -177,7 +189,11 @@ object SymbologySettings {
         val area = jsonObject.string("area") ?: return null
         val value = jsonObject.intValue("value") ?: return null
         if (value !in 0..1) return null
-        val flag = jsonObject.intValue("flag")
+        val flag = if (jsonObject.has("flag")) {
+            jsonObject.intValue("flag") ?: return null
+        } else {
+            null
+        }
         val extras = jsonObject.entrySet()
             .filter { it.key != "name" && it.key != "area" && it.key != "value" && it.key != "flag" }
             .associate { it.key to it.value.toString() }
@@ -189,6 +205,15 @@ object SymbologySettings {
         if (flag != null && flag in 2001..2028) return true
         val lowerName = item.name.lowercase()
         return lowerName in LEGACY_NAMES
+    }
+
+    private fun looksLikeSymbologyItem(element: JsonElement): Boolean {
+        if (!element.isJsonObject) return true
+        val jsonObject = element.asJsonObject
+        val flag = jsonObject.intValue("flag")
+        if (flag != null && flag in 2001..2028) return true
+        val name = jsonObject.string("name")?.lowercase()
+        return name != null && name in LEGACY_NAMES
     }
 
     private fun JsonObject.array(name: String): List<JsonElement>? =
@@ -222,7 +247,31 @@ object SymbologySettings {
 }
 
 /** In-memory persistence useful for tests and as a default adapter boundary. */
+sealed interface SymbologySnapshotReadResult {
+    /** No snapshot has been saved for this store. */
+    data object Missing : SymbologySnapshotReadResult
+
+    /** A snapshot passed all persistence and identity checks. */
+    data class Found(val snapshot: SymbologySnapshot) : SymbologySnapshotReadResult
+
+    /** A persisted value exists but must not be applied. */
+    data class Rejected(val reason: String) : SymbologySnapshotReadResult
+}
+
+sealed interface SymbologySnapshotClearResult {
+    /** A matching, valid snapshot was removed atomically. */
+    data object Cleared : SymbologySnapshotClearResult
+
+    /** No snapshot existed, so the expected recovery record was not cleared. */
+    data object Missing : SymbologySnapshotClearResult
+
+    /** A value existed but was unreadable or belonged to another identity. */
+    data class Rejected(val reason: String) : SymbologySnapshotClearResult
+}
+
 interface SymbologySnapshotStore {
+    val profileIdentity: String
+
     fun load(deviceId: String): SymbologySnapshot?
 
     /**
@@ -233,11 +282,27 @@ interface SymbologySnapshotStore {
      */
     fun loadLatest(): SymbologySnapshot? = null
 
+    /**
+     * Identity-aware read used by lifecycle code. Legacy stores retain their
+     * nullable [load] API while Android persistence adapters can distinguish a
+     * missing value from a corrupt, incompatible, or mismatched value.
+     */
+    fun read(deviceId: String): SymbologySnapshotReadResult =
+        load(deviceId)?.let(SymbologySnapshotReadResult::Found)
+            ?: SymbologySnapshotReadResult.Missing
+
+    /** Identity-aware form of [loadLatest] for persistence adapters. */
+    fun readLatest(): SymbologySnapshotReadResult =
+        loadLatest()?.let(SymbologySnapshotReadResult::Found)
+            ?: SymbologySnapshotReadResult.Missing
+
     fun save(snapshot: SymbologySnapshot)
-    fun clear(deviceId: String)
+    fun clear(deviceId: String): SymbologySnapshotClearResult
 }
 
-class InMemorySymbologySnapshotStore : SymbologySnapshotStore {
+class InMemorySymbologySnapshotStore(
+    override val profileIdentity: String,
+) : SymbologySnapshotStore {
     private val snapshots = mutableMapOf<String, SymbologySnapshot>()
 
     override fun load(deviceId: String): SymbologySnapshot? = snapshots[deviceId]
@@ -250,7 +315,10 @@ class InMemorySymbologySnapshotStore : SymbologySnapshotStore {
         snapshots[snapshot.deviceId] = snapshot
     }
 
-    override fun clear(deviceId: String) {
-        snapshots.remove(deviceId)
-    }
+    override fun clear(deviceId: String): SymbologySnapshotClearResult =
+        if (snapshots.remove(deviceId) != null) {
+            SymbologySnapshotClearResult.Cleared
+        } else {
+            SymbologySnapshotClearResult.Missing
+        }
 }

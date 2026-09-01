@@ -71,7 +71,7 @@ BLEを除いた中間成果物は開発・評価用として成立するが、Sw
 | エラー | カメラ/Bluetooth/保存の状態別案内 | 型付きUiState | 技術的な例外文字列を直接表示せず、回復操作を示す |
 | ライフサイクル | 背景化でカメラ停止、復帰で論理工程を維持 | Lifecycle-aware state | 背景・回転・プロセス再生成で二重解析や工程消失なし |
 | アクセシビリティ | ラベル、結合読み上げ、大きな操作面 | Compose semantics | TalkBack、48dp以上、フォント拡大、色以外の状態表現を確認 |
-| プライバシー | ネット送信なし、履歴をバックアップ対象外 | INTERNET権限なし、backup rules | 通信依存なし、画像を保存しない、DBをクラウドバックアップしない |
+| プライバシー | ネット送信なし、履歴をバックアップ対象外 | production BLE未接続段階はINTERNET/Nearby権限なし、backup rules | 通信依存なし、画像を保存しない、DBをクラウドバックアップしない |
 | BLE | 検索・接続・再接続・診断・設定保存復元・カメラfallback | 抽象層とFakeを先行、実通信は最終フェーズ | 実機入手後の専用受け入れ基準をすべて満たすまで未完扱い |
 
 ## 4. Android技術方針
@@ -277,6 +277,12 @@ MatchResult
 - `failureSound`の初期値はPhase 0で確定する。Swift版は再生側が`alarm`、設定画面の未保存時表示が`buzzer`で一致していないため、Androidへ不整合を持ち込まずiOS側も同じ決定へ揃える
 - per-app language（日本語初期値）
 - 将来のBLE既知デバイスIDと安全復旧状態
+- BLE symbology recovery stateは`scanner:ble`の
+  `BleSymbologySnapshotStore`へ分離する。Preferences DataStoreのファイル名は
+  `codematch-ble-symbology.preferences_pb`（`files/datastore/`配下）とし、
+  backup/D2D除外ルールにもこのファイル名を明記する。保存するのはprofile
+  identity、device ID、captured time、全reported itemの`name`/`area`/`value`/
+  optional flag/extrasだけで、scan payloadやraw frameは保存しない。
 
 ### 7.3 PDFと共有
 
@@ -369,16 +375,20 @@ iOSで観測した`FF00`/`FF01`〜`FF05`やJSON形式は調査の手掛かりに
 
 ## 11. プライバシーとセキュリティ
 
-- Manifestに`INTERNET`権限を追加しない。
+- production BLE adapter未接続の現段階では、release manifestに`INTERNET`、`ACCESS_NETWORK_STATE`、BLE/Nearby系権限を追加しない。依存ライブラリが宣言しても、アプリ側のmanifest mergeで除外する。M4で実機adapterを接続する時は、必要時の`BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`だけを許可し、位置情報・広告・他のNearby権限は追加しない。
 - カメラframeと読み取り画像を保存しない。
 - 履歴、payload、BLE診断をanalytics/crash reportへ送らない。
 - Room DB、DataStore、BLE既知端末情報をAuto Backupとdevice-to-device transferから除外する。
+- BLE recovery DataStoreの実体は
+  `files/datastore/codematch-ble-symbology.preferences_pb`。このファイルを
+  `backup_rules.xml`と`data_extraction_rules.xml`のcloud/device-transfer双方で
+  除外する（汎用`datastore/`除外に依存せず、ファイル名も固定する）。
 - PDFはユーザーが保存・共有した時だけアプリ領域外へ出す。
 - FileProviderは専用cache subdirectoryだけを公開し、一時読み取り権限に限定する。
 - release buildでdebug/Fake scannerの入口を含めない。
-- 依存関係のSBOM/ライセンス確認とGradle dependency verificationをCIへ追加する。
+- `android/scripts/verify-release-hardening.sh`で、source XML、merged release manifest、APK/AABのpermission/debug/Fake/FileProvider、依存グラフ、production sourceのカメラ画像/frame保存や不意のpayload書き出し・analytics/crash参照を機械検査する。`test-release-hardening.sh`はartifact前の再利用可能なsource-only回帰テストとする。
 
-Gradle dependency verificationとSBOMはM1の必須ゲートには含めず、依存ライブラリが揃うrelease hardeningフェーズで固定・監査する。M1ではGradle Wrapper検証とrelease依存グラフ検査を先行する。
+Gradle dependency verificationとSBOM/ライセンス出力は、現行のVersion Catalog・Gradle Wrapper・CIキャッシュと署名済みartifactの供給元を固定できるまで導入しない。lockfileや巨大な生成物を追加せず、現段階ではWrapper validation、releaseRuntimeClasspathの保存検査、checkerのsource/APK/AAB検査を再現可能なゲートとして先行する。依存verification/SBOMは供給元・検証メタデータ・ライセンスの運用方針が決まった時点で別変更として追加する。
 
 ## 12. テスト戦略
 
@@ -440,7 +450,9 @@ Swift版の5本のUIテストを少なくとも次のシナリオへ対応させ
    - Compose UI testとRoom migration test
 3. `android-release-build`
    - Fake scannerがrelease dependency graphへ入っていないこと
-   - `assembleRelease`または署名不要のrelease compile
+   - `assembleRelease`と`bundleRelease`
+   - `scripts/verify-release-hardening.sh`でrelease APK/AABと`releaseRuntimeClasspath`を検査し、現段階のネットワーク/Nearby権限、debug/Fake入口、広すぎるFileProvider、画像/frame/payload保存、analytics/crash依存を拒否（M4でproduction BLEを接続する場合は`--allow-production-ble-permissions`でSCAN/CONNECTのみ許可）
+   - `scripts/test-release-hardening.sh`でartifact前のsource-only規則を回帰検査
 
 Gradle cache key、workflow concurrency、artifact名は`android-` prefixとし、`ios-ci.yml`と相互にcancelしない。
 
@@ -487,7 +499,7 @@ BLE以外は約31〜49人日、BLEはSDKとfirmwareの不確実性を除き約8�
 - 権限、背景復帰、回転、focus、連続箱
 - BLE以外の完全パリティへ向けたcamera production gate
 
-実装済み: CameraX 1.6.2 Preview/ImageAnalysis、端末同梱ML Kit 17.3.0、QR/Code 128の工程別限定、`KEEP_ONLY_LATEST`とin-flight frame drop、表示枠と共通のROI、変換後四隅判定、elapsed realtime timestamp、AF/AE tap focus、権限状態、lifecycle停止、解析世代による停止後callback破棄。release APKから`INTERNET` / `ACCESS_NETWORK_STATE`権限が除外されることも確認済み。
+実装済み: CameraX 1.6.2 Preview/ImageAnalysis、端末同梱ML Kit 17.3.0、QR/Code 128の工程別限定、`KEEP_ONLY_LATEST`とin-flight frame drop、表示枠と共通のROI、変換後四隅判定、elapsed realtime timestamp、AF/AE tap focus、権限状態、lifecycle停止、解析世代による停止後callback破棄。release APKから`INTERNET` / `ACCESS_NETWORK_STATE`権限が除外されることも確認済み。AABを含む継続的な検査はrelease hardening checkerで行う。
 
 ローカル検証済み: 全JVM test、Lint、debug/release build、API 37エミュレーター全モジュール計31件のinstrumentation test、初回カメラ拒否、再要求、許可後のCameraX preview開始と背景復帰。Pixel 7（API 36）でも全モジュール計31件、CameraX preview開始、背景復帰、横画面再構成後のpreview再開を確認済み。M3完了ゲートとしてPixel 7でのQR → Code 128実読取、タップfocus、連続箱を残す。
 
@@ -512,6 +524,7 @@ Androidポーティング全体は、次をすべて満たした時だけ完了�
 - 端末外通信、画像保存、不要権限がないことをManifestと通信観測で確認している。
 - Android CIと既存iOS CIが同一PRで成功する。
 - release buildにFake scanner、debug menu、診断用payloadが含まれない。
+- `scripts/verify-release-hardening.sh`がrelease APK/AAB、merged manifest、依存グラフ、backup/D2D規則、専用cache FileProviderを通過する。
 - README、プライバシー説明、実機手順が現状と一致する。
 
 ## 17. 最初に作るissue

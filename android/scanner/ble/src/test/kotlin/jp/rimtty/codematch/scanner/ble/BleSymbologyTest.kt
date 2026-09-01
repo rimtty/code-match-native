@@ -1,5 +1,7 @@
 package jp.rimtty.codematch.scanner.ble
 
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import jp.rimtty.codematch.scanner.api.ScanFormat
 import org.junit.Assert.assertEquals
@@ -90,12 +92,28 @@ class BleSymbologyTest {
     fun malformedOrIncompleteSettingsCannotBeUsedForSession() {
         val missingCode128 = """{"data":[{"area":"42","value":"1","name":"qrcode_on"}]}"""
         val malformed = "not-json"
+        val droppedReportedSymbology = """
+            {"data":[
+              {"area":"42","value":"1","name":"qrcode_on"},
+              {"area":"17","value":"1","name":"code128_on"},
+              {"value":"1","name":"code39_on"}
+            ]}
+        """.trimIndent()
+        val corruptFlag = """
+            {"data":[
+              {"area":"42","value":"1","name":"qrcode_on"},
+              {"area":"17","value":"1","name":"code128_on"},
+              {"area":"11","value":"1","name":"code39_on","flag":"broken"}
+            ]}
+        """.trimIndent()
 
         val missing = SymbologySettings.parse("scanner", missingCode128)
         assertNotNull(missing)
         assertFalse(SymbologySettings.hasRequired(missing!!))
         assertNull(SymbologySettings.commandsFor(missing, BleSymbologyMode.SESSION_CODES))
         assertNull(SymbologySettings.parse("scanner", malformed))
+        assertNull(SymbologySettings.parse("scanner", droppedReportedSymbology))
+        assertNull(SymbologySettings.parse("scanner", corruptFlag))
     }
 
     @Test
@@ -133,30 +151,45 @@ class BleSymbologyTest {
 
     @Test
     fun arbitraryTwentyNineItemInventoryRoundTripsWithoutDroppingUnknowns() {
-        val items = buildList {
-            add(ScannerSettingItem("qrcode_on", "area-qr", 0, flag = 2022))
-            add(ScannerSettingItem("code128_on", "area-code128", 1, flag = 2008))
+        val rawItems = JsonArray().apply {
+            add(settingJson("qrcode_on", "area-qr", 0, 2022, "qr"))
+            add(settingJson("code128_on", "area-code128", 1, 2008, "code128"))
             repeat(27) { index ->
                 add(
-                    ScannerSettingItem(
+                    settingJson(
                         name = "vendor_symbol_$index",
                         area = "device-area-${index * 17 + 3}",
                         value = index % 2,
                         flag = 2001 + (index % 27),
-                        extraFields = mapOf("vendor" to "\"field-$index\""),
+                        vendor = "field-$index",
                     ),
                 )
             }
         }
-        assertEquals(29, items.size)
-        val original = SymbologySnapshot("scanner-29", items, capturedAtMillis = 456L)
+        val response = JsonObject().apply { add("data", rawItems) }.toString()
+        val original = requireNotNull(SymbologySettings.parse("scanner-29", response, 456L))
 
+        assertEquals(29, original.settings.size)
         val restored = SymbologySettings.decodeSnapshot(SymbologySettings.encodeSnapshot(original))
 
         assertEquals(original, restored)
         assertEquals(29, restored?.settings?.size)
         assertEquals("device-area-445", restored?.find("vendor_symbol_26")?.area)
         assertEquals("\"field-26\"", restored?.find("vendor_symbol_26")?.extraFields?.get("vendor"))
+    }
+
+    private fun settingJson(
+        name: String,
+        area: String,
+        value: Int,
+        flag: Int,
+        vendor: String,
+    ): JsonObject = JsonObject().apply {
+        addProperty("name", name)
+        addProperty("area", area)
+        addProperty("value", value)
+        addProperty("flag", flag)
+        addProperty("vendor", vendor)
     }
 
     private fun settingsJson(): String = """

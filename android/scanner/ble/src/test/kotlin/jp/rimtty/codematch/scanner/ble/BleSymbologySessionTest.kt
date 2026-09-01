@@ -15,11 +15,12 @@ import org.junit.Test
 class BleSymbologySessionTest {
     private val device = ScannerDevice("scanner-1", "BCST-47")
     private val settingsEndpoint = "settings-endpoint-from-adapter"
+    private val profileIdentity = "test-profile-v1"
 
     @Test
     fun connectedSessionRequiresFreshInventoryAndKeepsLogicalStepChangesPhysical() {
         val transport = RecordingTransport()
-        val store = InMemorySymbologySnapshotStore()
+        val store = InMemorySymbologySnapshotStore(profileIdentity)
         val session = session(transport, store)
 
         assertTrue(session.onConnected())
@@ -65,7 +66,7 @@ class BleSymbologySessionTest {
     fun timeoutBlocksCommandsUntilDisconnectResetAndReconnectRestoresSnapshot() {
         var now = 1_000L
         val transport = RecordingTransport()
-        val store = InMemorySymbologySnapshotStore()
+        val store = InMemorySymbologySnapshotStore(profileIdentity)
         val session = session(transport, store, nowMillis = { now })
         session.onConnected()
         transport.completeRead(settingsJson())
@@ -99,7 +100,7 @@ class BleSymbologySessionTest {
     @Test
     fun snapshotBelongingToAnotherDeviceIsRejectedBeforeAnyWrite() {
         val transport = RecordingTransport()
-        val store = InMemorySymbologySnapshotStore()
+        val store = InMemorySymbologySnapshotStore(profileIdentity)
         val other = SymbologySettings.parse("other-scanner", settingsJson())!!
         store.save(other)
         val session = session(transport, store)
@@ -122,7 +123,7 @@ class BleSymbologySessionTest {
             { item: ScannerSettingItem -> item.copy(flag = 2999) },
         ).forEach { mutateIdentity ->
             val transport = RecordingTransport()
-            val store = InMemorySymbologySnapshotStore()
+            val store = InMemorySymbologySnapshotStore(profileIdentity)
             val saved = SymbologySettings.parse(device.id, settingsJson())!!
             store.save(
                 saved.copy(
@@ -147,7 +148,7 @@ class BleSymbologySessionTest {
     @Test
     fun incompleteFreshInventoryCannotStartOrReportReady() {
         val transport = RecordingTransport()
-        val session = session(transport, InMemorySymbologySnapshotStore())
+        val session = session(transport, InMemorySymbologySnapshotStore(profileIdentity))
 
         session.onConnected()
         transport.completeRead("""{"data":[{"area":"1","value":"1","name":"qrcode_on"}]}""")
@@ -191,8 +192,8 @@ class BleSymbologySessionTest {
         val session = BleSymbologySession(
             device = device,
             transport = transport,
-            profile = BleSymbologyProfile(settingsEndpoint, codec),
-            snapshotStore = InMemorySymbologySnapshotStore(),
+            profile = BleSymbologyProfile(settingsEndpoint, codec, profileIdentity),
+            snapshotStore = InMemorySymbologySnapshotStore(profileIdentity),
         )
         val rawRead = byteArrayOf(0x00, 0x7F, 0x10, 0xFF.toByte())
 
@@ -211,12 +212,76 @@ class BleSymbologySessionTest {
     }
 
     @Test
+    fun codecCannotReturnInventoryForAnotherDevice() {
+        val transport = RecordingTransport()
+        val wrongDeviceSnapshot = SymbologySettings.parse("other-device", settingsJson())!!
+        val session = BleSymbologySession(
+            device = device,
+            transport = transport,
+            profile = BleSymbologyProfile(
+                settingsEndpoint,
+                RecordingCodec(wrongDeviceSnapshot, bindRequestedDeviceId = false),
+                profileIdentity,
+            ),
+            snapshotStore = InMemorySymbologySnapshotStore(profileIdentity),
+        )
+
+        assertTrue(session.onConnected())
+        transport.completeRead(byteArrayOf(1))
+
+        assertEquals(
+            BleSymbologySessionState.Failed("Scanner settings belong to another device"),
+            session.state,
+        )
+        assertTrue(transport.writes.isEmpty())
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun sessionRejectsSnapshotStoreForAnotherProfile() {
+        BleSymbologySession(
+            device = device,
+            transport = RecordingTransport(),
+            profile = BleSymbologyProfile(
+                settingsEndpoint,
+                IosObservedSymbologyCodec,
+                profileIdentity,
+            ),
+            snapshotStore = InMemorySymbologySnapshotStore("other-profile"),
+        )
+    }
+
+    @Test
+    fun restoreDoesNotBecomeReadyWhenPersistedSnapshotCannotBeCleared() {
+        val transport = RecordingTransport()
+        val backing = InMemorySymbologySnapshotStore(profileIdentity)
+        val rejectingStore = object : SymbologySnapshotStore by backing {
+            override fun clear(deviceId: String): SymbologySnapshotClearResult =
+                SymbologySnapshotClearResult.Rejected("clear rejected")
+        }
+        val session = session(transport, rejectingStore)
+
+        session.onConnected()
+        transport.completeRead(settingsJson())
+        assertTrue(session.startSession(ScanFormat.QR))
+        transport.completeWrite(Result.success(Unit))
+        assertTrue(session.endSession())
+        transport.completeWrite(Result.success(Unit))
+
+        assertEquals(
+            BleSymbologySessionState.Failed("Saved scanner settings could not be cleared"),
+            session.state,
+        )
+        assertFalse(session.configurationState.isReady)
+        assertNotNull(backing.load(device.id))
+    }
+
+    @Test
     fun settingsReadIsSingleFlightAndTimesOutBeforeAcceptingLateBytes() {
         var now = 1_000L
         val transport = RecordingTransport()
         val session = session(
             transport = transport,
-            store = InMemorySymbologySnapshotStore(),
+            store = InMemorySymbologySnapshotStore(profileIdentity),
             nowMillis = { now },
         )
 
@@ -253,7 +318,11 @@ class BleSymbologySessionTest {
     ) = BleSymbologySession(
         device = device,
         transport = transport,
-        profile = BleSymbologyProfile(settingsEndpoint, IosObservedSymbologyCodec),
+        profile = BleSymbologyProfile(
+            settingsEndpoint,
+            IosObservedSymbologyCodec,
+            profileIdentity,
+        ),
         snapshotStore = store,
         diagnostics = BleDiagnosticLog(nowMillis = nowMillis),
         nowMillis = nowMillis,
@@ -317,6 +386,7 @@ class BleSymbologySessionTest {
 
     private class RecordingCodec(
         private val snapshot: SymbologySnapshot,
+        private val bindRequestedDeviceId: Boolean = true,
     ) : BleSymbologyCodec {
         var lastDecodedPayload: ByteArray = byteArrayOf()
         var lastCommands: List<SymbologySettingCommand> = emptyList()
@@ -329,7 +399,10 @@ class BleSymbologySessionTest {
             capturedAtMillis: Long,
         ): SymbologySnapshot {
             lastDecodedPayload = payload.copyOf()
-            return snapshot.copy(deviceId = deviceId, capturedAtMillis = capturedAtMillis)
+            return snapshot.copy(
+                deviceId = if (bindRequestedDeviceId) deviceId else snapshot.deviceId,
+                capturedAtMillis = capturedAtMillis,
+            )
         }
 
         override fun encodeCommands(commands: List<SymbologySettingCommand>): ByteArray {

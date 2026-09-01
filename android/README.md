@@ -38,8 +38,28 @@ scanner/ble/          # SDK/UUID非依存のBLE安全コア（release未接続�
 ./gradlew assembleDebug
 ./gradlew lintDebug testDebugUnitTest
 bash scripts/run-connected-tests.sh
-./gradlew assembleRelease
+./gradlew assembleRelease bundleRelease
+mkdir -p tmp
+./gradlew :app:dependencies --configuration releaseRuntimeClasspath > tmp/release-dependencies.txt
+bash scripts/test-release-hardening.sh
+bash scripts/verify-release-hardening.sh \
+  --apk app/build/outputs/apk/release/app-release-unsigned.apk \
+  --aab app/build/outputs/bundle/release/app-release.aab \
+  --dependency-report tmp/release-dependencies.txt
 ```
+
+Release検証は、まず`./gradlew :app:dependencies --configuration releaseRuntimeClasspath`で解決済み依存グラフを出力し、その後source規則と
+生成したAPK/AABを検査します。ネットワーク／Nearby権限、debug/Fake入口、広すぎる
+`FileProvider`、カメラ画像/frameの保存や不意のpayload書き出し、analytics/crash SDKの依存を検出した時は失敗します。
+Room、Preferences DataStore、将来のBLE復旧／既知端末状態はcloud Auto Backupと
+device-to-device transferの両方から除外します。BLE snapshotのファイル名は
+`files/datastore/codematch-ble-symbology.preferences_pb`です。PDF共有で
+`FileProvider`が公開するのは専用の`cache/codematch-pdf/`だけです。
+
+checkerは依存ライブラリを追加せず、lockfile、SBOM、その他の生成物をリポジトリへ
+作りません。Gradle dependency verificationとSBOM／ライセンス出力は、依存artifactの
+供給元と署名ポリシーを固定してから別途導入します。現時点の再現可能なゲートは
+Gradle Wrapper validation、release依存グラフ検査、checkerによるsource/APK/AAB検査です。
 
 エミュレーターは状態遷移とCompose UIの継続検証に使います。カメラの読み取り完了判定はPixelなどの実Android端末で行います。USBデバッグ端末を接続した実機確認では、QR → Code 128、権限、回転、背景復帰、音・触覚を確認します。
 
@@ -49,7 +69,7 @@ GitHub ActionsではAPI 31と、Linux x86_64向けに提供される最新runtim
 
 Fake scannerは`scanner/fake`へ置き、`app`からは`debugImplementation`だけで参照します。`releaseImplementation`や`implementation`では参照しないため、リリース依存グラフとAPKにFake入口を含めない構成です。CIの`android-release-build` jobがこの境界を確認します。
 
-`scanner/ble`には、command直列化、timeout後の停止、完全設定snapshot、復元前Ready禁止、payload正規化と重複抑制だけをSDK/UUID非依存で置いています。Android BluetoothGattまたはInateck SDKへ接続するproduction adapterは、対象scanner、firmware、Android向けSDKと実通信形式の調査が完了するまで追加しません。カメラは実行時`CAMERA`権限だけを要求し、端末同梱ML Kitを使います。依存ライブラリ由来の`INTERNET` / `ACCESS_NETWORK_STATE`宣言もmanifest mergeで除外し、release APKをオフライン境界に保ちます。
+`scanner/ble`には、command直列化、timeout後の停止、完全設定snapshot、復元前Ready禁止、payload正規化と重複抑制だけをSDK/UUID非依存で置いています。Android BluetoothGattまたはInateck SDKへ接続するproduction adapterは、対象scanner、firmware、Android向けSDKと実通信形式の調査が完了するまで追加しません。カメラは実行時`CAMERA`権限だけを要求し、端末同梱ML Kitを使います。依存ライブラリ由来の`INTERNET` / `ACCESS_NETWORK_STATE`宣言もmanifest mergeで除外し、release APK/AABをオフライン境界に保ちます。Fakeはdebugだけで、production BLE未接続の現段階ではNearby/Bluetooth権限を宣言しません。M4で実機adapterを追加する場合は、必要時の`BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`だけを許可し、checkerの`--allow-production-ble-permissions`モードを使います。
 
 ## 現在の検証境界
 

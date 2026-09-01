@@ -44,6 +44,9 @@ class BleSymbologySession(
     init {
         require(commandTimeoutMillis > 0) { "commandTimeoutMillis must be positive" }
         require(settingsReadTimeoutMillis > 0) { "settingsReadTimeoutMillis must be positive" }
+        require(profile.identity == snapshotStore.profileIdentity) {
+            "BLE profile and snapshot store identities must match"
+        }
     }
 
     private enum class Operation {
@@ -139,8 +142,30 @@ class BleSymbologySession(
                     fail("Scanner settings are incomplete")
                     return@read
                 }
+                if (snapshot.deviceId != device.id) {
+                    fail("Scanner settings belong to another device")
+                    return@read
+                }
                 freshSnapshot = snapshot
-                val persisted = snapshotStore.load(device.id) ?: snapshotStore.loadLatest()
+                val persistedResult = runCatching {
+                    when (val deviceRead = snapshotStore.read(device.id)) {
+                        is SymbologySnapshotReadResult.Found -> deviceRead
+                        is SymbologySnapshotReadResult.Rejected -> deviceRead
+                        SymbologySnapshotReadResult.Missing -> snapshotStore.readLatest()
+                    }
+                }.getOrElse {
+                    SymbologySnapshotReadResult.Rejected(
+                        "Saved scanner settings could not be read",
+                    )
+                }
+                val persisted = when (persistedResult) {
+                    is SymbologySnapshotReadResult.Found -> persistedResult.snapshot
+                    SymbologySnapshotReadResult.Missing -> null
+                    is SymbologySnapshotReadResult.Rejected -> {
+                        fail(persistedResult.reason)
+                        return@read
+                    }
+                }
                 if (persisted != null && persisted.deviceId != device.id) {
                     fail("Saved scanner settings belong to another device")
                     return@read
@@ -205,7 +230,12 @@ class BleSymbologySession(
         // Persist before the first setting write. A process death after this
         // point leaves enough information for the next connection to restore
         // every reported symbology value.
-        snapshotStore.save(original)
+        try {
+            snapshotStore.save(original)
+        } catch (_: Exception) {
+            fail("Saved scanner settings could not be written")
+            return false
+        }
         activeSnapshot = original
         sessionActive = true
         mutableExpectedFormat = expectedFormat
@@ -321,12 +351,15 @@ class BleSymbologySession(
                 BleCommandOutcome.Succeeded -> {
                     when (operation) {
                         Operation.RECOVERY -> {
-                            snapshotStore.clear(device.id)
-                            freshSnapshot = snapshot
-                            clearActiveSession()
-                            mutableState = BleSymbologySessionState.Ready
-                            mutableConfiguration = ConfigurationState.Ready
-                            diagnostics.configuration("Scanner settings restored")
+                            if (clearPersistedSnapshot()) {
+                                freshSnapshot = snapshot
+                                clearActiveSession()
+                                mutableState = BleSymbologySessionState.Ready
+                                mutableConfiguration = ConfigurationState.Ready
+                                diagnostics.configuration("Scanner settings restored")
+                            } else {
+                                fail("Saved scanner settings could not be cleared")
+                            }
                         }
                         Operation.START_SESSION -> {
                             mutableState = BleSymbologySessionState.SessionReady
@@ -334,12 +367,15 @@ class BleSymbologySession(
                             diagnostics.configuration("Scanner session settings ready")
                         }
                         Operation.RESTORE_SESSION -> {
-                            snapshotStore.clear(device.id)
-                            freshSnapshot = snapshot
-                            clearActiveSession()
-                            mutableState = BleSymbologySessionState.Ready
-                            mutableConfiguration = ConfigurationState.Ready
-                            diagnostics.configuration("Scanner settings restored")
+                            if (clearPersistedSnapshot()) {
+                                freshSnapshot = snapshot
+                                clearActiveSession()
+                                mutableState = BleSymbologySessionState.Ready
+                                mutableConfiguration = ConfigurationState.Ready
+                                diagnostics.configuration("Scanner settings restored")
+                            } else {
+                                fail("Saved scanner settings could not be cleared")
+                            }
                         }
                     }
                     emit()
@@ -401,6 +437,11 @@ class BleSymbologySession(
         sessionActive = false
         mutableExpectedFormat = null
     }
+
+    private fun clearPersistedSnapshot(): Boolean =
+        runCatching {
+            snapshotStore.clear(device.id) == SymbologySnapshotClearResult.Cleared
+        }.getOrDefault(false)
 
     private data class PendingSettingsRead(
         val generation: Long,

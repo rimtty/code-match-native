@@ -16,6 +16,20 @@
     <string name="settings_setup_step_3_title">設定を保存して終了</string>
     <string name="settings_setup_step_3_description">設定コード「/*ExitSave*/」を1回読み取り、設定を保存します。</string>
     <string name="settings_setup_step_accessibility">手順%1$d。%2$s。%3$s</string>
+    <string name="settings_setup_step_1_guidance">このコードは設定受付を開始するためのものです。ここではまだGATTモードには切り替わりません。次のコードでGATTを指定します。</string>
+    <string name="settings_setup_step_2_guidance">読み取るとスキャナ画面に「BLE_GATT」が表示されます。まだ保存は完了していないため、最後のコードへ進みます。</string>
+    <string name="settings_setup_step_3_guidance">最後にこのコードを読み取り、GATT設定を保存して設定モードを終了します。</string>
+    <string name="settings_setup_progress">手順 %1$d / %2$d</string>
+    <string name="settings_setup_previous">戻る</string>
+    <string name="settings_setup_next">読み取りました・次へ</string>
+    <string name="settings_setup_finish">完了</string>
+    <string name="settings_setup_scan_instruction">BCST-47で下のCode 128コードを1回読み取ります。</string>
+    <string name="settings_setup_barcode_accessibility">%1$sのCode 128設定コード</string>
+    <string name="settings_setup_enlarge">全画面で大きく表示</string>
+    <string name="settings_setup_scanner_display_label">スキャナ表示の目安</string>
+    <string name="settings_setup_after_scan">読取音または成功表示を確認してから、次の手順へ進んでください。</string>
+    <string name="settings_setup_fullscreen_close">拡大表示を閉じる</string>
+    <string name="settings_setup_fullscreen_hint">読取音またはスキャナ画面の表示を確認してください</string>
 
     <string name="settings_scanner_title">Bluetoothスキャナ</string>
     <string name="settings_scanner_description">対応スキャナを検索して接続します。読み取り値は診断情報に記録しません。</string>

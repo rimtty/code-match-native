@@ -8,6 +8,7 @@ test_tasks=(
   :feature:history:connectedDebugAndroidTest
   :feature:scan:connectedDebugAndroidTest
   :feature:settings:connectedDebugAndroidTest
+  :scanner:ble:connectedDebugAndroidTest
 )
 
 for test_task in "${test_tasks[@]}"; do

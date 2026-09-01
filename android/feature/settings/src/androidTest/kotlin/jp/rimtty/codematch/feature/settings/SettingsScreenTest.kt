@@ -40,9 +40,13 @@ class SettingsScreenTest {
         }
 
         composeRule.onNodeWithTag(SettingsTestTags.SETUP_GUIDE).assertIsDisplayed()
-        composeRule.onAllNodesWithTag(SettingsTestTags.SETUP_GUIDE_STEP_1).assertCountEquals(1)
-        composeRule.onAllNodesWithTag(SettingsTestTags.SETUP_GUIDE_STEP_2).assertCountEquals(1)
-        composeRule.onAllNodesWithTag(SettingsTestTags.SETUP_GUIDE_STEP_3).assertCountEquals(1)
+        composeRule.onNodeWithTag(SettingsTestTags.SETUP_GUIDE_STEP_1).assertIsDisplayed()
+        composeRule.onAllNodesWithTag(SettingsTestTags.SETUP_BARCODE).assertCountEquals(1)
+        composeRule.onAllNodesWithTag(
+            SettingsTestTags.setupBarcode(BluetoothScannerSetupCode.ENTER_SETUP),
+        ).assertCountEquals(1)
+        composeRule.onAllNodesWithTag(SettingsTestTags.SETUP_GUIDE_STEP_2).assertCountEquals(0)
+        composeRule.onAllNodesWithTag(SettingsTestTags.SETUP_GUIDE_STEP_3).assertCountEquals(0)
         composeRule.onAllNodesWithTag(SettingsTestTags.AUTO_ADVANCE).assertCountEquals(1)
         composeRule.onAllNodesWithTag(SettingsTestTags.VOLUME).assertCountEquals(1)
         composeRule.onAllNodesWithTag(SettingsTestTags.SUCCESS_SOUNDS).assertCountEquals(1)
@@ -52,6 +56,82 @@ class SettingsScreenTest {
         composeRule.onAllNodesWithTag(SettingsTestTags.FAILURE_SOUND).assertCountEquals(4)
         composeRule.onAllNodesWithTag(SettingsTestTags.DELAY_CHOICE).assertCountEquals(3)
         composeRule.onAllNodesWithTag(SettingsTestTags.LANGUAGE_CHOICE).assertCountEquals(2)
+    }
+
+    @Test
+    fun setupGuideShowsOneCodeAtATimeAndAdvancesInScannerOrder() {
+        composeRule.setContent {
+            MaterialTheme {
+                SettingsScreen(SettingsUiState(), onAction = {})
+            }
+        }
+
+        BluetoothScannerSetupCode.entries.forEachIndexed { index, code ->
+            composeRule.onAllNodesWithTag(SettingsTestTags.SETUP_BARCODE).assertCountEquals(1)
+            composeRule.onAllNodesWithTag(
+                SettingsTestTags.setupBarcode(code),
+            ).assertCountEquals(1)
+            BluetoothScannerSetupCode.entries
+                .filterNot { it == code }
+                .forEach { otherCode ->
+                    composeRule.onAllNodesWithTag(
+                        SettingsTestTags.setupBarcode(otherCode),
+                    ).assertCountEquals(0)
+                }
+            if (index > 0) {
+                composeRule.onNodeWithTag(SettingsTestTags.SETUP_PREVIOUS).assertIsDisplayed()
+            }
+            if (index < BluetoothScannerSetupCode.entries.lastIndex) {
+                composeRule.onNodeWithTag(SettingsTestTags.SETUP_NEXT)
+                    .performScrollTo()
+                    .performClick()
+            }
+        }
+
+        composeRule.onNodeWithTag(SettingsTestTags.SETUP_PREVIOUS)
+            .performScrollTo()
+            .performClick()
+        composeRule.onAllNodesWithTag(
+            SettingsTestTags.setupBarcode(BluetoothScannerSetupCode.GATT_MODE),
+        ).assertCountEquals(1)
+    }
+
+    @Test
+    fun setupBarcodeCanBeEnlargedAndClosedWithoutChangingTheGuide() {
+        composeRule.setContent {
+            MaterialTheme {
+                SettingsScreen(SettingsUiState(), onAction = {})
+            }
+        }
+
+        composeRule.onNodeWithTag(
+            SettingsTestTags.setupEnlarge(BluetoothScannerSetupCode.ENTER_SETUP),
+        ).performScrollTo().performClick()
+        composeRule.onNodeWithTag(
+            SettingsTestTags.setupFullscreenBarcode(BluetoothScannerSetupCode.ENTER_SETUP),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithTag(SettingsTestTags.SETUP_FULLSCREEN_CLOSE).performClick()
+        composeRule.onAllNodesWithTag(
+            SettingsTestTags.setupBarcode(BluetoothScannerSetupCode.ENTER_SETUP),
+        ).assertCountEquals(1)
+    }
+
+    @Test
+    fun completingTheThirdSetupCodeEmitsCloseAction() {
+        val actions = mutableListOf<SettingsUiAction>()
+        composeRule.setContent {
+            MaterialTheme {
+                SettingsScreen(SettingsUiState(), onAction = actions::add)
+            }
+        }
+
+        repeat(3) {
+            composeRule.onNodeWithTag(SettingsTestTags.SETUP_NEXT)
+                .performScrollTo()
+                .performClick()
+        }
+
+        assertTrue(actions.contains(SettingsUiAction.CloseSetupGuide))
     }
 
     @Test
