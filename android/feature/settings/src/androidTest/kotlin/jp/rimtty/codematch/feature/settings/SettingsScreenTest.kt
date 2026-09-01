@@ -127,7 +127,7 @@ class SettingsScreenTest {
             }
         }
 
-        composeRule.onNodeWithTag(SettingsTestTags.SCANNER_STATUS).assertIsDisplayed()
+        composeRule.onNodeWithTag(SettingsTestTags.SCANNER_STATUS).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag(SettingsTestTags.DISCONNECT).performScrollTo().performClick()
         assertTrue(actions.contains(SettingsUiAction.Disconnect))
 

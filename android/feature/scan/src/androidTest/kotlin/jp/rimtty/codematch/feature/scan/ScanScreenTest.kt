@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.runtime.mutableStateOf
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -119,8 +120,8 @@ class ScanScreenTest {
         composeRule.onAllNodesWithTag("scan_debug_demo_tools").assertCountEquals(0)
 
         composeRule.runOnIdle { showDebugTools.value = true }
-        composeRule.onNodeWithTag("scan_debug_demo_tools").assertIsDisplayed()
-        composeRule.onNodeWithTag("scan_demo_match").performClick()
+        composeRule.onNodeWithTag("scan_debug_demo_tools").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("scan_demo_match").performScrollTo().performClick()
         assertTrue(hiddenActions.contains(ScanUiAction.DemoMatch))
     }
 }

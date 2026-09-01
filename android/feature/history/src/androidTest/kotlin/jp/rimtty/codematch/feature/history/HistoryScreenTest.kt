@@ -6,6 +6,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import jp.rimtty.codematch.core.model.MatchEntry
 import jp.rimtty.codematch.core.model.MatchSession
@@ -67,6 +68,6 @@ class HistoryScreenTest {
         composeRule.onNodeWithTag(HistoryTestTags.ENTRY_DETAIL).assertIsDisplayed()
         composeRule.onNodeWithText("納品書情報（QR解析）").assertIsDisplayed()
         composeRule.onNodeWithText("DCLP675300").assertIsDisplayed()
-        composeRule.onNodeWithText("1N5X0C").assertIsDisplayed()
+        composeRule.onNodeWithText("1N5X0C").performScrollTo().assertIsDisplayed()
     }
 }

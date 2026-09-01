@@ -115,7 +115,16 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim
           disable-animations: true
           working-directory: android
-          script: ./gradlew connectedDebugAndroidTest --stacktrace
+          script: |
+            for test_task in \
+              :app:connectedDebugAndroidTest \
+              :core:data:connectedDebugAndroidTest \
+              :feature:history:connectedDebugAndroidTest \
+              :feature:scan:connectedDebugAndroidTest \
+              :feature:settings:connectedDebugAndroidTest
+            do
+              ./gradlew "$test_task" --stacktrace --no-parallel --max-workers=2
+            done
 
   android-release-build:
     name: Android release build
