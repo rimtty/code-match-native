@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
 # Release privacy and packaging checks shared by local verification and CI.
-# This script deliberately uses only SDK/standard Unix tools; it must not add a
-# Gradle plugin, a network service, or a generated lock/SBOM file to the app.
+# This script deliberately uses only Android SDK tools, ripgrep, xmllint, and
+# standard Unix tools; it must not add a Gradle plugin, a network service, or a
+# generated lock/SBOM file to the app.
 
 set -euo pipefail
 
@@ -103,6 +104,8 @@ while (($# > 0)); do
             ;;
     esac
 done
+
+command -v rg >/dev/null 2>&1 || die "ripgrep (rg) is required"
 
 if [[ -z "$release_manifest" ]]; then
     # AGP 8/9 has used both spellings over time. Keep the lookup deterministic
