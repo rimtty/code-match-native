@@ -27,6 +27,7 @@ feature/settings/     # scanner、auto-advance、音、言語の設定UI
 scanner/api/          # カメラ/BLEから独立したscanner契約
 scanner/camera/       # CameraX + bundled ML Kit（QR / Code 128）
 scanner/fake/         # 開発用Fakeの隔離先（debug専用）
+scanner/ble/          # SDK/UUID非依存のBLE安全コア（release未接続）
 ```
 
 `core/model`と`core/matching`の本体ロジックはAndroid APIに依存しません。共通fixtureは`../shared/test-fixtures`をテストリソースとしてクラスパスへ追加し、テストからは`ClassLoader.getResourceAsStream`で読み込みます。アプリアイコンは通常・round・adaptive・monochromeを持ち、Android 13以降のper-app languageにも日本語と英語を公開します。
@@ -48,8 +49,8 @@ GitHub ActionsではAPI 31と、Linux x86_64向けに提供される最新runtim
 
 Fake scannerは`scanner/fake`へ置き、`app`からは`debugImplementation`だけで参照します。`releaseImplementation`や`implementation`では参照しないため、リリース依存グラフとAPKにFake入口を含めない構成です。CIの`android-release-build` jobがこの境界を確認します。
 
-BLEのproduction実装は対象scanner、firmware、Android向けSDKの調査が完了するまで追加しません。カメラは実行時`CAMERA`権限だけを要求し、端末同梱ML Kitを使います。依存ライブラリ由来の`INTERNET` / `ACCESS_NETWORK_STATE`宣言もmanifest mergeで除外し、release APKをオフライン境界に保ちます。
+`scanner/ble`には、command直列化、timeout後の停止、完全設定snapshot、復元前Ready禁止、payload正規化と重複抑制だけをSDK/UUID非依存で置いています。Android BluetoothGattまたはInateck SDKへ接続するproduction adapterは、対象scanner、firmware、Android向けSDKと実通信形式の調査が完了するまで追加しません。カメラは実行時`CAMERA`権限だけを要求し、端末同梱ML Kitを使います。依存ライブラリ由来の`INTERNET` / `ACCESS_NETWORK_STATE`宣言もmanifest mergeで除外し、release APKをオフライン境界に保ちます。
 
 ## 現在の検証境界
 
-M3ではCameraX 1.6.2と端末同梱ML Kit Barcode Scanning 17.3.0を接続し、QR / Code 128限定解析、共通ROI、タップfocus、権限拒否、背景停止、古いcallback破棄を実装しています。API 37エミュレーターでは全モジュール計31件のinstrumentation test、初回拒否からの再要求、許可後のCameraX preview開始と背景復帰を確認済みです。Pixel 7（Android 16 / API 36）でも全モジュール計31件、CameraX preview開始、背景化後と横画面再構成後のpreview再開を確認しました。M3完了判定にはPixel 7でのQR → Code 128実読取、タップfocus、連続箱確認を残しています。対象BLE scannerとの実通信と設定復元はM4です。Release版にFake scannerや開発用操作は含めません。
+M3ではCameraX 1.6.2と端末同梱ML Kit Barcode Scanning 17.3.0を接続し、QR / Code 128限定解析、共通ROI、タップfocus、権限拒否、背景停止、古いcallback破棄を実装しています。API 37エミュレーターでは全モジュール計31件のinstrumentation test、初回拒否からの再要求、許可後のCameraX preview開始と背景復帰を確認済みです。Pixel 7（Android 16 / API 36）でも全モジュール計31件、CameraX preview開始、背景化後と横画面再構成後のpreview再開を確認しました。M3完了判定にはPixel 7でのQR → Code 128実読取、タップfocus、連続箱確認を残しています。M4準備としてBLE安全コアのJVM検証を追加しましたが、対象scannerとの実通信、設定形式の確定、永続snapshot接続、Pixel/Samsung実機復元は未完了です。Release版にFake scanner、未検証BLE adapter、開発用操作は含めません。

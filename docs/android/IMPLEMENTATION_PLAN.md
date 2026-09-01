@@ -123,7 +123,7 @@ android/
 │   ├── api/                     # Camera/BLE共通の入力契約
 │   ├── camera/                  # CameraX + ML Kit
 │   ├── fake/                    # UI・CI・BLE先行開発用
-│   └── ble/                     # 実機入手後に追加するAndroid BLE実装
+│   └── ble/                     # SDK/UUID非依存の安全コアと将来のAndroid adapter境界
 ├── gradle/libs.versions.toml
 ├── settings.gradle.kts
 └── README.md
@@ -314,8 +314,9 @@ MatchResult
 - 切断時に現在工程を保ったままカメラへfallback
 - QR/Code 128の逆順拒否、重複callback抑止
 - Swift版のBLE関連UIシナリオ（接続照合、設定画面の検索・接続）をCompose testで再現
+- SDK/UUIDに依存しないcommand queue、完全snapshot、復元状態、payload decoderをJVM testで固定
 
-この段階では`scanner:ble` production実装は作らず、release buildでFakeを組み込まない。
+この段階では`scanner:ble`をreleaseアプリへ接続せず、Android BluetoothGatt / vendor SDK adapterも作らない。実通信形式を観測するまではiOS由来のUUIDや設定JSONをproduction前提にせず、release buildにもFakeを組み込まない。
 
 ### 9.2 実機入手後の調査ゲート
 
@@ -495,6 +496,8 @@ BLE以外は約31〜49人日、BLEはSDKとfirmwareの不確実性を除き約8�
 - 対象BLE scannerの接続、読み取り、完全設定復元
 - Pixel系/Samsung系で実機回帰
 - Swift版との機能対応表に未完了がない
+
+準備済み: SDK/UUID非依存のBLE safety core、1 command直列化、3秒timeout後のtransport reset必須化、QR+Code 128固定mode、全reported item snapshot、復元完了前Ready禁止、payload parser、750ms重複境界のJVM test。Android実通信adapter、設定profile、永続snapshotのアプリ接続、Nearby devices権限、対象scannerでの受け入れ試験は未完了のため、M4完了とは扱わない。
 
 ## 16. Definition of Done
 
