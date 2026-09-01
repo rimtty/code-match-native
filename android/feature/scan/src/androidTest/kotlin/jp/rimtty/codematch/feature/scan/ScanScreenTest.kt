@@ -39,8 +39,10 @@ class ScanScreenTest {
         composeRule.onNodeWithTag("scan_session_name").performTextInput("午前便")
         composeRule.onNodeWithTag("scan_start_session").performClick()
 
-        assertEquals(ScanUiAction.SessionNameChanged("午前便"), actions.first())
-        assertTrue(actions.contains(ScanUiAction.StartSession))
+        composeRule.runOnIdle {
+            assertEquals(ScanUiAction.SessionNameChanged("午前便"), actions.first())
+            assertTrue(actions.contains(ScanUiAction.StartSession))
+        }
     }
 
     @Test
@@ -69,7 +71,9 @@ class ScanScreenTest {
         ).assertIsDisplayed()
         composeRule.onNodeWithTag("scan_reread_qr").performClick()
 
-        assertTrue(actions.contains(ScanUiAction.RereadQr))
+        composeRule.runOnIdle {
+            assertTrue(actions.contains(ScanUiAction.RereadQr))
+        }
     }
 
     @Test
@@ -98,7 +102,9 @@ class ScanScreenTest {
         composeRule.onNodeWithTag("scan_countdown").assertIsDisplayed()
         composeRule.onNodeWithTag("scan_manual_next").performClick()
 
-        assertTrue(actions.contains(ScanUiAction.ManualNext))
+        composeRule.runOnIdle {
+            assertTrue(actions.contains(ScanUiAction.ManualNext))
+        }
     }
 
     @Test
@@ -122,6 +128,8 @@ class ScanScreenTest {
         composeRule.runOnIdle { showDebugTools.value = true }
         composeRule.onNodeWithTag("scan_debug_demo_tools").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("scan_demo_match").performScrollTo().performClick()
-        assertTrue(hiddenActions.contains(ScanUiAction.DemoMatch))
+        composeRule.runOnIdle {
+            assertTrue(hiddenActions.contains(ScanUiAction.DemoMatch))
+        }
     }
 }
