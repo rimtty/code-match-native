@@ -35,6 +35,8 @@ scanner/fake/         # 開発用Fakeの隔離先（debug専用）
 
 エミュレーターは状態遷移とCompose UIの継続検証に使います。カメラの読み取り完了判定はPixelなどの実Android端末で行います。USBデバッグ端末を接続した実機確認では、QR → Code 128、権限、回転、背景復帰、音・触覚を確認します。
 
+GitHub ActionsではAPI 31と、Linux x86_64向けに提供される最新runtime（現時点はAPI 36）を実行します。compile/target SDK 37はbuild jobで保証し、API 37 runtimeはApple Silicon上のローカルエミュレーターで補完します。
+
 ## Fake scannerの境界
 
 Fake scannerは`scanner/fake`へ置き、`app`からは`debugImplementation`だけで参照します。`releaseImplementation`や`implementation`では参照しないため、リリース依存グラフとAPKにFake入口を含めない構成です。CIの`android-release-build` jobがこの境界を確認します。

@@ -48,6 +48,9 @@ jobs:
           ln -s "$ANDROID_HOME/cmdline-tools/15859902" "$ANDROID_HOME/cmdline-tools/latest"
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 
+      - name: Install Android SDK 37.0
+        run: sdkmanager --install 'platforms;android-37.0' 'build-tools;37.0.0'
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
@@ -66,7 +69,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api-level: [31, 37]
+        # API 37 runtime images are currently unavailable for Linux x86_64.
+        # compileSdk/targetSdk 37 are covered by the build jobs; API 37 runtime
+        # tests run locally on Apple Silicon until the hosted image is published.
+        api-level: [31, 36]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -87,6 +93,9 @@ jobs:
           mv "$ANDROID_HOME/cmdline-tools/latest" "$RUNNER_TEMP/android-cmdline-tools-previous"
           ln -s "$ANDROID_HOME/cmdline-tools/15859902" "$ANDROID_HOME/cmdline-tools/latest"
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+      - name: Install Android SDK 37.0
+        run: sdkmanager --install 'platforms;android-37.0' 'build-tools;37.0.0'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -126,6 +135,9 @@ jobs:
           mv "$ANDROID_HOME/cmdline-tools/latest" "$RUNNER_TEMP/android-cmdline-tools-previous"
           ln -s "$ANDROID_HOME/cmdline-tools/15859902" "$ANDROID_HOME/cmdline-tools/latest"
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+      - name: Install Android SDK 37.0
+        run: sdkmanager --install 'platforms;android-37.0' 'build-tools;37.0.0'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

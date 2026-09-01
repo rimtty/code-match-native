@@ -415,7 +415,7 @@ Swift版の5本のUIテストを少なくとも次のシナリオへ対応させ
 
 ### 12.4 実機
 
-- エミュレーターはCIの継続証拠とし、API 31（対応下限）とAPI 37（target）の両方で主要フローを確認する。カメラ完了判定は実Android端末で行う。
+- エミュレーターはCIの継続証拠とし、API 31（対応下限）とGitHub Linux x86_64で提供される最新runtime（現時点はAPI 36）の両方で主要フローを確認する。compile/target SDK 37はbuild jobで保証し、API 37 runtimeは提供済みのApple Silicon用imageをローカルで確認する。カメラ完了判定は実Android端末で行う。
 - 接続済みPixel 7（Android 16 / API 36）でCameraX/ML Kit、タップフォーカス、回転、背景復帰、音・触覚を確認する。
 - 可能ならSamsung系を加え、カメラと省電力/OEM差を確認する。
 - BLE完了判定は対象scanner実機なしでは行わない。
@@ -433,7 +433,8 @@ Swift版の5本のUIテストを少なくとも次のシナリオへ対応させ
    - `testDebugUnitTest`
    - 共通fixtureのSwift/Kotlin期待値一致
 2. `android-emulator-test`
-   - API 31とAPI 37を固定し、下限互換性とtarget SDK互換性を分けて確認
+   - API 31とhosted Linuxで利用可能な最新runtime（現時点はAPI 36）を固定し、下限互換性と直近runtime互換性を確認
+   - compile/target SDK 37はbuild job、API 37 runtimeはローカルApple Silicon emulatorで補完
    - `connectedDebugAndroidTest`
    - Compose UI testとRoom migration test
 3. `android-release-build`
@@ -469,7 +470,7 @@ BLE以外は約31〜49人日、BLEはSDKとfirmwareの不確実性を除き約8�
 - Swift版のmatcher/parser 14テスト意図をKotlin testへ対応付ける
 - `core:matching`のproduction sourceに`android.*` / `androidx.*` importがなく、local JVM testで完走する
 
-ローカル検証済み: Kotlin unit test、debug/release build、Lint、API 37エミュレーターとPixel 7（API 36）のCompose UI test。API 31/37のCI結果はPRで確認する。
+ローカル検証済み: Kotlin unit test、debug/release build、Lint、API 37エミュレーターとPixel 7（API 36）のCompose UI test。API 31/36のhosted CI結果はPRで確認する。
 
 ### M2: UI parity on Fake
 
