@@ -239,7 +239,10 @@ fun CameraStage(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(format, stageSize) {
+                // Camera start/stop is state-driven. Include [running] in the
+                // gesture key so a pointer coroutine cannot retain the old
+                // running value across a lifecycle stop or rebind.
+                .pointerInput(format, stageSize, running) {
                     detectTapGestures { offset ->
                         if (!running) return@detectTapGestures
                         val width = stageSize.width.toFloat()

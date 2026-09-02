@@ -230,6 +230,146 @@ class HistoryRepositoryTest {
     }
 
     @Test
+    fun activeSessionAndCheckpointPhasesSurviveIsolatedDatabaseReopen() = runBlocking {
+        val context = applicationContext()
+        val databaseName = "history-process-relaunch-${UUID.randomUUID()}.db"
+        val sessionId: String
+        try {
+            val firstDatabase = CodeMatchDatabaseFactory.create(context, databaseName)
+            try {
+                val firstRepository = HistoryRepository(firstDatabase)
+                sessionId = firstRepository.beginSession(name = "process-relaunch", at = 100L)
+                assertTrue(
+                    firstRepository.saveScanCheckpoint(
+                        ScanSessionCheckpoint(
+                            sessionId = sessionId,
+                            phase = ScanCheckpointPhase.WAITING_QR,
+                            // The entries table is the source of truth for this
+                            // count, so a stale checkpoint value is normalized
+                            // before the first simulated relaunch.
+                            matchedCount = 99,
+                            inputSource = ScanCheckpointInputSource.CAMERA,
+                            cameraWasSelectedByUser = true,
+                        ),
+                    ),
+                )
+            } finally {
+                firstDatabase.close()
+            }
+
+            // A new database/repository instance is the safe storage-level
+            // analogue of a process relaunch. It uses a random test-only DB,
+            // never the app's normal codematch.db.
+            val afterWaitingQr = CodeMatchDatabaseFactory.create(context, databaseName)
+            try {
+                val repository = HistoryRepository(afterWaitingQr)
+                assertEquals(sessionId, repository.activeSession.first()?.id)
+                assertEquals(
+                    ScanSessionCheckpoint(
+                        sessionId = sessionId,
+                        phase = ScanCheckpointPhase.WAITING_QR,
+                        matchedCount = 0,
+                        inputSource = ScanCheckpointInputSource.CAMERA,
+                        cameraWasSelectedByUser = true,
+                    ),
+                    repository.getScanCheckpoint(sessionId),
+                )
+
+                assertEquals(
+                    1,
+                    repository.recordMatch(
+                        code = "FIRST00001",
+                        qrPayload = "previous-qr",
+                        barcodePayload = "previous-barcode",
+                        at = 101L,
+                        sessionId = sessionId,
+                    ),
+                )
+                assertTrue(
+                    repository.saveScanCheckpoint(
+                        ScanSessionCheckpoint(
+                            sessionId = sessionId,
+                            phase = ScanCheckpointPhase.WAITING_CODE_128,
+                            qrPayload = "accepted-qr",
+                            // Deliberately stale; save normalizes it to one.
+                            matchedCount = 99,
+                            inputSource = ScanCheckpointInputSource.CAMERA,
+                            cameraWasSelectedByUser = true,
+                        ),
+                    ),
+                )
+            } finally {
+                afterWaitingQr.close()
+            }
+
+            val afterWaitingCode = CodeMatchDatabaseFactory.create(context, databaseName)
+            try {
+                val repository = HistoryRepository(afterWaitingCode)
+                assertEquals(1, repository.activeSession.first()?.matchedCount)
+                assertEquals(
+                    ScanSessionCheckpoint(
+                        sessionId = sessionId,
+                        phase = ScanCheckpointPhase.WAITING_CODE_128,
+                        qrPayload = "accepted-qr",
+                        matchedCount = 1,
+                        inputSource = ScanCheckpointInputSource.CAMERA,
+                        cameraWasSelectedByUser = true,
+                    ),
+                    repository.getScanCheckpoint(sessionId),
+                )
+
+                val terminalCheckpoint = ScanSessionCheckpoint(
+                    sessionId = sessionId,
+                    phase = ScanCheckpointPhase.RESULT,
+                    qrPayload = "accepted-qr",
+                    barcodePayload = "accepted-barcode",
+                    result = MatchResult.MATCH,
+                    matchedCount = 2,
+                    inputSource = ScanCheckpointInputSource.CAMERA,
+                    cameraWasSelectedByUser = true,
+                )
+                assertEquals(
+                    1,
+                    repository.recordMatch(
+                        code = "SECOND00002",
+                        qrPayload = terminalCheckpoint.qrPayload,
+                        barcodePayload = terminalCheckpoint.barcodePayload,
+                        at = 102L,
+                        sessionId = sessionId,
+                        checkpoint = terminalCheckpoint,
+                    ),
+                )
+            } finally {
+                afterWaitingCode.close()
+            }
+
+            val afterResult = CodeMatchDatabaseFactory.create(context, databaseName)
+            try {
+                val repository = HistoryRepository(afterResult)
+                assertEquals(sessionId, repository.activeSession.first()?.id)
+                assertEquals(2, repository.activeSession.first()?.matchedCount)
+                assertEquals(
+                    ScanSessionCheckpoint(
+                        sessionId = sessionId,
+                        phase = ScanCheckpointPhase.RESULT,
+                        qrPayload = "accepted-qr",
+                        barcodePayload = "accepted-barcode",
+                        result = MatchResult.MATCH,
+                        matchedCount = 2,
+                        inputSource = ScanCheckpointInputSource.CAMERA,
+                        cameraWasSelectedByUser = true,
+                    ),
+                    repository.getScanCheckpoint(sessionId),
+                )
+            } finally {
+                afterResult.close()
+            }
+        } finally {
+            context.deleteDatabase(databaseName)
+        }
+    }
+
+    @Test
     fun nonBlankRenameSurvivesDatabaseReopen() = runBlocking {
         val context = applicationContext()
         val databaseName = "history-rename-${UUID.randomUUID()}.db"

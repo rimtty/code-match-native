@@ -64,6 +64,7 @@ private class AndroidCameraHost(
     private var callbacks: CameraHostCallbacks? = null
     private var requestedPermission = false
     private var closed = false
+    private val permissionRequestGate = CameraPermissionRequestGate()
 
     internal var permissionRequester: (() -> Unit)? = null
 
@@ -113,9 +114,32 @@ private class AndroidCameraHost(
         }
         if (!hasPermission()) {
             val requester = permissionRequester ?: return CameraStartResult.Failed
+            // A permission result can arrive after the route stopped or
+            // switched input sources. Keep only one request alive and make a
+            // late result harmless to the next camera binding.
+            if (!permissionRequestGate.begin()) {
+                // A canceled request keeps a tombstone until its platform
+                // callback arrives. Do not let that late callback consume a
+                // new request; ask the route to surface a retryable failure
+                // while the old ActivityResult is still outstanding.
+                return if (permissionRequestGate.isAwaitingCanceledResult) {
+                    CameraStartResult.Failed
+                } else {
+                    CameraStartResult.PermissionRequired
+                }
+            }
             permissionState = CameraPermissionState.REQUESTING
             requestedPermission = true
-            requester()
+            try {
+                requester()
+            } catch (_: RuntimeException) {
+                // launch() failed before Android accepted a request, so no
+                // ActivityResult callback will arrive to consume a cancel
+                // tombstone. Return the gate to idle and allow retry.
+                permissionRequestGate.abort()
+                permissionState = CameraPermissionState.UNKNOWN
+                return CameraStartResult.Failed
+            }
             return CameraStartResult.PermissionRequired
         }
 
@@ -133,6 +157,7 @@ private class AndroidCameraHost(
     }
 
     override fun stop(onComplete: () -> Unit) {
+        permissionRequestGate.cancel()
         if (closed) {
             onComplete()
             return
@@ -183,7 +208,7 @@ private class AndroidCameraHost(
     }
 
     fun onPermissionResult(granted: Boolean) {
-        if (closed) return
+        if (closed || !permissionRequestGate.consume()) return
         if (granted) {
             permissionState = CameraPermissionState.GRANTED
             scanner.onPermissionGranted()
@@ -207,6 +232,7 @@ private class AndroidCameraHost(
     override fun close() {
         if (closed) return
         closed = true
+        permissionRequestGate.cancel()
         callbacks = null
         // Compose disposal may race a pending stop. Keep the scanner alive
         // through its own unbind/drain callback before closing ML Kit and its
@@ -264,6 +290,57 @@ private class AndroidCameraHost(
 
     private fun currentPermissionState(): CameraPermissionState =
         if (hasPermission()) CameraPermissionState.GRANTED else CameraPermissionState.UNKNOWN
+}
+
+/**
+ * Small framework-free gate for the Activity permission callback.
+ *
+ * Android may deliver a permission result after the scan route has stopped
+ * (or after the user switched to Bluetooth). Consuming only a currently
+ * pending request prevents that stale result from restarting CameraX or
+ * changing the next binding's callback state.
+ */
+internal class CameraPermissionRequestGate {
+    private enum class State {
+        IDLE,
+        ACTIVE,
+        CANCELED,
+    }
+
+    private var state = State.IDLE
+
+    val isAwaitingCanceledResult: Boolean
+        get() = state == State.CANCELED
+
+    fun begin(): Boolean {
+        if (state != State.IDLE) return false
+        state = State.ACTIVE
+        return true
+    }
+
+    fun cancel() {
+        if (state == State.ACTIVE) state = State.CANCELED
+    }
+
+    fun abort() {
+        if (state == State.ACTIVE) state = State.IDLE
+    }
+
+    fun consume(): Boolean {
+        return when (state) {
+            State.ACTIVE -> {
+                state = State.IDLE
+                true
+            }
+            State.CANCELED -> {
+                // Consume the tombstone but never treat the late callback as
+                // the result of a subsequent permission request.
+                state = State.IDLE
+                false
+            }
+            State.IDLE -> false
+        }
+    }
 }
 
 private fun CameraPreviewRequest.toCameraGuide(): CameraGuide = CameraGuide(

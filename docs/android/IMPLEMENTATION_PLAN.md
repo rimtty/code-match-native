@@ -445,8 +445,9 @@ Swift版の5本のUIテストを少なくとも次のシナリオへ対応させ
 
 必須job:
 
+すべてのGradle実行jobは、Gradleを起動する前に同じ `Gradle wrapper validation` を通過させる。これにより、debug build、instrumentation、release artifactの各経路が未検証のWrapperを実行しない。
+
 1. `android-unit-lint`
-   - Gradle wrapper validation
    - `assembleDebug`
    - `lintDebug`
    - `testDebugUnitTest`
@@ -499,7 +500,7 @@ BLE以外は約31〜49人日、BLEはSDKとfirmwareの不確実性を除き約8�
 - 日英、音設定、auto-advance、PDF
 - Fake camera/BLEで状態遷移とCompose UI test
 
-M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触覚、release Fake境界はこのcheckoutに含まれる。app E2Eでは0件破棄、履歴名称変更・詳細・削除、履歴選択のActivity再生成/画面往復/back stackを確認し、PDFは複数ページ実renderとSAF/FileProvider契約、一般化した失敗通知と再試行を自動検査する。scan checkpointはRoom schema v2で工程、受理済み値、結果、件数、入力元を保持し、MATCH記録と同一transactionで更新する。320dp/840dpとfont scale 1.3/2.0の主要操作到達、per-app language同期も自動化した。ローカル `origin/master` に見えるPR #14を含むM2 merge commitと、現在のM3/M4開発ブランチの結果を混同しない。OS process kill/relaunchの実操作、実DocumentProvider/共有先、TalkBack、Switch Access、複数OEMの人手確認は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)の未完了ゲートとして残る。
+M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触覚、release Fake境界はこのcheckoutに含まれる。app E2Eでは0件破棄、履歴名称変更・詳細・削除、履歴選択のActivity再生成/画面往復/back stackを確認し、PDFは複数ページ実renderとSAF/FileProvider契約、一般化した失敗通知と再試行を自動検査する。scan checkpointはRoom schema v2で工程、受理済み値、結果、件数、入力元を保持し、MATCH記録と同一transactionで更新する。`core:data`のinstrumentationはテスト専用ランダムDBを各段階で閉じて再オープンし、active sessionとWAITING QR、WAITING Code 128、RESULTのcheckpoint、全設定値と言語が復元されることを検査する。これは永続ストレージ契約の証拠であり、OSのforce-stop/process kill後のアプリ再起動を実行した証拠ではない。320dp/840dpとfont scale 1.3/2.0の主要操作到達、per-app language同期も自動化した。ローカル `origin/master` に見えるPR #14を含むM2 merge commitと、現在のM3/M4開発ブランチの結果を混同しない。OS process kill/relaunchの実操作、実DocumentProvider/共有先、TalkBack、Switch Access、複数OEMの人手確認は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)の未完了ゲートとして残る。
 
 ### M3: Camera production ready
 

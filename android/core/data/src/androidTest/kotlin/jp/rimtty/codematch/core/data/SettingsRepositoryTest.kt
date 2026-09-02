@@ -99,6 +99,56 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun allSettingsSurviveIsolatedDataStoreReopen() {
+        runBlocking {
+            val file = temporaryFile()
+            val expected = AppSettings(
+                autoAdvanceEnabled = true,
+                autoAdvanceDelaySeconds = 5,
+                feedbackVolume = 0.35f,
+                successSound = SuccessSound.CHIME,
+                failureSound = FailureSound.DESCEND,
+                language = AppLanguage.ENGLISH,
+            )
+            try {
+                val firstJob = SupervisorJob()
+                try {
+                    val firstScope = CoroutineScope(Dispatchers.IO + firstJob)
+                    val firstRepository = SettingsRepository(
+                        PreferenceDataStoreFactory.create(
+                            scope = firstScope,
+                            produceFile = { file },
+                        ),
+                    )
+                    firstRepository.update { expected }
+                    assertEquals(expected, firstRepository.settings.first())
+                } finally {
+                    // Cancel the isolated store before constructing a new one
+                    // for the same file, just as the old process would have
+                    // released its DataStore scope before relaunch.
+                    firstJob.cancelAndJoin()
+                }
+
+                val reopenedJob = SupervisorJob()
+                try {
+                    val reopenedScope = CoroutineScope(Dispatchers.IO + reopenedJob)
+                    val reopenedRepository = SettingsRepository(
+                        PreferenceDataStoreFactory.create(
+                            scope = reopenedScope,
+                            produceFile = { file },
+                        ),
+                    )
+                    assertEquals(expected, reopenedRepository.settings.first())
+                } finally {
+                    reopenedJob.cancelAndJoin()
+                }
+            } finally {
+                file.delete()
+            }
+        }
+    }
+
+    @Test
     fun volumeIsClampedAndInvalidDelayFallsBackToThreeSeconds() {
         runBlocking {
             val file = temporaryFile()
