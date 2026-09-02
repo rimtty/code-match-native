@@ -28,6 +28,8 @@ class BleConnectionCoordinator(
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
     private val discoveryTimeoutMillis: Long = DEFAULT_DISCOVERY_TIMEOUT_MILLIS,
     private val connectTimeoutMillis: Long = DEFAULT_CONNECT_TIMEOUT_MILLIS,
+    /** Optional app-private store for a manually retained known scanner. */
+    private val knownDeviceStore: KnownDeviceStore? = null,
 ) : BleTransportListener {
     init {
         require(maxReconnectAttempts > 0) { "maxReconnectAttempts must be positive" }
@@ -56,6 +58,12 @@ class BleConnectionCoordinator(
     private var mutableState: BleScannerState = BleScannerState()
     private var listener: BleScannerListener? = null
     private val payloadGate = BleScanPayloadGate(nowMillis = nowMillis)
+    private var knownDeviceReadResult: BleKnownDeviceReadResult =
+        BleKnownDeviceReadResult.Missing
+
+    init {
+        preferredDevice = readKnownDevice()
+    }
 
     val state: BleScannerState get() = mutableState
     val connectionState: BleConnectionState get() = mutableState.connection
@@ -65,6 +73,8 @@ class BleConnectionCoordinator(
     val pendingReconnectAtMillis: Long? get() = reconnectAtMillis
     val reconnectAttemptCount: Int get() = reconnectAttempt
     val knownDevice: ScannerDevice? get() = preferredDevice
+    /** Result of the last identity-aware read from [knownDeviceStore]. */
+    val persistedKnownDevice: BleKnownDeviceReadResult get() = knownDeviceReadResult
     /** Token the adapter may attach to the next connection callback. */
     val pendingRequestGeneration: Long? get() = pendingConnectRequestGeneration
     /** Token the adapter may attach to the next physical-link callback. */
@@ -117,6 +127,15 @@ class BleConnectionCoordinator(
     }
 
     fun connect(device: ScannerDevice): Boolean {
+        if (!rememberKnownDevice(device)) {
+            transition(
+                connection = BleConnectionState.Failed(
+                    "Known scanner identity could not be saved",
+                ),
+                configuration = ConfigurationState.Unavailable,
+            )
+            return false
+        }
         reconnectAtMillis = null
         reconnectAttempt = 0
         manualDisconnect = false
@@ -147,10 +166,23 @@ class BleConnectionCoordinator(
     }
 
     fun reconnectKnownDevice(): Boolean {
-        val device = preferredDevice ?: return false
+        val device = preferredDevice ?: readKnownDevice() ?: return false
         if (connectionState is BleConnectionState.Connected) return true
         reconnectAtMillis = null
         return connect(device)
+    }
+
+    /**
+     * Re-read the persisted identity after a service/process recreation.
+     *
+     * This only restores an identity candidate. It never claims that the
+     * scanner is connected or ready; callers must still perform the normal
+     * connect and fresh-settings/recovery handshake.
+     */
+    fun loadKnownDevice(): ScannerDevice? {
+        val device = readKnownDevice()
+        if (device != null) preferredDevice = device
+        return device
     }
 
     fun setApplicationActive(active: Boolean, atMillis: Long = nowMillis()) {
@@ -419,6 +451,49 @@ class BleConnectionCoordinator(
         pendingConnectDevice = null
         pendingConnectRequestGeneration = null
         pendingPhysicalLinkGeneration = null
+    }
+
+    private fun readKnownDevice(): ScannerDevice? {
+        val store = knownDeviceStore ?: run {
+            knownDeviceReadResult = BleKnownDeviceReadResult.Missing
+            return null
+        }
+        val result = runCatching { store.read() }.getOrElse {
+            BleKnownDeviceReadResult.Rejected(
+                BleKnownDeviceRejectionReason.DATASTORE_READ_FAILED,
+            )
+        }
+        knownDeviceReadResult = result
+        return when (result) {
+            is BleKnownDeviceReadResult.Found -> result.device
+            BleKnownDeviceReadResult.Missing -> null
+            is BleKnownDeviceReadResult.Rejected -> {
+                // Keep the reason out of the diagnostic text. The reason may
+                // originate from a persistence implementation and must never
+                // become a channel for scanner settings or callback payloads.
+                diagnostics.error("Known scanner identity rejected")
+                null
+            }
+        }
+    }
+
+    private fun rememberKnownDevice(device: ScannerDevice): Boolean {
+        val store = knownDeviceStore ?: return true
+        val result = runCatching { store.save(device) }.getOrElse {
+            BleKnownDeviceWriteResult.Rejected(
+                BleKnownDeviceRejectionReason.DATASTORE_WRITE_FAILED,
+            )
+        }
+        return when (result) {
+            BleKnownDeviceWriteResult.Saved -> {
+                knownDeviceReadResult = BleKnownDeviceReadResult.Found(device)
+                true
+            }
+            is BleKnownDeviceWriteResult.Rejected -> {
+                diagnostics.error("Known scanner identity could not be saved")
+                false
+            }
+        }
     }
 
     private fun acceptConnectedEvent(event: BleTransportEvent.Connected): Boolean {

@@ -50,6 +50,12 @@ The core guarantees:
   never treated as an empty store. The DataStore file is
   `files/datastore/codematch-ble-symbology.preferences_pb`; the app backup and
   device-transfer rules must exclude that exact path.
+- `BleKnownDeviceStore` uses that same excluded DataStore for a separate,
+  versioned profile-bound envelope containing only device ID and advertised
+  name. It never stores settings, scan payloads, or raw frames. A recreated
+  coordinator may reconnect that identity without discovery, but it still
+  cannot become ready until the normal fresh-inventory and restore handshake
+  succeeds.
 
 The unit tests run on the JVM and use no scanner hardware.
 
