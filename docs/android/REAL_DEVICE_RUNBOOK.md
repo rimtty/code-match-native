@@ -35,6 +35,12 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 bash scripts/run-connected-tests.sh
 ```
 
+### PDF保存・共有の自動証拠と手動境界
+
+自動testは、長い履歴からA4複数ページPDFを生成し、全ページに描画内容があること、共有用ファイルが専用`cache/codematch-pdf/`配下だけへ作られることを確認します。さらに`CreateDocument(application/pdf)`、保存byteの完全一致、`ACTION_SEND`、PDF MIME、ClipData、read URI grant、FileProvider URIを検査します。
+
+これは実際の保存先や共有先アプリの受け入れを意味しません。最終実機確認では、1件と複数ページになる履歴について保存先を選び、保存したPDFを端末のviewerで開き、共有シートから少なくとも1つの受け取り先へ渡せることを確認します。履歴内容やpayloadをスクリーンショット・外部ログへ残さず、検証用データだけを使用してください。
+
 ## 2. カメラ受け入れゲート（M3）
 
 ### 権限とライフサイクル
@@ -134,6 +140,7 @@ QR → Code 128 実読取:
 背景復帰 / 回転 / focus:
 TalkBack / font scale / Switch Access:
 compact / expanded レイアウト:
+PDF保存先 / viewer / 共有先:
 release hardening checker:
 未実施項目と理由:
 添付証跡（payloadを含めない）:

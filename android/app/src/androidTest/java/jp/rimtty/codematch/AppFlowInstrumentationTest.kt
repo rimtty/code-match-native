@@ -16,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -47,6 +48,10 @@ import org.junit.runner.RunWith
  * the debug source set. Payloads are injected on the UI thread and are never
  * written to logs or diagnostics. This keeps the tests deterministic without
  * making a claim about real camera frames or a production BLE adapter.
+ *
+ * This suite is for a dedicated connected-test installation only. It resets
+ * the debug app's Room/DataStore state before and after each case and must not
+ * be run against a user's production data.
  */
 @RunWith(AndroidJUnit4::class)
 class AppFlowInstrumentationTest {
@@ -326,6 +331,121 @@ class AppFlowInstrumentationTest {
         onNodeWithTag(HistoryTestTags.SESSION_ROW).assertIsDisplayed()
     }
 
+    /**
+     * An active session with no successful boxes is discarded at the same
+     * application boundary that a non-empty session uses. The assertion is
+     * made through both the repository and the rendered History destination.
+     */
+    @Test
+    fun emptySessionIsNotKeptAfterConfirmedEnd() {
+        connectFakeScannerThroughSettings()
+        openDestination(R.string.destination_scan)
+        onNodeWithTag("scan_start_session").performClick()
+        waitForTag("scan_waiting_card")
+
+        onNodeWithTag("scan_end_session").performClick()
+        onNodeWithText(composeRule.activity.getString(R.string.end_session_confirm))
+            .performClick()
+        waitForTag("scan_start_session")
+
+        // HistoryRepository deletes zero-box sessions rather than persisting
+        // a misleading empty history row.
+        awaitHistoryEntryCount(expectedSessions = 0, expectedEntries = 0)
+        openDestination(R.string.destination_history)
+        waitForText("履歴はまだありません")
+        onNodeWithText("履歴はまだありません").assertIsDisplayed()
+    }
+
+    /**
+     * Exercises the complete debug app graph: Fake scanner -> ScanViewModel ->
+     * Room -> HistoryViewModel/HistoryRoute. The detail traversal also proves
+     * that a persisted box remains addressable before the session is renamed
+     * and deleted.
+     */
+    @Test
+    fun completedSessionCanBeRenamedViewedInDetailsAndDeleted() {
+        connectFakeScannerThroughSettings()
+        openDestination(R.string.destination_scan)
+        onNodeWithTag("scan_start_session").performClick()
+        waitForTag("scan_waiting_card")
+
+        emitBluetooth(
+            ScanPayload.qr(
+                value = qrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 10_000L,
+            ),
+        )
+        emitBluetooth(
+            ScanPayload.code128(
+                value = barcodePayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 11_000L,
+            ),
+        )
+        waitForTag("scan_result_card")
+        assertSessionCount(1)
+        awaitActiveEntryCount(1)
+
+        onNodeWithTag("scan_end_session").performClick()
+        onNodeWithText(composeRule.activity.getString(R.string.end_session_confirm))
+            .performClick()
+        waitForTag("scan_start_session")
+        awaitHistoryEntryCount(expectedSessions = 1, expectedEntries = 1)
+
+        openDestination(R.string.destination_history)
+        waitForTag(HistoryTestTags.SESSION_ROW)
+        onNodeWithTag(HistoryTestTags.SESSION_ROW).performClick()
+        waitForTag(HistoryTestTags.SESSION_DETAIL)
+
+        // The single persisted part is exposed as one group and one box.
+        onNodeWithTag(HistoryTestTags.GROUP_ROW)
+            .performScrollTo()
+            .performClick()
+        waitForTag(HistoryTestTags.GROUP_DETAIL)
+        onNodeWithTag(HistoryTestTags.BOX_ROW)
+            .performScrollTo()
+            .performClick()
+        waitForTag(HistoryTestTags.ENTRY_DETAIL)
+        // The code is intentionally rendered in both the normalized and
+        // parsed sections, so assert presence through the collection helper.
+        waitForText("BCJH-52-81GG")
+
+        // Pop box -> group -> session using the real compact history route.
+        historyBack()
+        waitForTag(HistoryTestTags.GROUP_DETAIL)
+        historyBack()
+        waitForTag(HistoryTestTags.SESSION_DETAIL)
+
+        val renamedSession = "app-flow-renamed"
+        onNodeWithTag(HistoryTestTags.NAME_FIELD)
+            .performTextInput(renamedSession)
+        onNodeWithTag(HistoryTestTags.NAME_FIELD).performImeAction()
+        awaitSessionName(renamedSession)
+        waitForText(renamedSession)
+
+        // Returning to the list and selecting the row again verifies that the
+        // displayed name came from Room, not only the text-field draft.
+        backToHistoryList()
+        waitForTag(HistoryTestTags.SESSION_ROW)
+        waitForText(renamedSession)
+        onNodeWithTag(HistoryTestTags.SESSION_ROW).performClick()
+        waitForTag(HistoryTestTags.SESSION_DETAIL)
+        waitForText(renamedSession)
+        backToHistoryList()
+        waitForTag(HistoryTestTags.SESSION_ROW)
+
+        onNodeWithTag("${HistoryTestTags.SESSION_ROW}.delete").performClick()
+        awaitHistoryEntryCount(expectedSessions = 0, expectedEntries = 0)
+        waitForText("履歴はまだありません")
+        onNodeWithText("履歴はまだありません").assertIsDisplayed()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(HistoryTestTags.SESSION_ROW)
+                .fetchSemanticsNodes()
+                .isEmpty()
+        }
+    }
+
     @Test
     fun settingsGuideAndFakeScannerReconnectAreConnectedThroughTheApp() {
         openDestination(R.string.destination_settings)
@@ -448,6 +568,19 @@ class AppFlowInstrumentationTest {
         composeRule.waitForIdle()
     }
 
+    private fun historyBack() {
+        composeRule.runOnIdle {
+            composeRule.activity.onBackPressedDispatcher.onBackPressed()
+        }
+        composeRule.waitForIdle()
+    }
+
+    private fun backToHistoryList() {
+        if (composeRule.activity.resources.configuration.screenWidthDp < 840) {
+            historyBack()
+        }
+    }
+
     private fun normalizeGuideToFirstStep() {
         waitForTag(SettingsTestTags.SETUP_GUIDE)
         while (composeRule.onAllNodesWithTag(SettingsTestTags.SETUP_GUIDE_STEP_1)
@@ -537,7 +670,18 @@ class AppFlowInstrumentationTest {
             runBlocking {
                 val sessions = dependencies.historyRepository().sessions.first()
                 sessions.size == expectedSessions &&
-                    sessions.firstOrNull()?.entries?.size == expectedEntries
+                    (expectedSessions == 0 ||
+                        sessions.firstOrNull()?.entries?.size == expectedEntries)
+            }
+        }
+    }
+
+    private fun awaitSessionName(expectedName: String) {
+        composeRule.waitUntil(5_000) {
+            runBlocking {
+                dependencies.historyRepository().sessions.first()
+                    .singleOrNull()
+                    ?.name == expectedName
             }
         }
     }

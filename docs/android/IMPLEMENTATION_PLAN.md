@@ -418,6 +418,8 @@ Swift版の5本のUIテストを少なくとも次のシナリオへ対応させ
 
 追加で、セッション開始/終了、0件破棄、履歴詳細、名前変更、削除、PDF保存/共有Intent、カメラ権限拒否を試験する。
 
+現在のcheckoutでは、0件破棄、完了履歴の詳細・名前変更・削除を同じapp/DI/Room経路で検査し、履歴選択のActivity再生成・destination往復・compact system backも自動化した。PDFは長い履歴を実際に複数ページへ生成して全ページを`PdfRenderer`で確認し、`CreateDocument`、完全一致byte保存、専用FileProviderの共有Intent契約まで検査する。実際の保存先・共有先アプリでの受け入れは実機ゲートに残す。
+
 ### 12.3 画面とアクセシビリティ
 
 - Compact phone、foldable相当、tabletでCompose screenshotを保存
@@ -495,7 +497,7 @@ BLE以外は約31〜49人日、BLEはSDKとfirmwareの不確実性を除き約8�
 - 日英、音設定、auto-advance、PDF
 - Fake camera/BLEで状態遷移とCompose UI test
 
-M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触覚、release Fake境界はこのcheckoutに含まれる。ローカル `origin/master` に見えるPR #14を含むM2 merge commitと、現在のM3/M4開発ブランチの結果を混同しない。TalkBack、font scale 2.0、複数OEMの人手確認は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)の未完了ゲートとして残る。
+M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触覚、release Fake境界はこのcheckoutに含まれる。app E2Eでは0件破棄、履歴名称変更・詳細・削除、履歴選択のActivity再生成/画面往復/back stackを確認し、PDFは複数ページ実renderとSAF/FileProvider契約を自動検査する。ローカル `origin/master` に見えるPR #14を含むM2 merge commitと、現在のM3/M4開発ブランチの結果を混同しない。OS process kill、実DocumentProvider/共有先、TalkBack、font scale 2.0、複数OEMの人手確認は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)の未完了ゲートとして残る。
 
 ### M3: Camera production ready
 

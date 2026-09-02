@@ -1,10 +1,7 @@
 package jp.rimtty.codematch.history
 
-import android.content.ClipData
 import android.content.Context
-import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -19,7 +16,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import jp.rimtty.codematch.core.export.HistoryPdfExporter
@@ -53,10 +49,10 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
     var selectedSessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedGroupCode by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedEntryId by rememberSaveable { mutableStateOf<String?>(null) }
-    var pendingDocument by remember { mutableStateOf<PendingDocument?>(null) }
+    var pendingDocument by remember { mutableStateOf<PendingHistoryPdf?>(null) }
 
     val createDocument = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/pdf"),
+        contract = HistoryPdfBridge.createDocumentContract(),
     ) { destination ->
         val pending = pendingDocument
         pendingDocument = null
@@ -65,11 +61,7 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
         // SAF I/O is deliberately off the main thread. The URI was selected
         // by the user, so the app never needs broad storage permissions.
         scope.launch(Dispatchers.IO) {
-            runCatching {
-                context.contentResolver.openOutputStream(destination)?.use { output ->
-                    output.write(pending.bytes)
-                }
-            }
+            HistoryPdfBridge.writeDocument(context.contentResolver, destination, pending)
         }
     }
 
@@ -188,24 +180,15 @@ internal data class HistoryNavigationSelection(
     }
 }
 
-private data class PendingDocument(
-    val bytes: ByteArray,
-    val fileName: String,
-)
-
 private fun preparePdfForSave(
     session: MatchSession,
     language: AppLanguage,
     scope: kotlinx.coroutines.CoroutineScope,
-    onReady: (PendingDocument) -> Unit,
+    onReady: (PendingHistoryPdf) -> Unit,
 ) {
     scope.launch(Dispatchers.IO) {
-        val pending = runCatching {
-            PendingDocument(
-                bytes = HistoryPdfExporter.generate(session, language),
-                fileName = HistoryPdfExporter.fileName(session, language),
-            )
-        }.getOrNull() ?: return@launch
+        val pending = runCatching { HistoryPdfBridge.createDocument(session, language) }
+            .getOrNull() ?: return@launch
         withContext(Dispatchers.Main.immediate) { onReady(pending) }
     }
 }
@@ -222,20 +205,7 @@ private fun preparePdfForShare(
         }.getOrNull() ?: return@launch
 
         withContext(Dispatchers.Main.immediate) {
-            val uri = runCatching {
-                FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    file,
-                )
-            }.getOrNull() ?: return@withContext
-            val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "application/pdf"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                clipData = ClipData.newRawUri(null, uri)
-            }
-            context.startActivity(Intent.createChooser(sendIntent, null))
+            HistoryPdfBridge.createShareChooser(context, file)?.let(context::startActivity)
         }
     }
 }

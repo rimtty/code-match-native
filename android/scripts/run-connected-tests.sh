@@ -5,6 +5,7 @@ set -euo pipefail
 test_tasks=(
   :app:connectedDebugAndroidTest
   :core:data:connectedDebugAndroidTest
+  :core:export:connectedDebugAndroidTest
   :feature:history:connectedDebugAndroidTest
   :feature:scan:connectedDebugAndroidTest
   :feature:settings:connectedDebugAndroidTest
