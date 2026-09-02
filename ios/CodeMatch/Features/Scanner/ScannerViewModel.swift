@@ -503,12 +503,21 @@ final class ScannerViewModel: ObservableObject {
     private func finishComparison(resultSoundDelay: TimeInterval = 0) {
         // 結果表示と次の照合の間もQR・Code 128のセッション固定モードを維持する。
         // 工程ごとのGATT設定変更をなくし、連続トリガーと設定通信の競合を防ぐ。
-        let result = CodeMatcher.compare(qrPayload: qrValue, barcodePayload: barcodeValue)
+        let comparison = CodeMatcher.compare(qrPayload: qrValue, barcodePayload: barcodeValue)
+        let result: MatchResult
+        if comparison == .match,
+           historyStore.activeSessionContainsMatchedPayload(
+               qrPayload: qrValue,
+               barcodePayload: barcodeValue
+           ) {
+            result = .duplicate
+        } else {
+            result = comparison
+        }
         step = .result(result)
 
         switch result {
         case .match:
-            // 同一品番のラベルが複数箱に貼られる運用のため、重複でもそのまま記録する
             historyStore.recordMatch(
                 code: recordedCode,
                 qrPayload: qrValue,
@@ -527,6 +536,12 @@ final class ScannerViewModel: ObservableObject {
             sessionBoxNumber = 0
             setLocalizedMessage {
                 AppLocalization.string("品目番号が一致しません。納品書と現品の取り違えを確認してください。")
+            }
+            feedback.failure()
+        case .duplicate:
+            sessionBoxNumber = 0
+            setLocalizedMessage {
+                AppLocalization.string("すでに照合済みです。このコードは照合件数に加えていません。")
             }
             feedback.failure()
         }

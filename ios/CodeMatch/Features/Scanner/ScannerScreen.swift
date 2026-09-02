@@ -353,6 +353,7 @@ struct ScannerScreen: View {
                     onRegionOfInterest: { rect in viewModel.camera.setRegionOfInterest(rect) }
                 )
                 .opacity(viewModel.isCameraRunning ? 1 : 0)
+                .contentShape(Rectangle())
                 .accessibilityIdentifier("cameraPreview")
 
                 if !viewModel.isCameraRunning {
@@ -378,6 +379,7 @@ struct ScannerScreen: View {
 
                 ScanFrame(isSquare: viewModel.expectedCode == .qr, isAnimated: viewModel.isCameraRunning)
                     .padding(viewModel.expectedCode == .qr ? 22 : 14)
+                    .allowsHitTesting(false)
 
                 if viewModel.isCameraRunning {
                         Text(AppLocalization.string("タップでピント合わせ"))
@@ -388,6 +390,7 @@ struct ScannerScreen: View {
                         .background(.black.opacity(0.55), in: Capsule())
                         .frame(maxHeight: .infinity, alignment: .bottom)
                         .padding(.bottom, 10)
+                        .allowsHitTesting(false)
                 }
 
                 if let point = viewModel.focusPoint {
@@ -396,6 +399,7 @@ struct ScannerScreen: View {
                         .frame(width: 58, height: 58)
                         .position(x: point.x * proxy.size.width, y: point.y * proxy.size.height)
                         .transition(.scale.combined(with: .opacity))
+                        .allowsHitTesting(false)
                 }
             }
         }
@@ -623,6 +627,7 @@ struct ScannerScreen: View {
         case .barcode: AppLocalization.string("バーコードを読み取る")
         case .result(.match): AppLocalization.string("照合OK")
         case .result(.mismatch): AppLocalization.string("不一致")
+        case .result(.duplicate): AppLocalization.string("照合済み")
         }
     }
 
@@ -876,6 +881,7 @@ private struct ResultView: View {
         switch result {
         case .match: "checkmark"
         case .mismatch: "exclamationmark"
+        case .duplicate: "arrow.counterclockwise"
         }
     }
 
@@ -883,6 +889,7 @@ private struct ResultView: View {
         switch result {
         case .match: AppTheme.green
         case .mismatch: AppTheme.red
+        case .duplicate: AppTheme.red
         }
     }
 
@@ -890,6 +897,7 @@ private struct ResultView: View {
         switch result {
         case .match: AppLocalization.string("一致しました")
         case .mismatch: AppLocalization.string("一致しません")
+        case .duplicate: AppLocalization.string("すでに照合済みです")
         }
     }
 
@@ -902,6 +910,8 @@ private struct ResultView: View {
             return sessionBoxNumber >= 2 ? AppLocalization.string("\(base)（このセッションで\(sessionBoxNumber)箱目）") : base
         case .mismatch:
             return AppLocalization.string("品目番号が一致しません。対象を確認して、もう一度読み取ってください。")
+        case .duplicate:
+            return AppLocalization.string("このコードは照合件数に加えていません。次のコードを読み取ってください。")
         }
     }
 }

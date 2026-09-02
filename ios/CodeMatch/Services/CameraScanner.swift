@@ -231,11 +231,19 @@ final class CameraScanner: NSObject, ObservableObject, @unchecked Sendable {
                 try device.lockForConfiguration()
                 if device.isFocusPointOfInterestSupported {
                     device.focusPointOfInterest = safePoint
-                    device.focusMode = device.isFocusModeSupported(.autoFocus) ? .autoFocus : .continuousAutoFocus
+                    if device.isFocusModeSupported(.autoFocus) {
+                        device.focusMode = .autoFocus
+                    } else if device.isFocusModeSupported(.continuousAutoFocus) {
+                        device.focusMode = .continuousAutoFocus
+                    }
                 }
                 if device.isExposurePointOfInterestSupported {
                     device.exposurePointOfInterest = safePoint
-                    device.exposureMode = .continuousAutoExposure
+                    if device.isExposureModeSupported(.autoExpose) {
+                        device.exposureMode = .autoExpose
+                    } else if device.isExposureModeSupported(.continuousAutoExposure) {
+                        device.exposureMode = .continuousAutoExposure
+                    }
                 }
                 device.unlockForConfiguration()
             } catch {

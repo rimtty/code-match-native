@@ -65,6 +65,22 @@ final class HistoryStore: ObservableObject {
         activeSession?.matchCount(code: code.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
     }
 
+    /// アクティブセッションの成功履歴に、今回のQRまたはCode 128がすでに含まれるかを確認する。
+    /// 品番だけでは判定しないため、同一品番でも異なるラベルの箱は別の照合として扱える。
+    func activeSessionContainsMatchedPayload(
+        qrPayload: String,
+        barcodePayload: String
+    ) -> Bool {
+        let normalizedQR = Self.normalizedPayload(qrPayload)
+        let normalizedBarcode = Self.normalizedPayload(barcodePayload)
+        guard !normalizedQR.isEmpty, !normalizedBarcode.isEmpty else { return false }
+
+        return activeSession?.entries.contains { entry in
+            entry.qrPayload.map(Self.normalizedPayload) == normalizedQR
+                || entry.barcodePayload.map(Self.normalizedPayload) == normalizedBarcode
+        } ?? false
+    }
+
     func renameSession(id: UUID, name: String?) {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
         let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -107,6 +123,10 @@ final class HistoryStore: ObservableObject {
         } catch {
             storageError = AppLocalization.string("履歴を保存できませんでした。端末の空き容量を確認してください。")
         }
+    }
+
+    private static func normalizedPayload(_ payload: String) -> String {
+        payload.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     }
 
     private static func load(from url: URL) -> [MatchSession] {

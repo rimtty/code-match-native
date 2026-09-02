@@ -937,6 +937,25 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertNil(context.viewModel.autoAdvanceSecondsRemaining)
     }
 
+    func testSuccessfulPayloadCannotBeCountedTwiceInActiveSession() {
+        let context = makeContext(autoAdvanceEnabled: true)
+        defer { context.cleanup() }
+
+        context.viewModel.runDemo(shouldMatch: true)
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+
+        context.viewModel.reset()
+        context.viewModel.runDemo(shouldMatch: true)
+
+        XCTAssertEqual(context.viewModel.step, .result(.duplicate))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+        XCTAssertEqual(context.viewModel.sessionBoxNumber, 0)
+        XCTAssertNil(context.viewModel.autoAdvanceSecondsRemaining)
+        XCTAssertTrue(context.viewModel.message.contains("すでに照合済み"))
+        XCTAssertTrue(context.viewModel.message.contains("照合件数に加えていません"))
+    }
+
     func testBluetoothRejectsCode128BeforeQRWithoutAdvancing() async {
         let context = makeContext()
         defer { context.cleanup() }
@@ -1315,8 +1334,39 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(restored.sessions.first?.entries.first?.barcodePayload, "BCJH-52-81GG@1N5X0C")
     }
 
-    /// 同一品番のラベルが複数箱に貼られる運用のため、重複した照合もそのまま記録される。
-    func testDuplicateMatchesAreRecordedAndGroupedAsBoxes() {
+    func testActiveSessionDetectsPreviouslyMatchedQRAndBarcodePayloads() {
+        let storageURL = temporaryStorageURL()
+        defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
+        let store = HistoryStore(storageURL: storageURL)
+        store.beginSession()
+        store.recordMatch(
+            code: "BCJH-52-81GG",
+            qrPayload: "DCLP675300BCJH5281GG02...",
+            barcodePayload: "BCJH-52-81GG@1N5X0C"
+        )
+
+        XCTAssertTrue(
+            store.activeSessionContainsMatchedPayload(
+                qrPayload: " dclp675300bcjh5281gg02...\n",
+                barcodePayload: "OTHER-00-0000@NEW"
+            )
+        )
+        XCTAssertTrue(
+            store.activeSessionContainsMatchedPayload(
+                qrPayload: "OTHER-QR",
+                barcodePayload: " bcjh-52-81gg@1n5x0c\r"
+            )
+        )
+        XCTAssertFalse(
+            store.activeSessionContainsMatchedPayload(
+                qrPayload: "OTHER-QR",
+                barcodePayload: "BCJH-52-81GG@1N5X0D"
+            )
+        )
+    }
+
+    /// 同一品番でもラベルの管理コードが異なる箱は、それぞれ記録してまとめて表示する。
+    func testDistinctLabelsForSamePartAreRecordedAndGroupedAsBoxes() {
         let storageURL = temporaryStorageURL()
         defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
         let store = HistoryStore(storageURL: storageURL)
