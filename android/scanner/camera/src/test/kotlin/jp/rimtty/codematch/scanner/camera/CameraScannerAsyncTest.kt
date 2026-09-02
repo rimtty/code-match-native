@@ -10,6 +10,8 @@ import android.graphics.Rect
 import android.media.Image
 import android.view.Surface
 import androidx.camera.core.Camera
+import androidx.camera.core.CameraControl
+import androidx.camera.core.FocusMeteringResult
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageInfo
 import androidx.camera.core.ImageProxy
@@ -23,6 +25,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.SettableFuture
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.interfaces.Detector
@@ -56,6 +60,21 @@ class CameraScannerAsyncTest {
         application = ApplicationProvider.getApplicationContext()
         Shadows.shadowOf(application).grantPermissions(Manifest.permission.CAMERA)
         activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+    }
+
+    @Test
+    fun `binding waits for camera permission before requesting a provider`() {
+        Shadows.shadowOf(application).denyPermissions(Manifest.permission.CAMERA)
+        val future = ManualProviderFuture()
+        val scanner = newScanner(ArrayDeque(listOf(future)))
+        val owner = StartedLifecycleOwner()
+        val preview = previewView()
+
+        scanner.bind(owner, preview, expectedFormat = ScanFormat.QR)
+
+        assertEquals(CameraCaptureState.PERMISSION_REQUIRED, scanner.captureState)
+        assertEquals(0, future.pendingListenerCount)
+        scanner.close()
     }
 
     @Test
@@ -204,6 +223,60 @@ class CameraScannerAsyncTest {
             Surface.ROTATION_90,
             provider.boundGroups.single().viewPort!!.rotation,
         )
+        scanner.close()
+    }
+
+    @Test
+    fun `running binding rebinds when the preview viewport rotates`() {
+        val firstFuture = ManualProviderFuture()
+        val secondFuture = ManualProviderFuture()
+        val provider = RecordingCameraProvider()
+        val scanner = newScanner(ArrayDeque(listOf(firstFuture, secondFuture)))
+        val owner = StartedLifecycleOwner()
+        val preview = previewView()
+
+        scanner.bind(owner, preview, expectedFormat = ScanFormat.QR)
+        firstFuture.complete(provider)
+        assertEquals(CameraCaptureState.RUNNING, scanner.captureState)
+        assertEquals(1, provider.boundGroups.size)
+
+        Shadows.shadowOf(checkNotNull(preview.display)).setRotation(Surface.ROTATION_90)
+        preview.layout(0, 0, preview.width + 1, preview.height)
+
+        // The old group is stopped through the same drain barrier used by a
+        // lifecycle stop. A fresh provider request is held until the viewport
+        // reflects the new rotation.
+        assertEquals(1, provider.boundGroups.size)
+        assertEquals(1, secondFuture.pendingListenerCount)
+        secondFuture.complete(provider)
+
+        assertEquals(CameraCaptureState.RUNNING, scanner.captureState)
+        assertEquals(2, provider.boundGroups.size)
+        assertEquals(
+            Surface.ROTATION_90,
+            provider.boundGroups.last().viewPort!!.rotation,
+        )
+        scanner.close()
+    }
+
+    @Test
+    fun `missing back camera reports unavailable without binding use cases`() {
+        val future = ManualProviderFuture()
+        val provider = RecordingCameraProvider(backCameraAvailable = false)
+        val errors = mutableListOf<CameraError>()
+        val scanner = newScanner(
+            futures = ArrayDeque(listOf(future)),
+            onError = { errors += it },
+        )
+        val owner = StartedLifecycleOwner()
+        val preview = previewView()
+
+        scanner.bind(owner, preview, expectedFormat = ScanFormat.QR)
+        future.complete(provider)
+
+        assertEquals(CameraCaptureState.UNAVAILABLE, scanner.captureState)
+        assertEquals(CameraErrorCode.BACK_CAMERA_UNAVAILABLE, errors.single().code)
+        assertTrue(provider.boundGroups.isEmpty())
         scanner.close()
     }
 
@@ -411,6 +484,54 @@ class CameraScannerAsyncTest {
     }
 
     @Test
+    fun `focus result from a stopped binding is ignored`() {
+        val future = ManualProviderFuture()
+        val focusFuture = SettableFuture.create<FocusMeteringResult>()
+        val errors = mutableListOf<CameraError>()
+        val provider = RecordingCameraProvider(cameraProxy(focusControl(focusFuture)))
+        val scanner = newScanner(
+            futures = ArrayDeque(listOf(future)),
+            onError = { errors += it },
+        )
+        val owner = StartedLifecycleOwner()
+        val preview = previewView()
+
+        scanner.bind(owner, preview, expectedFormat = ScanFormat.QR)
+        future.complete(provider)
+        assertTrue(scanner.focusAtNormalized(.5f, .5f))
+
+        scanner.unbind()
+        focusFuture.set(FocusMeteringResult.create(false))
+
+        assertTrue(errors.isEmpty())
+        scanner.close()
+    }
+
+    @Test
+    fun `focus start failure is reported without escaping the camera boundary`() {
+        val future = ManualProviderFuture()
+        val errors = mutableListOf<CameraError>()
+        val provider = RecordingCameraProvider(
+            cameraProxy(
+                focusControl { throw IllegalStateException("focus unavailable") },
+            ),
+        )
+        val scanner = newScanner(
+            futures = ArrayDeque(listOf(future)),
+            onError = { errors += it },
+        )
+        val owner = StartedLifecycleOwner()
+        val preview = previewView()
+
+        scanner.bind(owner, preview, expectedFormat = ScanFormat.QR)
+        future.complete(provider)
+
+        assertTrue(!scanner.focusAtNormalized(.5f, .5f))
+        assertEquals(CameraErrorCode.FOCUS_FAILED, errors.single().code)
+        scanner.close()
+    }
+
+    @Test
     fun `analyzer creation failure reports scanner unavailable and does not bind`() {
         val future = ManualProviderFuture()
         val provider = RecordingCameraProvider()
@@ -575,11 +696,14 @@ class CameraScannerAsyncTest {
         }
     }
 
-    private class RecordingCameraProvider : CameraProviderAdapter {
+    private class RecordingCameraProvider(
+        private val camera: Camera = cameraProxy(),
+        private val backCameraAvailable: Boolean = true,
+    ) : CameraProviderAdapter {
         val boundGroups = mutableListOf<UseCaseGroup>()
         var unbindCalls: Int = 0
 
-        override fun hasBackCamera(): Boolean = true
+        override fun hasBackCamera(): Boolean = backCameraAvailable
 
         override fun unbind(vararg useCases: UseCase) {
             unbindCalls += 1
@@ -590,7 +714,7 @@ class CameraScannerAsyncTest {
             useCaseGroup: UseCaseGroup,
         ): Camera {
             boundGroups += useCaseGroup
-            return cameraProxy()
+            return camera
         }
     }
 
@@ -634,21 +758,45 @@ class CameraScannerAsyncTest {
 
 }
 
+private fun focusControl(
+    focusFuture: ListenableFuture<FocusMeteringResult>,
+): CameraControl = java.lang.reflect.Proxy.newProxyInstance(
+    CameraControl::class.java.classLoader,
+    arrayOf(CameraControl::class.java),
+) { _, method, _ ->
+    if (method.name == "startFocusAndMetering") focusFuture else null
+} as CameraControl
+
+private fun focusControl(start: () -> ListenableFuture<FocusMeteringResult>): CameraControl =
+    java.lang.reflect.Proxy.newProxyInstance(
+        CameraControl::class.java.classLoader,
+        arrayOf(CameraControl::class.java),
+    ) { _, method, _ ->
+        if (method.name == "startFocusAndMetering") start() else null
+    } as CameraControl
+
 private fun cameraProxy(): Camera =
+    cameraProxy(cameraControl = null)
+
+private fun cameraProxy(cameraControl: CameraControl?): Camera =
     java.lang.reflect.Proxy.newProxyInstance(
         Camera::class.java.classLoader,
         arrayOf(Camera::class.java),
     ) { _, method, _ ->
-        when (method.returnType) {
-            Boolean::class.javaPrimitiveType -> false
-            Byte::class.javaPrimitiveType -> 0.toByte()
-            Short::class.javaPrimitiveType -> 0.toShort()
-            Int::class.javaPrimitiveType -> 0
-            Long::class.javaPrimitiveType -> 0L
-            Float::class.javaPrimitiveType -> 0f
-            Double::class.javaPrimitiveType -> 0.0
-            Char::class.javaPrimitiveType -> '\u0000'
-            else -> null
+        if (method.name == "getCameraControl") {
+            cameraControl
+        } else {
+            when (method.returnType) {
+                Boolean::class.javaPrimitiveType -> false
+                Byte::class.javaPrimitiveType -> 0.toByte()
+                Short::class.javaPrimitiveType -> 0.toShort()
+                Int::class.javaPrimitiveType -> 0
+                Long::class.javaPrimitiveType -> 0L
+                Float::class.javaPrimitiveType -> 0f
+                Double::class.javaPrimitiveType -> 0.0
+                Char::class.javaPrimitiveType -> '\u0000'
+                else -> null
+            }
         }
     } as Camera
 

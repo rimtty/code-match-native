@@ -51,7 +51,7 @@
 
 | # | Swift の意図（テスト） | Android の証拠 | 判定 |
 |---:|---|---|:---:|
-| 1 | Preview 層が capture session を付け替え・detach できる（`CodeMatcherTests.swift:8`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::a completed provider binds once when viewport is unchanged` + `::pending provider future restarts with the latest QR to Code 128 format` + viewport/rotation変更時の再bind。AndroidではCameraX use-caseのunbind/rebindで同じ資源境界を固定する | D（CameraX境界） |
+| 1 | Preview 層が capture session を付け替え・detach できる（`CodeMatcherTests.swift:8`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::a completed provider binds once when viewport is unchanged` + `::pending provider future restarts with the latest QR to Code 128 format` + `::running binding rebinds when the preview viewport rotates`。AndroidではCameraX use-caseのunbind/rebindで同じ資源境界を固定する | D（CameraX境界） |
 | 2 | Preview dismantle で session を外し復旧を無効化する（`CodeMatcherTests.swift:23`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::preview dismantle unbind invalidates a pending provider callback` + `::preview dismantle invalidates an in-flight ML Kit failure callback`。dismantle後のprovider/解析callbackを世代で破棄する | D |
 | 3 | inactive 化で再利用 session を detach/rebind する（`CodeMatcherTests.swift:35`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::inactive stop then start rebinds the same host after teardown` + `::clearing the format stops then rebinds on the same attached host` | D |
 | 4 | queued teardown 完了まで scanner を保持する（`CodeMatcherTests.swift:50`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::unbind completion waits for an in-flight ML Kit task to drain` + `CameraStopBoundaryTest.kt::sessionEndWaitsForDelayedHostStopCompletion` は処理中frame完了前に論理sessionを終了しないことを検査する | D |
@@ -146,11 +146,13 @@ Swift UI 5本の直接対応とは別に、`NavigationTest`は履歴のsession�
 
 `android/core/model/src/test/kotlin/jp/rimtty/codematch/core/model/SettingsModelsTest.kt::unknownPreferenceValuesUseSafeDefaults` に `AppLanguage.fromCode(null) == JAPANESE` を追加した。これは Swift の「保存値なし」fallback を Android の framework-free model 層で直接固定するもので、production code や BLE/camera/navigation は変更していない。上記のほかは Android に対応する純 JVM 契約が存在しないため、AVCapture lifetime や legacy migration を推測するテストは追加していない。
 
+今回のカメラ監査では、実カメラを要求しない境界として、既存バインディング後のPreviewView回転時rebind、権限待ち、背面カメラなし、停止後のfocus結果破棄、focus開始例外の型付き通知を `CameraScannerAsyncTest` に追加した。`CameraStageTest::pointerFocusTracksRunningStateAcrossStartAndStop` は開始/停止を跨いで古いCompose pointer callbackがfocusを発火しないことを検査し、`CameraPermissionStateTest::canceledPermissionResultCannotAffectTheNextCameraBinding` はキャンセル済みActivityResultを次の要求へ誤帰属しないtombstone境界を固定する。ROI中間Bitmapの例外経路も解放する。iOS固有の画面録画ポリシー、実カメラdecode、process kill/relaunchは追加していない。
+
 ## 検証
 
 - Swift source の `func test` 数: unit 68、UI 5。fixture は JSON として schemaVersion 1、5 case、ID 重複なし。
 - Android の focused Gradle test は Android Studio の JDK と SDK を明示して実行し、次の2系統がともに `BUILD SUCCESSFUL` になった。`./gradlew :core:model:testDebugUnitTest :core:matching:testDebugUnitTest :feature:scan:testDebugUnitTest :scanner:ble:testDebugUnitTest :scanner:fake:testDebugUnitTest`、および `./gradlew :core:export:testDebugUnitTest :feature:history:testDebugUnitTest :feature:settings:testDebugUnitTest :app:testDebugUnitTest`。
-- `:scanner:camera:testDebugUnitTest` は非同期境界13テストを含め `BUILD SUCCESSFUL`、`:scanner:camera:lintDebug` も `BUILD SUCCESSFUL` になった。`BundledMlKitImageDecodeTest` 3件は共有QR/Code 128画像の実decodeと誤形式拒否に成功したが、実機 camera readを意味しない。
+- `:scanner:camera:testDebugUnitTest` は非同期境界20テストを含め `BUILD SUCCESSFUL`、`:scanner:camera:lintDebug` も `BUILD SUCCESSFUL` になった。`BundledMlKitImageDecodeTest` 3件は共有QR/Code 128画像の実decodeと誤形式拒否に成功したが、実機 camera readを意味しない。
 - BLE事前実装後のAndroid JVM testは全242件が成功した。Pixel 7/API 36では今回変更した`feature:scan` 14件、`feature:settings` 14件、`scanner:ble` 8件を再実行して全36件が成功した。以前の全module instrumentation 80件とAndroid 17/API 37.1・16KB emulator 63件は別時点の記録であり、今回の差分全体はPRのAPI 31/36 CIで再確認する。
 - Android実装の証拠にiOS Simulatorは使用しない。iOS XCTestは、同一リポジトリの既存iOS版を壊していないことを確認するPR CIの回帰ゲートとしてのみ扱う。
 - 実行可能だった静的確認は source/test 数、fixture 構造、`git diff --check`。実機 camera/BLE の結果はこの表に含めていない。

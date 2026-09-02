@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.runtime.mutableStateOf
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import jp.rimtty.codematch.scanner.api.InputSource
@@ -120,6 +121,30 @@ class CameraStageTest {
         composeRule.runOnIdle {
             assertEquals(CameraFocusPoint(.5f, .5f), focusPoint)
         }
+    }
+
+    @Test
+    fun pointerFocusTracksRunningStateAcrossStartAndStop() {
+        val running = mutableStateOf(false)
+        var focusCount = 0
+        composeRule.setContent {
+            CameraStage(
+                format = jp.rimtty.codematch.scanner.api.ScanFormat.QR,
+                running = running.value,
+                onFocus = { focusCount += 1 },
+            )
+        }
+
+        composeRule.onNodeWithTag("scan_camera_stage").performTouchInput { click() }
+        composeRule.runOnIdle { assertEquals(0, focusCount) }
+
+        composeRule.runOnIdle { running.value = true }
+        composeRule.onNodeWithTag("scan_camera_stage").performTouchInput { click() }
+        composeRule.runOnIdle { assertEquals(1, focusCount) }
+
+        composeRule.runOnIdle { running.value = false }
+        composeRule.onNodeWithTag("scan_camera_stage").performTouchInput { click() }
+        composeRule.runOnIdle { assertEquals(1, focusCount) }
     }
 
     @Test

@@ -190,27 +190,51 @@ internal fun cropBitmapToGuide(
         boundedViewPort.set(sourceBounds)
     }
     val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
-    val uprightViewPort = Bitmap.createBitmap(
-        source,
-        boundedViewPort.left,
-        boundedViewPort.top,
-        boundedViewPort.width(),
-        boundedViewPort.height(),
-        matrix,
-        false,
-    )
-    val guideRect = guide.toPixelCropRect(uprightViewPort.width, uprightViewPort.height)
-    val guideBitmap = Bitmap.createBitmap(
-        uprightViewPort,
-        guideRect.left,
-        guideRect.top,
-        guideRect.width(),
-        guideRect.height(),
-    )
-    if (uprightViewPort !== source && uprightViewPort !== guideBitmap) {
-        uprightViewPort.recycle()
+    var uprightViewPort: Bitmap? = null
+    var guideBitmap: Bitmap? = null
+    try {
+        val rotatedViewPort = Bitmap.createBitmap(
+            source,
+            boundedViewPort.left,
+            boundedViewPort.top,
+            boundedViewPort.width(),
+            boundedViewPort.height(),
+            matrix,
+            false,
+        )
+        uprightViewPort = rotatedViewPort
+        val guideRect = guide.toPixelCropRect(
+            rotatedViewPort.width,
+            rotatedViewPort.height,
+        )
+        guideBitmap = Bitmap.createBitmap(
+            rotatedViewPort,
+            guideRect.left,
+            guideRect.top,
+            guideRect.width(),
+            guideRect.height(),
+        )
+        if (uprightViewPort !== source && uprightViewPort !== guideBitmap) {
+            uprightViewPort.recycle()
+        }
+        return requireNotNull(guideBitmap)
+    } catch (error: Exception) {
+        // Bitmap.createBitmap can fail after the rotated viewport has already
+        // been allocated (for example when a provider reports a stale crop).
+        // Release every intermediate image on that path as well as the final
+        // guide image, leaving the ImageProxy owner in control of [source].
+        if (guideBitmap != null && guideBitmap !== source && !guideBitmap.isRecycled) {
+            guideBitmap.recycle()
+        }
+        if (uprightViewPort != null &&
+            uprightViewPort !== source &&
+            uprightViewPort !== guideBitmap &&
+            !uprightViewPort.isRecycled
+        ) {
+            uprightViewPort.recycle()
+        }
+        throw error
     }
-    return guideBitmap
 }
 
 /** Owns temporary ROI pixels until ML Kit finishes its asynchronous task. */
@@ -328,6 +352,8 @@ class CameraScanner private constructor(
     private var rebindAfterUnbind = false
     private val unbindCompletions = ArrayList<() -> Unit>()
     private var viewPortRetryPending = false
+    /** ViewPort used by the currently bound Preview/ImageAnalysis group. */
+    private var boundViewPortSnapshot: ViewPortSnapshot? = null
     private var targetRotation: Int? = null
     private var isClosed = false
     private var _expectedFormat: ScanFormat? = null
@@ -339,6 +365,7 @@ class CameraScanner private constructor(
     private val previewLayoutListener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
         if (!isClosed) {
             updateTargetRotation()
+            rebindForViewPortChangeIfNeeded()
             if (previewUseCase == null && analysisUseCase == null) {
                 requestBind()
             }
@@ -493,7 +520,7 @@ class CameraScanner private constructor(
     fun focusAt(viewX: Float, viewY: Float): Boolean {
         val currentPreview = previewView ?: return false
         val currentCamera = camera ?: return false
-        if (viewX.isNaN() || viewY.isNaN() ||
+        if (!viewX.isFinite() || !viewY.isFinite() ||
             currentPreview.width <= 0 || currentPreview.height <= 0
         ) {
             return false
@@ -501,6 +528,10 @@ class CameraScanner private constructor(
 
         val x = viewX.coerceIn(0f, currentPreview.width.toFloat())
         val y = viewY.coerceIn(0f, currentPreview.height.toFloat())
+        // A focus result may complete after unbind/rebind. Keep the result
+        // attached to the camera binding that created it; otherwise a late
+        // failure from the old camera can be reported against a new session.
+        val focusGeneration = bindGeneration
         return try {
             val point = currentPreview.meteringPointFactory.createPoint(x, y)
             val action = FocusMeteringAction.Builder(
@@ -510,6 +541,9 @@ class CameraScanner private constructor(
             val focusFuture = currentCamera.cameraControl.startFocusAndMetering(action)
             focusFuture.addListener(
                 {
+                    if (isClosed || focusGeneration != bindGeneration || currentCamera !== camera) {
+                        return@addListener
+                    }
                     try {
                         if (!focusFuture.get().isFocusSuccessful) {
                             onError(
@@ -531,7 +565,7 @@ class CameraScanner private constructor(
                 mainExecutor,
             )
             true
-        } catch (_: IllegalArgumentException) {
+        } catch (_: Exception) {
             onError(
                 CameraError(
                     code = CameraErrorCode.FOCUS_FAILED,
@@ -726,6 +760,7 @@ class CameraScanner private constructor(
                         previewUseCase = preview
                         analysisUseCase = analysis
                         camera = boundCamera
+                        boundViewPortSnapshot = viewPortSnapshot
                         setCaptureState(CameraCaptureState.RUNNING)
                     } catch (_: SecurityException) {
                         cleanupFailedBind(cameraProvider, preview, analysis)
@@ -797,6 +832,7 @@ class CameraScanner private constructor(
         previewUseCase = null
         analysisUseCase = null
         camera = null
+        boundViewPortSnapshot = null
         targetRotation = null
         viewPortRetryPending = false
     }
@@ -863,6 +899,32 @@ class CameraScanner private constructor(
         analysisUseCase?.setTargetRotation(rotation)
     }
 
+    /**
+     * CameraX's ViewPort captures the PreviewView crop/rotation at bind time.
+     * Updating only each use case's target rotation is insufficient when the
+     * preview is resized or rotated: the next ImageAnalysis frame can then be
+     * cropped in a coordinate space different from the guide drawn on screen.
+     * Rebind through the normal stop/drain barrier so no old frame can cross
+     * into the new transform.
+     */
+    private fun rebindForViewPortChangeIfNeeded() {
+        val owner = lifecycleOwner ?: return
+        val currentPreview = previewView ?: return
+        val boundSnapshot = boundViewPortSnapshot ?: return
+        val currentViewPort = currentPreview.viewPort ?: return
+        val currentSnapshot = currentPreview.viewPortSnapshot(currentViewPort)
+        if (currentSnapshot == boundSnapshot) return
+
+        // The old snapshot must not trigger another stop while the unbind is
+        // draining. requestBind() below records the rebind intent and the
+        // completion callback starts from the latest PreviewView state.
+        boundViewPortSnapshot = null
+        requestStopUseCases()
+        if (owner === lifecycleOwner && currentPreview === previewView) {
+            requestBind()
+        }
+    }
+
     private fun cleanupFailedBind(
         cameraProvider: CameraProviderAdapter?,
         preview: Preview?,
@@ -878,6 +940,7 @@ class CameraScanner private constructor(
         if (previewUseCase === preview) previewUseCase = null
         if (analysisUseCase === analysis) analysisUseCase = null
         camera = null
+        boundViewPortSnapshot = null
     }
 
     private fun reportBindFailure(
