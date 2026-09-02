@@ -189,6 +189,58 @@ class CameraScannerAsyncTest {
     }
 
     @Test
+    fun `preview dismantle unbind invalidates a pending provider callback`() {
+        val future = ManualProviderFuture()
+        val provider = RecordingCameraProvider()
+        val scanner = newScanner(ArrayDeque(listOf(future)))
+        val owner = StartedLifecycleOwner()
+        val preview = previewView()
+
+        scanner.bind(owner, preview, expectedFormat = ScanFormat.QR)
+
+        var dismantled = false
+        scanner.unbind { dismantled = true }
+        assertTrue(dismantled)
+
+        // DisposableEffect dismantling removes both the lifecycle observer and
+        // the layout listener. A provider completing after that boundary must
+        // not attach a session back to the old PreviewView.
+        future.complete(provider)
+        owner.start()
+        preview.layout(0, 0, preview.width + 1, preview.height)
+
+        assertTrue(provider.boundGroups.isEmpty())
+        assertEquals(CameraCaptureState.STOPPED, scanner.captureState)
+        scanner.close()
+    }
+
+    @Test
+    fun `inactive stop then start rebinds the same host after teardown`() {
+        val firstFuture = ManualProviderFuture()
+        val secondFuture = ManualProviderFuture()
+        val provider = RecordingCameraProvider()
+        val scanner = newScanner(ArrayDeque(listOf(firstFuture, secondFuture)))
+        val owner = StartedLifecycleOwner()
+        val preview = previewView()
+
+        scanner.bind(owner, preview, expectedFormat = ScanFormat.QR)
+        firstFuture.complete(provider)
+        assertEquals(CameraCaptureState.RUNNING, scanner.captureState)
+
+        owner.stop()
+        assertEquals(CameraCaptureState.STOPPED, scanner.captureState)
+        assertEquals(1, provider.boundGroups.size)
+
+        owner.start()
+        assertEquals(1, secondFuture.pendingListenerCount)
+        secondFuture.complete(provider)
+
+        assertEquals(CameraCaptureState.RUNNING, scanner.captureState)
+        assertEquals(2, provider.boundGroups.size)
+        scanner.close()
+    }
+
+    @Test
     fun `lifecycle stop invalidates a pending provider callback`() {
         val future = ManualProviderFuture()
         val provider = RecordingCameraProvider()
@@ -261,6 +313,57 @@ class CameraScannerAsyncTest {
     }
 
     @Test
+    fun `preview dismantle invalidates an in-flight ML Kit failure callback`() {
+        val future = ManualProviderFuture()
+        val provider = RecordingCameraProvider()
+        val pendingResult = TaskCompletionSource<List<Barcode>>()
+        val barcodeScanner = FakeBarcodeScanner()
+        val errors = mutableListOf<CameraError>()
+        val analyzer = MlKitImageAnalyzer(
+            previewViewProvider = { null },
+            guideProvider = { CameraGuide.forFormat(ScanFormat.QR) },
+            onPayload = {},
+            onError = { errors += it },
+            mainExecutor = directExecutor,
+            scannerFactory = { barcodeScanner },
+            processFrame = { _, _ -> pendingResult.task },
+        )
+        val dependencies = CameraScannerDependencies(
+            providerFutureFactory = { future },
+            scannerFactory = { barcodeScanner },
+            mainExecutorFactory = { directExecutor },
+            analysisExecutorFactory = { Executors.newSingleThreadExecutor() },
+            analyzerFactory = { _, _, _, _, _, _ -> analyzer },
+        )
+        val scanner = CameraScanner(
+            application,
+            dependencies,
+            onPayload = {},
+            onStateChanged = {},
+            onError = {},
+        )
+        val owner = StartedLifecycleOwner()
+        val preview = previewView()
+
+        scanner.bind(owner, preview, expectedFormat = ScanFormat.QR)
+        future.complete(provider)
+        assertEquals(CameraCaptureState.RUNNING, scanner.captureState)
+
+        val image = EmptyImageProxy()
+        analyzer.analyze(image)
+        var dismantled = false
+        scanner.unbind { dismantled = true }
+
+        assertTrue(!dismantled)
+        pendingResult.setException(IllegalStateException("late analysis"))
+
+        assertTrue(dismantled)
+        assertTrue(image.isClosed)
+        assertTrue(errors.isEmpty())
+        scanner.close()
+    }
+
+    @Test
     fun `analyzer creation failure reports scanner unavailable and does not bind`() {
         val future = ManualProviderFuture()
         val provider = RecordingCameraProvider()
@@ -315,6 +418,33 @@ class CameraScannerAsyncTest {
         analyzer.close()
     }
 
+    @Test
+    fun `stale ML Kit failure callback is dropped after unbind invalidation`() {
+        val barcodeScanner = FakeBarcodeScanner()
+        val pendingResult = TaskCompletionSource<List<Barcode>>()
+        val errors = mutableListOf<CameraError>()
+        val analyzer = MlKitImageAnalyzer(
+            previewViewProvider = { null },
+            guideProvider = { CameraGuide.forFormat(ScanFormat.QR) },
+            onPayload = {},
+            onError = { errors += it },
+            mainExecutor = directExecutor,
+            scannerFactory = { barcodeScanner },
+            processFrame = { _, _ -> pendingResult.task },
+        )
+
+        assertTrue(analyzer.updateExpectedFormat(ScanFormat.QR))
+        val image = EmptyImageProxy()
+        analyzer.analyze(image)
+        analyzer.invalidateInFlightCallbacks()
+
+        pendingResult.setException(IllegalStateException("late analysis"))
+
+        assertTrue(image.isClosed)
+        assertTrue(errors.isEmpty())
+        analyzer.close()
+    }
+
     private fun newScanner(
         futures: ArrayDeque<ManualProviderFuture>,
         scannerFactory: (ScanFormat) -> BarcodeScanner = { FakeBarcodeScanner() },
@@ -356,6 +486,10 @@ class CameraScannerAsyncTest {
 
         fun stop() {
             registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+        }
+
+        fun start() {
+            registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         }
     }
 
