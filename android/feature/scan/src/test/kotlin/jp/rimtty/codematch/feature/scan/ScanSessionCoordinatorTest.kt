@@ -34,6 +34,35 @@ class ScanSessionCoordinatorTest {
     }
 
     @Test
+    fun coordinatorUsesFanOutWithoutReplacingAnExistingScannerObserver() {
+        val scanner = TestScanner().apply { markReady() }
+        val legacyStates = mutableListOf<ConnectionState>()
+        val settingsStates = mutableListOf<ConnectionState>()
+        scanner.listener = object : ExternalScannerListener {
+            override fun onConnectionStateChanged(state: ConnectionState) {
+                legacyStates += state
+            }
+        }
+        val settingsObserver = object : ExternalScannerListener {
+            override fun onConnectionStateChanged(state: ConnectionState) {
+                settingsStates += state
+            }
+        }
+        assertTrue(scanner.addListener(settingsObserver))
+
+        val coordinator = ScanSessionCoordinator(scanner)
+        coordinator.startSession()
+        scanner.markDisconnected()
+
+        assertTrue(legacyStates.contains(ConnectionState.Idle))
+        assertTrue(settingsStates.contains(ConnectionState.Idle))
+        assertEquals(InputSource.CAMERA, coordinator.inputSource)
+
+        coordinator.dispose()
+        assertTrue(scanner.removeListener(settingsObserver))
+    }
+
+    @Test
     fun explicitCameraChoiceWinsOverLaterReadyCallbacks() {
         val scanner = TestScanner().apply { markReady() }
         val coordinator = ScanSessionCoordinator(scanner)

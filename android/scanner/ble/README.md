@@ -1,13 +1,14 @@
 # BLE scanner core
 
-This module contains the SDK-neutral BLE boundary and deterministic protocol
-state used by the Android port. It deliberately does not contain an Android
-`BluetoothGatt` implementation or an Inateck dependency.
+This module contains the SDK-neutral BLE boundary, deterministic protocol
+state, and a generic Android `BluetoothGatt` transport used by the Android
+port. It deliberately does not contain an Inateck dependency or a scanner-
+specific protocol profile.
 
-The future platform adapter supplies discovery/connection callbacks, the
-settings characteristic endpoint, and GATT read/write operations through
-`BleTransport`. UUIDs and scanner command details are therefore discovered and
-validated by the adapter instead of being assumed here.
+`AndroidBleTransport` supplies discovery/connection callbacks and raw GATT
+read/write operations through `BleTransport`. UUIDs, endpoints, framing, and
+scanner commands are injected by a validated profile instead of being assumed
+here.
 
 `BleSymbologySession` receives a `BleSymbologyProfile` containing the endpoint
 and a `BleSymbologyCodec`. The transport always remains a raw `ByteArray`
@@ -58,6 +59,26 @@ The core guarantees:
   succeeds.
 
 The unit tests run on the JVM and use no scanner hardware.
+
+## Android platform transport
+
+`AndroidBleTransport` is the generic Android implementation of `BleTransport`.
+Its production platform uses `BluetoothManager`, `BluetoothAdapter`,
+`BluetoothLeScanner`, and `BluetoothGatt`; tests and host integrations can use
+the `BlePlatform`/`BlePlatformGatt` seam instead. `AndroidBleProtocolProfile`
+injects the service/read/write/notify UUIDs, GATT write type, notification
+descriptor options, and a `BleNotificationDecoder`. No scanner UUID, framing,
+or vendor SDK is selected in this module.
+
+The transport checks `BLUETOOTH_SCAN` before discovery and
+`BLUETOOTH_CONNECT` before a connection. Discovery and connection deadlines
+are 5 seconds and 30 seconds respectively, through `BleTimeoutScheduler` so
+they can be advanced deterministically in JVM tests. Moving the adapter to
+`BACKGROUND` or `DESTROYED` stops discovery and performs `disconnect()` then
+`close()`; callbacks retain request/link generations and stale callbacks are
+discarded. Read/write callbacks complete once even when the platform call
+fails synchronously. Notification bytes are passed only to the injected
+decoder and never to diagnostics.
 
 ## M4 adapter audit (2026-09-02)
 

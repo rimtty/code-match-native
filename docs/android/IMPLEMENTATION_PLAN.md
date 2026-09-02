@@ -321,12 +321,14 @@ MatchResult
 - QR/Code 128の逆順拒否、重複callback抑止
 - Swift版のBLE関連UIシナリオ（接続照合、設定画面の検索・接続）をCompose testで再現
 - SDK/UUIDに依存しないcommand queue、完全snapshot、復元状態、payload decoderをJVM testで固定
+- service/read/write/notify UUIDと通知decoderを注入する汎用Android `BluetoothGatt` transport
+- `ExternalScanner` facade、複数listener、権限拒否・電源OFF・復元失敗・camera fallbackのFake/UI test
 
-この段階では`scanner:ble`をreleaseアプリへ接続せず、Android BluetoothGatt / vendor SDK adapterも作らない。実通信形式を観測するまではiOS由来のUUIDや設定JSONをproduction前提にせず、release buildにもFakeを組み込まない。
+この段階では`scanner:ble`をreleaseアプリへ接続せず、対象scanner固有profileやvendor SDKも組み込まない。実通信形式を観測するまではiOS由来のUUIDや設定JSONをproduction前提にせず、release buildにもFakeを組み込まない。
 
 ### 9.2 実機入手後の調査ゲート
 
-実装開始前に次を確定する。
+対象scanner固有profileとrelease接続を開始する前に次を確定する。
 
 1. スキャナーの正確な型番、firmware、Android対応表
 2. InateckのAndroid SDK/API、配布条件、ライセンス、対応ABI、target SDK制約

@@ -97,6 +97,35 @@ enum class DiagnosticCategory {
 typealias DiagnosticKind = DiagnosticCategory
 
 /**
+ * A stable, localized-UI independent classification for scanner failures.
+ *
+ * Adapters may still expose a sanitized [ConnectionState] reason for
+ * diagnostics, but application UI must branch on this type rather than
+ * displaying an exception or transport string verbatim.  The values are
+ * intentionally protocol/OS neutral so a future Android BLE adapter can map
+ * its permission and radio callbacks without changing the feature modules.
+ */
+enum class ScannerIssue {
+    NONE,
+    PERMISSION_DENIED,
+    POWERED_OFF,
+    UNSUPPORTED,
+    UNAVAILABLE,
+    CONNECTION_FAILED,
+    CONFIGURATION_FAILED,
+    RESTORE_FAILED,
+    ;
+
+    val isActionable: Boolean get() = this != NONE
+    val requiresSystemSettings: Boolean
+        get() = this == PERMISSION_DENIED || this == POWERED_OFF
+}
+
+/** Compatibility spellings for hosts that call this a Bluetooth issue. */
+typealias BluetoothScannerIssue = ScannerIssue
+typealias ScannerFailureReason = ScannerIssue
+
+/**
  * A sanitized connection/configuration event.
  *
  * Scan text is intentionally not a field on this model. Implementations must
@@ -162,3 +191,63 @@ sealed interface ConfigurationState {
         val ready: ConfigurationState get() = Ready
     }
 }
+
+/**
+ * Classify scanner state for presentation without exposing adapter strings.
+ *
+ * The matching is deliberately limited to generic availability/permission
+ * terms.  It does not infer a scanner model, protocol, UUID, or payload from
+ * a reason string; an unrecognized value remains a generic failure.
+ */
+fun scannerIssueFor(
+    connectionState: ConnectionState,
+    configurationState: ConfigurationState,
+): ScannerIssue {
+    val configurationFailure = (configurationState as? ConfigurationState.Failed)?.reason
+    if (configurationFailure != null) {
+        return classifyScannerFailure(configurationFailure, ScannerIssue.CONFIGURATION_FAILED)
+    }
+
+    return when (connectionState) {
+        is ConnectionState.Unavailable -> classifyUnavailable(connectionState.reason)
+        is ConnectionState.Failed -> classifyScannerFailure(
+            connectionState.reason,
+            ScannerIssue.CONNECTION_FAILED,
+        )
+        else -> ScannerIssue.NONE
+    }
+}
+
+private fun classifyUnavailable(reason: String): ScannerIssue {
+    val normalized = reason.lowercase()
+    return when {
+        normalized.containsAny("permission", "unauthor", "denied", "権限", "許可") ->
+            ScannerIssue.PERMISSION_DENIED
+        normalized.containsAny(
+            "powered off",
+            "power off",
+            "bluetooth off",
+            "bluetooth is off",
+            "radio off",
+            "電源オフ",
+            "オフ",
+        ) -> ScannerIssue.POWERED_OFF
+        normalized.containsAny("unsupported", "not supported", "未対応") ->
+            ScannerIssue.UNSUPPORTED
+        else -> ScannerIssue.UNAVAILABLE
+    }
+}
+
+private fun classifyScannerFailure(
+    reason: String,
+    fallback: ScannerIssue,
+): ScannerIssue {
+    val normalized = reason.lowercase()
+    return if (normalized.containsAny("restore", "recover", "復元", "復旧")) {
+        ScannerIssue.RESTORE_FAILED
+    } else {
+        fallback
+    }
+}
+
+private fun String.containsAny(vararg values: String): Boolean = values.any(::contains)

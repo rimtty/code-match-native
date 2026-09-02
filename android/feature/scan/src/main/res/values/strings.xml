@@ -44,6 +44,14 @@
     <string name="scan_bluetooth_waiting">接続済みスキャナから読み取ります</string>
     <string name="scan_bluetooth_device_fallback">Bluetoothスキャナ</string>
     <string name="scan_bluetooth_from">%1$sから読み取ります</string>
+    <string name="scan_bluetooth_fallback_title">Bluetoothスキャナからカメラへ切り替えました</string>
+    <string name="scan_bluetooth_fallback_connection">スキャナとの接続が失われたため、現在の工程を保ったままカメラで続けます。</string>
+    <string name="scan_bluetooth_fallback_permission">Bluetoothの利用が許可されていないため、カメラで続けます。</string>
+    <string name="scan_bluetooth_fallback_powered_off">Bluetoothがオフのため、カメラで続けます。</string>
+    <string name="scan_bluetooth_fallback_unavailable">Bluetoothスキャナを利用できないため、カメラで続けます。</string>
+    <string name="scan_bluetooth_fallback_restore_failed">スキャナ設定を復元できないため、カメラで続けます。</string>
+    <string name="scan_bluetooth_reconnect">Bluetoothへ再接続</string>
+    <string name="scan_bluetooth_open_settings">Bluetooth設定</string>
     <string name="scan_input_source_label">入力元</string>
     <string name="scan_input_camera">カメラ</string>
     <string name="scan_input_bluetooth">Bluetooth</string>

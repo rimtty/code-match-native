@@ -67,10 +67,10 @@ GitHub ActionsではAPI 31と、Linux x86_64向けに提供される最新runtim
 
 ## 現在の検証境界
 
-実装と証跡の対応表は [Android版の現在地](../docs/android/STATUS.md) にまとめています。プライバシー・権限・backup・FileProviderの境界は [Android版プライバシー境界](../docs/android/PRIVACY.md) を正本とします。候補SDKのライセンス、ABI、target SDK、rawログ、scan callbackの評価は [Android BLE SDK評価メモ](../docs/android/BLE_SDK_EVALUATION.md) に記録しており、未解決のためproduction adapterを同梱しません。
+実装と証跡の対応表は [Android版の現在地](../docs/android/STATUS.md) にまとめています。プライバシー・権限・backup・FileProviderの境界は [Android版プライバシー境界](../docs/android/PRIVACY.md) を正本とします。候補SDKのライセンス、ABI、target SDK、rawログ、scan callbackの評価は [Android BLE SDK評価メモ](../docs/android/BLE_SDK_EVALUATION.md) に記録しており、未解決のためvendor SDKと実機protocol profileを同梱しません。
 
 ## Fake scannerの境界
 
 Fake scannerは`scanner/fake`へ置き、`app`からは`debugImplementation`だけで参照します。`releaseImplementation`や`implementation`では参照しないため、リリース依存グラフとAPKにFake入口を含めない構成です。CIの`android-release-build` jobがこの境界を確認します。
 
-`scanner/ble`には、command直列化、timeout後の停止、完全設定snapshot、復元前Ready禁止、payload正規化と重複抑制だけをSDK/UUID非依存で置いています。Android BluetoothGattまたはInateck SDKへ接続するproduction adapterは、対象scanner、firmware、Android向けSDKと実通信形式の調査が完了するまで追加しません。カメラは実行時`CAMERA`権限だけを要求し、端末同梱ML Kitを使います。依存ライブラリ由来の`INTERNET` / `ACCESS_NETWORK_STATE`宣言もmanifest mergeで除外し、release APK/AABをオフライン境界に保ちます。Fakeはdebugだけで、production BLE未接続の現段階ではNearby/Bluetooth権限を宣言しません。M4で実機adapterを追加する場合は、必要時の`BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`だけを許可し、checkerの`--allow-production-ble-permissions`モードを使います。
+`scanner/ble`には、command直列化、timeout後の停止、完全設定snapshot、復元前Ready禁止、payload正規化と重複抑制に加え、UUID・通知decoder・write typeを注入する汎用`BluetoothGatt` transportを置いています。対象scannerの実測profileとvendor SDKは、型番・firmware・Android向けSDK・実通信形式の調査が完了するまで追加しません。カメラは実行時`CAMERA`権限だけを要求し、端末同梱ML Kitを使います。依存ライブラリ由来の`INTERNET` / `ACCESS_NETWORK_STATE`宣言もmanifest mergeで除外し、release APK/AABをオフライン境界に保ちます。Fakeはdebugだけで、production BLE未接続の現段階ではNearby/Bluetooth権限を宣言しません。実機profileを接続する場合は、必要時の`BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`だけを許可し、checkerの`--allow-production-ble-permissions`モードを使います。

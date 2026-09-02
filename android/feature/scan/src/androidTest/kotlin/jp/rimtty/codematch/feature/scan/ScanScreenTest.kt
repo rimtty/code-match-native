@@ -16,6 +16,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.scanner.api.InputSource
+import jp.rimtty.codematch.scanner.api.ScannerIssue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -182,5 +183,42 @@ class ScanScreenTest {
 
         composeRule.onNodeWithText("照合を開始").assertIsDisplayed()
         composeRule.onAllNodesWithText("Start a comparison").assertCountEquals(0)
+    }
+
+    @Test
+    fun bluetoothFallbackPreservesCurrentStepAndOffersRetryAndSettings() {
+        val actions = mutableListOf<ScanUiAction>()
+        var settingsOpenCount = 0
+        val session = ScanSessionState(
+            scan = ScanState.WaitingCode128(qrPayload),
+            inputSource = InputSource.CAMERA,
+        )
+        composeRule.setContent {
+            ScanScreen(
+                state = ScanUiState.fromSession(
+                    session = session,
+                    sessionActive = true,
+                    bluetoothIssue = ScannerIssue.POWERED_OFF,
+                    bluetoothFallbackActive = true,
+                ),
+                onAction = actions::add,
+                onOpenBluetoothSettings = { settingsOpenCount += 1 },
+            )
+        }
+
+        composeRule.onNodeWithTag("scan_bluetooth_fallback")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText(
+            InstrumentationRegistry.getInstrumentation().targetContext
+                .getString(R.string.scan_bluetooth_fallback_powered_off),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithTag("scan_bluetooth_reconnect").performClick()
+        composeRule.onNodeWithTag("scan_bluetooth_open_settings").performClick()
+
+        composeRule.runOnIdle {
+            assertTrue(actions.contains(ScanUiAction.ReconnectBluetooth))
+            assertEquals(1, settingsOpenCount)
+        }
     }
 }

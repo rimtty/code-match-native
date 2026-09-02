@@ -70,10 +70,18 @@ class ScanSessionCoordinator(
     var onBluetoothFallback: (() -> Unit)? = null
 
     init {
-        scanner.listener = this
+        // Settings and Scan are separate destinations but observe the same
+        // scanner. Use the fan-out contract so installing this coordinator
+        // never steals the settings observer (or vice versa).
+        scanner.addListener(this)
         // A scanner may already be connected before the scan feature is
         // constructed. It becomes the default only once a session starts.
         handleConnectionState(scanner.connectionState)
+    }
+
+    /** Stop receiving transport callbacks when the owning ViewModel is cleared. */
+    fun dispose() {
+        scanner.removeListener(this)
     }
 
     fun startSession(): ScanReduction {
@@ -198,8 +206,20 @@ class ScanSessionCoordinator(
         }
     }
 
-    /** Explicit reconnect entry point for the settings screen. */
-    fun reconnectKnownDevice(): Boolean = scanner.reconnectKnownDevice()
+    /**
+     * Explicit reconnect entry point for the scan screen.
+     *
+     * A transport can remain connected while its settings restoration has
+     * failed. Treat that as a stale link and ask the adapter for a fresh
+     * handshake rather than reporting the already-connected link as a retry
+     * success. The adapter still owns every protocol operation.
+     */
+    fun reconnectKnownDevice(): Boolean {
+        if (scanner.isConnected && !scanner.isReadyForScanning) {
+            scanner.disconnect()
+        }
+        return scanner.reconnectKnownDevice()
+    }
 
     /** Dispatch a reducer event and apply scanner-related effects. */
     fun dispatch(event: ScanEvent): ScanReduction {

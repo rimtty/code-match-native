@@ -55,6 +55,12 @@ class BleSymbologySession(
         RESTORE_SESSION,
     }
 
+    /** Why a restore was requested; background resumes the logical step. */
+    private enum class RestoreIntent {
+        END_SESSION,
+        BACKGROUND,
+    }
+
     private var mutableState: BleSymbologySessionState = BleSymbologySessionState.Disconnected
     private var mutableConfiguration: ConfigurationState = ConfigurationState.Unavailable
     private var mutableExpectedFormat: ScanFormat? = null
@@ -62,6 +68,9 @@ class BleSymbologySession(
     private var activeSnapshot: SymbologySnapshot? = null
     private var sessionActive = false
     private var pendingSettingsRead: PendingSettingsRead? = null
+    private var pendingRestoreIntent: RestoreIntent? = null
+    private var suspendedForBackground = false
+    private var suspendedExpectedFormat: ScanFormat? = null
     private var connectionGeneration = 0L
     private var commandGeneration = 0L
     private var listener: ((BleSymbologySessionState, ConfigurationState) -> Unit)? = null
@@ -89,11 +98,17 @@ class BleSymbologySession(
     val configurationState: ConfigurationState get() = mutableConfiguration
     val expectedFormat: ScanFormat? get() = mutableExpectedFormat
     val physicalMode: BleSymbologyMode
-        get() = BleSymbologyMode.forExpectedFormat(mutableExpectedFormat)
+        get() = if (sessionActive) {
+            BleSymbologyMode.forExpectedFormat(mutableExpectedFormat)
+        } else {
+            BleSymbologyMode.UNRESTRICTED
+        }
     val preSessionSnapshot: SymbologySnapshot? get() = activeSnapshot
     val currentSnapshot: SymbologySnapshot? get() = freshSnapshot
     val diagnosticEvents get() = diagnostics.snapshot()
     val isSessionActive: Boolean get() = sessionActive
+    /** True while a backgrounded session can be resumed after baseline restore. */
+    val isSuspendedForBackground: Boolean get() = suspendedForBackground
     val isSettingsReadPending: Boolean get() = pendingSettingsRead != null
     val isReadyForScanning: Boolean
         get() = mutableState == BleSymbologySessionState.SessionReady &&
@@ -233,8 +248,7 @@ class BleSymbologySession(
             fail("Scanner settings do not contain QR and Code 128")
             return false
         }
-        apply(Operation.START_SESSION, restricted, expectedFormat)
-        return true
+        return apply(Operation.START_SESSION, restricted, expectedFormat)
     }
 
     /**
@@ -258,15 +272,60 @@ class BleSymbologySession(
         return true
     }
 
-    /** Restore the complete pre-session inventory; Ready follows success only. */
+    /**
+     * Restore the complete pre-session inventory; Ready follows success only.
+     *
+     * If a session-setting write is still in flight, restoration is queued
+     * behind that write. This keeps the one-command boundary intact while
+     * ensuring an end/background request cannot be overtaken by a late
+     * callback from the setting that was being applied.
+     */
     fun endSession(): Boolean {
-        val original = activeSnapshot ?: return false
-        if (!sessionActive || mutableState == BleSymbologySessionState.Restoring) return false
-        mutableState = BleSymbologySessionState.Restoring
-        mutableConfiguration = ConfigurationState.Configuring
-        emit()
-        apply(Operation.RESTORE_SESSION, original.settings, expectedFormat = null)
-        return true
+        return requestRestore(RestoreIntent.END_SESSION)
+    }
+
+    /**
+     * Pause a scanner session for app backgrounding or another input source.
+     *
+     * The physical scanner is restored to its pre-session inventory. The
+     * logical format is retained so a foreground/input-source transition can
+     * start a new fixed QR+Code128 mode without losing the current step.
+     */
+    fun suspendForBackground(): Boolean {
+        if (!sessionActive) return false
+        val previousSuspended = suspendedForBackground
+        val previousExpectedFormat = suspendedExpectedFormat
+        suspendedForBackground = true
+        suspendedExpectedFormat = mutableExpectedFormat
+        val requested = requestRestore(RestoreIntent.BACKGROUND)
+        if (!requested && mutableState != BleSymbologySessionState.AwaitingTransportReset) {
+            // A restore already owned by another lifecycle action (or a local
+            // command-building failure) must not silently turn into a future
+            // auto-resume request.
+            suspendedForBackground = previousSuspended
+            suspendedExpectedFormat = previousExpectedFormat
+        }
+        return requested
+    }
+
+    /**
+     * Re-apply the fixed scanner mode after a successful background restore.
+     * Returns false while a fresh connection/settings handshake is still
+     * pending; the caller may retry after observing [BleSymbologySessionState.Ready].
+     */
+    fun resumeSuspendedSession(): Boolean {
+        if (!suspendedForBackground) return false
+        val expected = suspendedExpectedFormat
+        if (expected == null) {
+            // Camera (or another non-BLE source) had already cleared the
+            // logical format. Baseline is already safe; there is no BLE mode
+            // to resume.
+            suspendedForBackground = false
+            return true
+        }
+        if (sessionActive) return true
+        if (mutableState != BleSymbologySessionState.Ready) return false
+        return startSession(expected)
     }
 
     /**
@@ -288,6 +347,7 @@ class BleSymbologySession(
      */
     fun onTransportDisconnected() {
         pendingSettingsRead = null
+        pendingRestoreIntent = null
         connectionGeneration++
         commandQueue.cancel("transport disconnected")
         commandQueue.resetAfterTransportReset()
@@ -324,25 +384,62 @@ class BleSymbologySession(
         return result
     }
 
+    private fun requestRestore(intent: RestoreIntent): Boolean {
+        val original = activeSnapshot ?: return false
+        if (!sessionActive) return false
+        if (mutableState == BleSymbologySessionState.AwaitingTransportReset) return false
+        if (mutableState == BleSymbologySessionState.Restoring) return false
+
+        if (commandQueue.isInFlight) {
+            // START_SESSION is the only command that can be in flight while
+            // sessionActive is true outside a restore. Defer the restore until
+            // its callback is accepted by the command queue.
+            pendingRestoreIntent = intent
+            mutableState = BleSymbologySessionState.Restoring
+            mutableConfiguration = ConfigurationState.Configuring
+            emit()
+            return true
+        }
+
+        return beginRestore(original, intent)
+    }
+
+    private fun beginRestore(
+        original: SymbologySnapshot,
+        intent: RestoreIntent,
+    ): Boolean {
+        pendingRestoreIntent = null
+        mutableState = BleSymbologySessionState.Restoring
+        mutableConfiguration = ConfigurationState.Configuring
+        emit()
+        return apply(
+            operation = Operation.RESTORE_SESSION,
+            settings = original.settings,
+            expectedFormat = null,
+            preserveExpectedFormat = intent == RestoreIntent.BACKGROUND,
+        )
+    }
+
     private fun apply(
         operation: Operation,
         settings: List<ScannerSettingItem>,
         expectedFormat: ScanFormat?,
-    ) {
+        preserveExpectedFormat: Boolean = false,
+    ): Boolean {
         val snapshot = SymbologySnapshot(device.id, settings, nowMillis())
         val commands = SymbologySettings.commandsFor(snapshot, BleSymbologyMode.UNRESTRICTED)
         if (commands == null) {
             fail("Scanner settings command could not be built")
-            return
+            return false
         }
         val encodedPayload = runCatching { profile.codec.encodeCommands(commands) }.getOrNull()
             ?: run {
                 fail("Scanner settings command could not be encoded")
-                return
+                return false
             }
         if (encodedPayload.isEmpty()) {
             fail("Scanner settings command could not be encoded")
-            return
+            return false
         }
         val command = BleCommand(
             id = "symbology-${++commandGeneration}",
@@ -364,7 +461,9 @@ class BleSymbologySession(
                         Operation.RECOVERY -> {
                             if (clearPersistedSnapshot()) {
                                 freshSnapshot = snapshot
-                                clearActiveSession()
+                                clearActiveSession(
+                                    preserveExpectedFormat = suspendedForBackground,
+                                )
                                 mutableState = BleSymbologySessionState.Ready
                                 mutableConfiguration = ConfigurationState.Ready
                                 diagnostics.configuration("Scanner settings restored")
@@ -373,14 +472,26 @@ class BleSymbologySession(
                             }
                         }
                         Operation.START_SESSION -> {
-                            mutableState = BleSymbologySessionState.SessionReady
-                            mutableConfiguration = ConfigurationState.Ready
-                            diagnostics.configuration("Scanner session settings ready")
+                            val deferredRestore = pendingRestoreIntent
+                            if (deferredRestore != null) {
+                                val original = activeSnapshot
+                                if (original == null) {
+                                    fail("Saved scanner settings are unavailable")
+                                } else {
+                                    beginRestore(original, deferredRestore)
+                                }
+                            } else {
+                                mutableState = BleSymbologySessionState.SessionReady
+                                mutableConfiguration = ConfigurationState.Ready
+                                suspendedForBackground = false
+                                suspendedExpectedFormat = null
+                                diagnostics.configuration("Scanner session settings ready")
+                            }
                         }
                         Operation.RESTORE_SESSION -> {
                             if (clearPersistedSnapshot()) {
                                 freshSnapshot = snapshot
-                                clearActiveSession()
+                                clearActiveSession(preserveExpectedFormat)
                                 mutableState = BleSymbologySessionState.Ready
                                 mutableConfiguration = ConfigurationState.Ready
                                 diagnostics.configuration("Scanner settings restored")
@@ -406,7 +517,9 @@ class BleSymbologySession(
         }
         if (submitted is BleCommandSubmitResult.Rejected) {
             fail("Scanner settings command is not available")
+            return false
         }
+        return true
     }
 
     private fun mergeCurrentAreas(
@@ -443,10 +556,16 @@ class BleSymbologySession(
         diagnostics.error("Scanner configuration failed")
     }
 
-    private fun clearActiveSession() {
+    private fun clearActiveSession(preserveExpectedFormat: Boolean = false) {
         activeSnapshot = null
         sessionActive = false
-        mutableExpectedFormat = null
+        if (preserveExpectedFormat) {
+            mutableExpectedFormat = suspendedExpectedFormat
+        } else {
+            mutableExpectedFormat = null
+            suspendedForBackground = false
+            suspendedExpectedFormat = null
+        }
     }
 
     private fun clearPersistedSnapshot(): Boolean =

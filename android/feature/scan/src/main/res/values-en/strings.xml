@@ -44,6 +44,14 @@
     <string name="scan_bluetooth_waiting">Ready to scan from the connected scanner</string>
     <string name="scan_bluetooth_device_fallback">Bluetooth scanner</string>
     <string name="scan_bluetooth_from">Scanning from %1$s</string>
+    <string name="scan_bluetooth_fallback_title">Switched from Bluetooth to camera</string>
+    <string name="scan_bluetooth_fallback_connection">The scanner connection was lost. Continue with the camera at the current step.</string>
+    <string name="scan_bluetooth_fallback_permission">Bluetooth permission is unavailable. Continue with the camera.</string>
+    <string name="scan_bluetooth_fallback_powered_off">Bluetooth is turned off. Continue with the camera.</string>
+    <string name="scan_bluetooth_fallback_unavailable">The Bluetooth scanner is unavailable. Continue with the camera.</string>
+    <string name="scan_bluetooth_fallback_restore_failed">Scanner settings could not be restored. Continue with the camera.</string>
+    <string name="scan_bluetooth_reconnect">Reconnect Bluetooth</string>
+    <string name="scan_bluetooth_open_settings">Bluetooth settings</string>
     <string name="scan_input_source_label">Input source</string>
     <string name="scan_input_camera">Camera</string>
     <string name="scan_input_bluetooth">Bluetooth</string>

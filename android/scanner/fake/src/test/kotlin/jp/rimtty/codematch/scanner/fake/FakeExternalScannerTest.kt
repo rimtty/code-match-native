@@ -48,6 +48,104 @@ class FakeExternalScannerTest {
     }
 
     @Test
+    fun listenersFanOutWithoutStealingLegacyOrOtherObservers() {
+        val scanner = FakeExternalScanner()
+        val legacyConnections = mutableListOf<ConnectionState>()
+        val settingsConnections = mutableListOf<ConnectionState>()
+        val scanPayloads = mutableListOf<ScanPayload>()
+        val settingsListener = object : ExternalScannerListener {
+            override fun onConnectionStateChanged(state: ConnectionState) {
+                settingsConnections += state
+            }
+        }
+        val scanListener = object : ExternalScannerListener {
+            override fun onScanPayload(payload: ScanPayload) {
+                scanPayloads += payload
+            }
+        }
+        scanner.listener = object : ExternalScannerListener {
+            override fun onConnectionStateChanged(state: ConnectionState) {
+                legacyConnections += state
+            }
+        }
+
+        assertTrue(scanner.addListener(settingsListener))
+        assertTrue(scanner.addListener(scanListener))
+        scanner.startDiscovery()
+        scanner.connect(scanner.devices.single())
+
+        // The legacy property and Settings/Scan observers all receive the
+        // same transport. A settings subscription must not replace the
+        // callback that consumes scanner payloads.
+        assertTrue(legacyConnections.contains(ConnectionState.Searching))
+        assertTrue(settingsConnections.contains(ConnectionState.Connected(scanner.defaultDevice)))
+        assertTrue(scanner.emitPayload("qr-from-fanout", ScanFormat.QR))
+        assertEquals("qr-from-fanout", scanPayloads.single().value)
+
+        val settingsEventCount = settingsConnections.size
+        assertTrue(scanner.removeListener(settingsListener))
+        assertFalse(scanner.removeListener(settingsListener))
+        scanner.disconnect()
+        assertEquals(settingsEventCount, settingsConnections.size)
+        assertTrue(legacyConnections.contains(ConnectionState.Idle))
+        assertTrue(scanPayloads.isNotEmpty())
+        assertTrue(scanner.removeListener(scanListener))
+    }
+
+    @Test
+    fun availabilitySimulationClassifiesPlatformNeutralIssuesAndCanRecover() {
+        val scanner = FakeExternalScanner()
+
+        assertTrue(scanner.simulatePermissionDenied())
+        assertFalse(scanner.startDiscovery())
+        assertEquals(
+            ConnectionState.Unavailable(FakeExternalScanner.PERMISSION_DENIED_REASON),
+            scanner.connectionState,
+        )
+        assertEquals(
+            jp.rimtty.codematch.scanner.api.ScannerIssue.PERMISSION_DENIED,
+            jp.rimtty.codematch.scanner.api.scannerIssueFor(
+                scanner.connectionState,
+                scanner.configurationState,
+            ),
+        )
+        assertTrue(scanner.restoreBluetooth())
+        assertTrue(scanner.startDiscovery())
+
+        assertTrue(scanner.simulatePoweredOff())
+        assertEquals(
+            jp.rimtty.codematch.scanner.api.ScannerIssue.POWERED_OFF,
+            jp.rimtty.codematch.scanner.api.scannerIssueFor(
+                scanner.connectionState,
+                scanner.configurationState,
+            ),
+        )
+    }
+
+    @Test
+    fun restoreFailureStaysNotReadyUntilAReconnect() {
+        val scanner = connectedScanner()
+
+        assertTrue(scanner.simulateRestoreFailure())
+        assertEquals(
+            ConfigurationState.Failed(FakeExternalScanner.DEFAULT_RESTORE_FAILURE),
+            scanner.configurationState,
+        )
+        assertFalse(scanner.isReadyForScanning)
+        assertEquals(
+            jp.rimtty.codematch.scanner.api.ScannerIssue.RESTORE_FAILED,
+            jp.rimtty.codematch.scanner.api.scannerIssueFor(
+                scanner.connectionState,
+                scanner.configurationState,
+            ),
+        )
+
+        assertTrue(scanner.reconnectKnownDevice())
+        assertEquals(ConfigurationState.Ready, scanner.configurationState)
+        assertTrue(scanner.isReadyForScanning)
+    }
+
+    @Test
     fun connectionAndConfigurationFailuresAreExplicitStates() {
         val scanner = FakeExternalScanner()
         scanner.startDiscovery()

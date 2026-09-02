@@ -22,6 +22,8 @@ import jp.rimtty.codematch.feature.scan.toScanSessionCheckpoint
 import jp.rimtty.codematch.scanner.api.ExternalScanner
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanPayload
+import jp.rimtty.codematch.scanner.api.ScannerIssue
+import jp.rimtty.codematch.scanner.api.scannerIssueFor
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -109,6 +111,9 @@ class ScanViewModel @Inject constructor(
     private var endingSession = false
     /** User intent survives a configuration change; the physical host does not. */
     private var cameraResumeOnForeground = false
+    /** Set only when a Bluetooth transport event forced camera fallback. */
+    private var bluetoothFallbackActive = false
+    private var bluetoothFallbackIssue = ScannerIssue.NONE
 
     init {
         initialize()
@@ -137,6 +142,9 @@ class ScanViewModel @Inject constructor(
             ScanUiAction.StopCamera -> runWhenReady { requestCameraStop() }
             is ScanUiAction.SelectInputSource ->
                 runWhenReady { selectInputSource(action.source) }
+
+            ScanUiAction.ReconnectBluetooth ->
+                runWhenReady { reconnectBluetooth() }
 
             is ScanUiAction.ScanReceived ->
                 runWhenReady { coordinator?.submitScanPayload(action.payload) }
@@ -280,11 +288,7 @@ class ScanViewModel @Inject constructor(
         countdownJob = null
         checkpointWriteJob?.cancel()
         checkpointWriteJob = null
-        coordinator?.let { current ->
-            if (scanner.listener === current) {
-                scanner.listener = null
-            }
-        }
+        coordinator?.dispose()
         super.onCleared()
     }
 
@@ -326,9 +330,7 @@ class ScanViewModel @Inject constructor(
         active: MatchSession?,
         checkpoint: ScanSessionCheckpoint? = null,
     ) {
-        coordinator?.let { current ->
-            if (scanner.listener === current) scanner.listener = null
-        }
+        coordinator?.dispose()
 
         activeSessionId = active?.id
         activeSessionName = active?.name
@@ -346,11 +348,28 @@ class ScanViewModel @Inject constructor(
         )
         created.onStateChanged = { publishCoordinatorState() }
         created.onEffects = ::handleEffects
-        created.onInputSourceChanged = {
+        created.onInputSourceChanged = { source ->
+            if (source == InputSource.BLUETOOTH) {
+                // A Ready callback can promote a camera fallback back to BLE
+                // without passing through the manual picker action. Clear
+                // the host's running flags so a later camera selection can
+                // start a fresh CameraX binding.
+                cameraResumeOnForeground = false
+                _state.value = _state.value.copy(
+                    isCameraStarting = false,
+                    isCameraRunning = false,
+                )
+            }
             publishCoordinatorState()
             enqueueCurrentCheckpoint()
         }
         created.onBluetoothFallback = {
+            bluetoothFallbackActive = true
+            bluetoothFallbackIssue = scannerIssueFor(
+                scanner.connectionState,
+                scanner.configurationState,
+            ).takeIf { it != ScannerIssue.NONE }
+                ?: ScannerIssue.CONNECTION_FAILED
             publishCoordinatorState()
             if (_state.value.sessionActive &&
                 _state.value.expectedFormat != null &&
@@ -364,6 +383,8 @@ class ScanViewModel @Inject constructor(
             }
         }
         coordinator = created
+        bluetoothFallbackActive = false
+        bluetoothFallbackIssue = ScannerIssue.NONE
         publishCoordinatorState()
 
         if (active != null) {
@@ -450,9 +471,13 @@ class ScanViewModel @Inject constructor(
             // Selecting a source is not the same as pressing Start camera;
             // the host starts only after the explicit camera action.
             cameraResumeOnForeground = false
+            bluetoothFallbackActive = false
+            bluetoothFallbackIssue = ScannerIssue.NONE
         }
         if (selected && source == InputSource.BLUETOOTH) {
             cameraResumeOnForeground = false
+            bluetoothFallbackActive = false
+            bluetoothFallbackIssue = ScannerIssue.NONE
             _state.value = _state.value.copy(
                 isCameraStarting = false,
                 isCameraRunning = false,
@@ -469,6 +494,23 @@ class ScanViewModel @Inject constructor(
         ) {
             enqueueCurrentCheckpoint()
         }
+    }
+
+    private fun reconnectBluetooth() {
+        val current = coordinator ?: return
+        val reconnected = current.reconnectKnownDevice()
+        if (!reconnected) {
+            // Keep the fallback card visible. The scanner's typed unavailable
+            // or failed state is projected below; no protocol command is
+            // guessed by the UI.
+            publishCoordinatorState()
+            return
+        }
+        if (scanner.isReadyForScanning) {
+            bluetoothFallbackActive = false
+            bluetoothFallbackIssue = ScannerIssue.NONE
+        }
+        publishCoordinatorState()
     }
 
     private fun requestCameraStart() {
@@ -744,6 +786,20 @@ class ScanViewModel @Inject constructor(
     private fun publishCoordinatorState() {
         val current = coordinator
         val session = current?.state ?: ScanSessionState()
+        val currentScannerIssue = scannerIssueFor(
+            scanner.connectionState,
+            scanner.configurationState,
+        )
+        val projectedBluetoothIssue = when {
+            scanner.isReadyForScanning -> {
+                bluetoothFallbackActive = false
+                bluetoothFallbackIssue = ScannerIssue.NONE
+                ScannerIssue.NONE
+            }
+            bluetoothFallbackActive && bluetoothFallbackIssue != ScannerIssue.NONE ->
+                bluetoothFallbackIssue
+            else -> currentScannerIssue
+        }
         _state.value = _state.value.copy(
             sessionActive = activeSessionId != null && session.phase != ScanPhase.IDLE,
             sessionNameDraft = sessionNameDraft,
@@ -751,6 +807,8 @@ class ScanViewModel @Inject constructor(
             session = session,
             bluetoothReady = scanner.isReadyForScanning,
             bluetoothDeviceName = scanner.connectedDevice?.name,
+            bluetoothIssue = projectedBluetoothIssue,
+            bluetoothFallbackActive = bluetoothFallbackActive,
         )
     }
 

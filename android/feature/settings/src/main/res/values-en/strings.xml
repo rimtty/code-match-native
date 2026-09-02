@@ -53,6 +53,23 @@
     <string name="settings_configuration_ready">Configured. Ready to scan.</string>
     <string name="settings_configuration_failed">Scanner configuration failed</string>
 
+    <string name="settings_scanner_permission_title">Bluetooth permission is unavailable</string>
+    <string name="settings_scanner_permission_description">Allow Nearby devices access, then try again.</string>
+    <string name="settings_scanner_powered_off_title">Bluetooth is turned off</string>
+    <string name="settings_scanner_powered_off_description">Turn on Bluetooth on this device, then try again.</string>
+    <string name="settings_scanner_unsupported_title">Bluetooth scanner is unavailable</string>
+    <string name="settings_scanner_unsupported_description">External scanner connections are unavailable on this device. Use camera input instead.</string>
+    <string name="settings_scanner_unavailable_title">Bluetooth scanner is unavailable</string>
+    <string name="settings_scanner_unavailable_description">Check Bluetooth availability, then try again.</string>
+    <string name="settings_scanner_connection_failed_title">Could not connect to the scanner</string>
+    <string name="settings_scanner_connection_failed_description">Make sure the scanner is nearby and is not connected to another device.</string>
+    <string name="settings_scanner_configuration_failed_title">Could not apply scanner settings</string>
+    <string name="settings_scanner_configuration_failed_description">The settings could not be verified, so scanning has not started. Reconnect and try again.</string>
+    <string name="settings_scanner_restore_failed_title">Could not restore scanner settings</string>
+    <string name="settings_scanner_restore_failed_description">Scanning is blocked for safety. Reconnect the scanner to retry restoration.</string>
+    <string name="settings_scanner_retry">Try again</string>
+    <string name="settings_scanner_open_settings">Bluetooth settings</string>
+
     <string name="settings_diagnostics_title">Connection diagnostics</string>
     <string name="settings_diagnostics_empty">No connection or configuration events yet.</string>
     <string name="settings_diagnostic_connection">Connection</string>

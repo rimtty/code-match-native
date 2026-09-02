@@ -1,6 +1,6 @@
 # Android版の現在地
 
-このページは、2026-09-02の `codex/android-m4-ble` 統合監査と、その時点で再実行した証跡を基準にした状態記録です。CIや実機の結果は、このページの文言だけでは更新されません。PRの実行結果、端末記録、生成artifactを証跡として紐付けてください。
+このページは、2026-09-03のBLE事前実装を含む統合監査と、その時点で再実行した証跡を基準にした状態記録です。CIや実機の結果は、このページの文言だけでは更新されません。PRの実行結果、端末記録、生成artifactを証跡として紐付けてください。
 
 ## 実装と証跡の境界
 
@@ -11,9 +11,9 @@
 | History / settings / PDF | Room/DataStore、日英リソース、0件破棄・名称変更・詳細・削除のapp E2E、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test、保存/共有失敗の一般化メッセージと再試行 | 実際の保存先・viewer・共有先アプリを含む実端末の業務受け入れ |
 | Camera | CameraX/ML Kit adapter、ROI、権限・lifecycle・focus、非同期provider/format切替/古いcallback破棄、処理中frameをdrainしてからsession終了する自動test | Pixel/SamsungでQR→Code 128実読取、連続箱、focus結果の完了記録 |
 | Privacy / release | Manifest、backup規則、FileProvider、source/APK/AAB checker | 通信観測、ストア提出回答、署名済み配布物の運用承認 |
-| BLE | SDK/UUID非依存の安全コア、Fake/Unavailable境界、snapshot/queue JVM test、backup除外DataStoreでのsnapshot/既知端末identity再オープンと復元前Ready禁止test | Android adapter、権限、対象scanner通信、実機の全symbology復元、Pixel/Samsung受け入れ |
+| BLE | SDK/UUID非依存の安全コア、`ExternalScanner` facade、注入profile方式の汎用Android GATT transport、複数listener、Fake/Unavailable境界、snapshot/queue/lifecycle JVM test、backup除外DataStoreでのsnapshot/既知端末identity再オープンと復元前Ready禁止test | 実測protocol profile、release接続とNearby権限要求、対象scanner通信、実機の全symbology復元、Pixel/Samsung受け入れ |
 
-ローカル `origin/master` には PR #14 を含むM2 merge commit（`a7573e8`）が見える一方、現在のM3/M4開発ブランチの作業結果とは分けて扱います。現在のrelease構成は `UnavailableExternalScanner` によるカメラ入力のみです。候補Inateck SDKはライセンス、ABI/target SDK、権限、rawログ、scan callbackの評価が未解決で採用保留です（詳細は [`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)）。
+現在のrelease構成は `UnavailableExternalScanner` によるカメラ入力のみです。汎用GATT transportはscanner固有値を持たず、release DI・Manifestへ未接続です。候補Inateck SDKはライセンス、ABI/target SDK、権限、rawログ、scan callbackの評価が未解決で採用保留です（詳細は [`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)）。
 
 ## 再現可能なチェック
 
@@ -34,7 +34,10 @@ bash scripts/verify-release-hardening.sh \
 
 JDK/SDKがない環境ではGradle結果を推測せず、実行不能として記録します。エミュレーター・CIのinstrumentation成功は、カメラの実読取やBLE通信の実機成功を意味しません。
 
-## 2026-09-02 統合検証記録
+## 2026-09-02〜03 統合検証記録
+
+- 2026-09-03のBLE事前実装後、全moduleのJVM test 242件、lint、debug/release APK、release AABが成功した。`scanner:ble`は68件で、汎用GATT transport 7件、`ExternalScanner` facade/lifecycle 11件を含む。release dependency/APK/AAB hardeningはFake、Nearby権限、analytics/crash SDKがない状態で成功した。
+- USB接続Pixel 7（Android 16 / API 36）では、今回変更した`feature:scan` 14件、`feature:settings` 14件、`scanner:ble` 8件の計36件を再実行し、失敗・skip 0だった。これはframework seam、Compose UI、DataStore復旧の証拠であり、対象scannerとのGATT通信証拠ではない。
 
 - Android Studio付属JDK 25とAndroid SDKを明示し、`testDebugUnitTest lintDebug assembleDebug assembleRelease bundleRelease --no-parallel` を実行した。1,117 tasks、JVM test 211件が成功し、cameraの非同期test 13件、appの言語同期test 6件、PDF保存/共有bridge test 12件を含む全JVM test、lint、debug/release APK、release AABが完了した。
 - release dependency reportと生成済みAPK/AABに対してhardening検査を実行し、Fake/analytics/crash依存、不要な権限、FileProvider、backup/D2D resource、全module manifestの検査が成功した。

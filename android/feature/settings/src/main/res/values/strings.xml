@@ -53,6 +53,23 @@
     <string name="settings_configuration_ready">設定済み。読み取りを開始できます。</string>
     <string name="settings_configuration_failed">スキャナ設定に失敗しました</string>
 
+    <string name="settings_scanner_permission_title">Bluetoothの利用が許可されていません</string>
+    <string name="settings_scanner_permission_description">Nearby devicesの権限を許可してから、もう一度お試しください。</string>
+    <string name="settings_scanner_powered_off_title">Bluetoothがオフです</string>
+    <string name="settings_scanner_powered_off_description">端末のBluetoothをオンにしてから、もう一度お試しください。</string>
+    <string name="settings_scanner_unsupported_title">Bluetoothスキャナを利用できません</string>
+    <string name="settings_scanner_unsupported_description">この端末では外部スキャナ接続を利用できません。カメラ入力を使用してください。</string>
+    <string name="settings_scanner_unavailable_title">Bluetoothスキャナを利用できません</string>
+    <string name="settings_scanner_unavailable_description">Bluetoothの状態を確認してから、もう一度お試しください。</string>
+    <string name="settings_scanner_connection_failed_title">スキャナに接続できませんでした</string>
+    <string name="settings_scanner_connection_failed_description">スキャナが近くにあり、ほかの端末へ接続されていないことを確認してください。</string>
+    <string name="settings_scanner_configuration_failed_title">スキャナ設定を適用できませんでした</string>
+    <string name="settings_scanner_configuration_failed_description">設定を確認できなかったため、読み取りを開始していません。再接続してお試しください。</string>
+    <string name="settings_scanner_restore_failed_title">スキャナ設定を復元できませんでした</string>
+    <string name="settings_scanner_restore_failed_description">安全のため読み取りを開始していません。スキャナを再接続して復元をやり直してください。</string>
+    <string name="settings_scanner_retry">もう一度試す</string>
+    <string name="settings_scanner_open_settings">Bluetooth設定</string>
+
     <string name="settings_diagnostics_title">接続診断</string>
     <string name="settings_diagnostics_empty">接続と設定のイベントはまだありません。</string>
     <string name="settings_diagnostic_connection">接続</string>

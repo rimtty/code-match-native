@@ -74,6 +74,7 @@ import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
+import jp.rimtty.codematch.scanner.api.ScannerIssue
 import java.util.Locale
 
 /**
@@ -94,6 +95,8 @@ fun ScanScreen(
     onCameraFocus: (CameraFocusPoint) -> Unit = {},
     /** Opens the app's camera permission page for a permanently denied permission. */
     onOpenCameraSettings: () -> Unit = {},
+    /** Host-owned, testable hook for opening platform Bluetooth settings. */
+    onOpenBluetoothSettings: () -> Unit = {},
     /**
      * Optional language owned by the host's immutable settings state.
      *
@@ -113,6 +116,7 @@ fun ScanScreen(
             cameraPreview = cameraPreview,
             onCameraFocus = onCameraFocus,
             onOpenCameraSettings = onOpenCameraSettings,
+            onOpenBluetoothSettings = onOpenBluetoothSettings,
         )
     }
     if (language == null) {
@@ -132,6 +136,7 @@ private fun ScanScreenContent(
     cameraPreview: CameraPreviewContent?,
     onCameraFocus: (CameraFocusPoint) -> Unit,
     onOpenCameraSettings: () -> Unit,
+    onOpenBluetoothSettings: () -> Unit,
 ) {
     val screenDescription = stringResource(R.string.scan_accessibility_description)
     val countDescription = stringResource(R.string.scan_count_format, state.matchedCount)
@@ -191,6 +196,7 @@ private fun ScanScreenContent(
                 cameraPreview = cameraPreview,
                 onCameraFocus = onCameraFocus,
                 onOpenCameraSettings = onOpenCameraSettings,
+                onOpenBluetoothSettings = onOpenBluetoothSettings,
             )
         } else {
             ScanStartContent(
@@ -212,6 +218,7 @@ fun ScanRoute(
     cameraPreview: CameraPreviewContent? = null,
     onCameraFocus: (CameraFocusPoint) -> Unit = {},
     onOpenCameraSettings: () -> Unit = {},
+    onOpenBluetoothSettings: () -> Unit = {},
     language: AppLanguage? = null,
 ) = ScanScreen(
     state = state,
@@ -221,6 +228,7 @@ fun ScanRoute(
     cameraPreview = cameraPreview,
     onCameraFocus = onCameraFocus,
     onOpenCameraSettings = onOpenCameraSettings,
+    onOpenBluetoothSettings = onOpenBluetoothSettings,
     language = language,
 )
 
@@ -234,6 +242,7 @@ fun ScanDestination(
     cameraPreview: CameraPreviewContent? = null,
     onCameraFocus: (CameraFocusPoint) -> Unit = {},
     onOpenCameraSettings: () -> Unit = {},
+    onOpenBluetoothSettings: () -> Unit = {},
     language: AppLanguage? = null,
 ) = ScanScreen(
     state = state,
@@ -243,6 +252,7 @@ fun ScanDestination(
     cameraPreview = cameraPreview,
     onCameraFocus = onCameraFocus,
     onOpenCameraSettings = onOpenCameraSettings,
+    onOpenBluetoothSettings = onOpenBluetoothSettings,
     language = language,
 )
 
@@ -328,6 +338,7 @@ private fun ScanSessionContent(
     cameraPreview: CameraPreviewContent?,
     onCameraFocus: (CameraFocusPoint) -> Unit,
     onOpenCameraSettings: () -> Unit,
+    onOpenBluetoothSettings: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -350,6 +361,14 @@ private fun ScanSessionContent(
         }
 
         ScanMessage(state)
+
+        if (state.bluetoothFallbackActive) {
+            BluetoothFallbackCard(
+                issue = state.bluetoothIssue,
+                onReconnect = { onAction(ScanUiAction.ReconnectBluetooth) },
+                onOpenBluetoothSettings = onOpenBluetoothSettings,
+            )
+        }
 
         when (state.scan) {
             ScanState.Idle -> Unit
@@ -551,6 +570,91 @@ private fun SourceChoice(
             )
             Spacer(Modifier.width(6.dp))
             Text(label, style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+/**
+ * Explains an automatic BLE-to-camera fallback while preserving the logical
+ * QR/Code 128 step. Retry and system-settings actions are host-owned so this
+ * feature remains Android/Bluetooth independent.
+ */
+@Composable
+private fun BluetoothFallbackCard(
+    issue: ScannerIssue,
+    onReconnect: () -> Unit,
+    onOpenBluetoothSettings: () -> Unit,
+) {
+    val descriptionRes = when (issue) {
+        ScannerIssue.PERMISSION_DENIED -> R.string.scan_bluetooth_fallback_permission
+        ScannerIssue.POWERED_OFF -> R.string.scan_bluetooth_fallback_powered_off
+        ScannerIssue.UNAVAILABLE,
+        ScannerIssue.UNSUPPORTED,
+        -> R.string.scan_bluetooth_fallback_unavailable
+        ScannerIssue.RESTORE_FAILED -> R.string.scan_bluetooth_fallback_restore_failed
+        ScannerIssue.NONE,
+        ScannerIssue.CONNECTION_FAILED,
+        ScannerIssue.CONFIGURATION_FAILED,
+        -> R.string.scan_bluetooth_fallback_connection
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("scan_bluetooth_fallback"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.WarningAmber,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.scan_bluetooth_fallback_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+            Text(
+                text = stringResource(descriptionRes),
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.testTag("scan_bluetooth_fallback_message"),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = onReconnect,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .testTag("scan_bluetooth_reconnect"),
+                ) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.scan_bluetooth_reconnect))
+                }
+                if (issue.requiresSystemSettings) {
+                    OutlinedButton(
+                        onClick = onOpenBluetoothSettings,
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("scan_bluetooth_open_settings"),
+                    ) {
+                        Text(stringResource(R.string.scan_bluetooth_open_settings))
+                    }
+                }
+            }
         }
     }
 }

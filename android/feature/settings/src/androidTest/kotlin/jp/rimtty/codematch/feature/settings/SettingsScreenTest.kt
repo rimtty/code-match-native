@@ -25,6 +25,7 @@ import jp.rimtty.codematch.scanner.api.DiagnosticCategory
 import jp.rimtty.codematch.scanner.api.DiagnosticEvent
 import jp.rimtty.codematch.scanner.api.ScannerDevice
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -312,5 +313,34 @@ class SettingsScreenTest {
         composeRule.onNodeWithTag(SettingsTestTags.CAMERA_ONLY).assertIsDisplayed()
         composeRule.onAllNodesWithTag(SettingsTestTags.SETUP_GUIDE).assertCountEquals(0)
         composeRule.onAllNodesWithTag(SettingsTestTags.SCANNER_SECTION).assertCountEquals(0)
+    }
+
+    @Test
+    fun scannerIssueUsesLocalizedCopyAndHostOwnedSettingsAction() {
+        val actions = mutableListOf<SettingsUiAction>()
+        var settingsOpenCount = 0
+        val privateReason = "permission denied: transport detail that must stay hidden"
+        composeRule.setContent {
+            MaterialTheme {
+                SettingsScreen(
+                    state = SettingsUiState(
+                        connectionState = ConnectionState.Unavailable(privateReason),
+                    ),
+                    onAction = actions::add,
+                    onOpenBluetoothSettings = { settingsOpenCount += 1 },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(SettingsTestTags.SCANNER_ISSUE)
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(SettingsTestTags.SCANNER_ISSUE_MESSAGE).assertIsDisplayed()
+        composeRule.onAllNodesWithText(privateReason).assertCountEquals(0)
+        composeRule.onNodeWithTag(SettingsTestTags.RETRY).performClick()
+        composeRule.onNodeWithTag(SettingsTestTags.OPEN_BLUETOOTH_SETTINGS).performClick()
+
+        assertTrue(actions.contains(SettingsUiAction.RetryScanner))
+        assertEquals(1, settingsOpenCount)
     }
 }

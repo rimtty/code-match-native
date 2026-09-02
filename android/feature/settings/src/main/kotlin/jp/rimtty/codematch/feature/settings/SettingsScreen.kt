@@ -107,6 +107,11 @@ fun SettingsScreen(
     state: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Host-owned callback for opening the platform Bluetooth settings page.
+     * The feature never launches an external Activity by itself.
+     */
+    onOpenBluetoothSettings: () -> Unit = {},
 ) {
     SettingsLocalized(state.language) {
         val screenDescription = stringResource(R.string.settings_accessibility_description)
@@ -134,6 +139,7 @@ fun SettingsScreen(
             SettingsContent(
                 state = state,
                 onAction = onAction,
+                onOpenBluetoothSettings = onOpenBluetoothSettings,
                 contentPadding = innerPadding,
             )
         }
@@ -146,7 +152,13 @@ fun SettingsRoute(
     state: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
     modifier: Modifier = Modifier,
-) = SettingsScreen(state = state, onAction = onAction, modifier = modifier)
+    onOpenBluetoothSettings: () -> Unit = {},
+) = SettingsScreen(
+    state = state,
+    onAction = onAction,
+    modifier = modifier,
+    onOpenBluetoothSettings = onOpenBluetoothSettings,
+)
 
 /** Alias kept small so app integration can choose either naming convention. */
 @Composable
@@ -154,12 +166,19 @@ fun SettingsDestination(
     state: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
     modifier: Modifier = Modifier,
-) = SettingsScreen(state = state, onAction = onAction, modifier = modifier)
+    onOpenBluetoothSettings: () -> Unit = {},
+) = SettingsScreen(
+    state = state,
+    onAction = onAction,
+    modifier = modifier,
+    onOpenBluetoothSettings = onOpenBluetoothSettings,
+)
 
 @Composable
 private fun SettingsContent(
     state: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
+    onOpenBluetoothSettings: () -> Unit,
     contentPadding: PaddingValues,
 ) {
     Column(
@@ -206,7 +225,11 @@ private fun SettingsContent(
                     Text(stringResource(R.string.settings_setup_guide_open))
                 }
             }
-            ScannerCard(state = state, onAction = onAction)
+            ScannerCard(
+                state = state,
+                onAction = onAction,
+                onOpenBluetoothSettings = onOpenBluetoothSettings,
+            )
         }
 
         DiagnosticsCard(events = state.diagnosticEvents)
@@ -753,11 +776,13 @@ private fun CameraOnlyCard() {
 private fun ScannerCard(
     state: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
+    onOpenBluetoothSettings: () -> Unit,
 ) {
     val selectedDevice = state.selectedDevice
     val searching = state.connectionState is ConnectionState.Searching
     val connected = state.connectionState.connectedDevice
     val canReconnect = selectedDevice != null && !state.connectionState.isConnected
+    val scannerIssue = state.resolvedScannerIssue
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -804,6 +829,13 @@ private fun ScannerCard(
                     .fillMaxWidth()
                     .testTag(SettingsTestTags.SCANNER_CONFIGURATION_STATUS),
             )
+            if (scannerIssue.isActionable) {
+                ScannerIssueCard(
+                    issue = scannerIssue,
+                    onRetry = { onAction(SettingsUiAction.RetryScanner) },
+                    onOpenBluetoothSettings = onOpenBluetoothSettings,
+                )
+            }
             if (connected != null) {
                 Text(
                     text = connected.name,
@@ -900,6 +932,70 @@ private fun ScannerCard(
                     Icon(Icons.Outlined.Refresh, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.settings_reconnect))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Localized, actionable scanner failure surface.  Only the typed issue is
+ * rendered; adapter exception/reason strings and scan values are omitted.
+ */
+@Composable
+private fun ScannerIssueCard(
+    issue: jp.rimtty.codematch.scanner.api.ScannerIssue,
+    onRetry: () -> Unit,
+    onOpenBluetoothSettings: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(SettingsTestTags.SCANNER_ISSUE),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(scannerIssueTitle(issue)),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Text(
+                text = stringResource(scannerIssueDescription(issue)),
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.testTag(SettingsTestTags.SCANNER_ISSUE_MESSAGE),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = onRetry,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .testTag(SettingsTestTags.RETRY),
+                ) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.settings_scanner_retry))
+                }
+                if (issue.requiresSystemSettings) {
+                    OutlinedButton(
+                        onClick = onOpenBluetoothSettings,
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag(SettingsTestTags.OPEN_BLUETOOTH_SETTINGS),
+                    ) {
+                        Text(stringResource(R.string.settings_scanner_open_settings))
+                    }
                 }
             }
         }
@@ -1399,6 +1495,48 @@ private fun diagnosticCategoryText(category: DiagnosticCategory): String = strin
         DiagnosticCategory.ERROR -> R.string.settings_diagnostic_error
     },
 )
+
+@androidx.annotation.StringRes
+private fun scannerIssueTitle(
+    issue: jp.rimtty.codematch.scanner.api.ScannerIssue,
+): Int = when (issue) {
+    jp.rimtty.codematch.scanner.api.ScannerIssue.PERMISSION_DENIED ->
+        R.string.settings_scanner_permission_title
+    jp.rimtty.codematch.scanner.api.ScannerIssue.POWERED_OFF ->
+        R.string.settings_scanner_powered_off_title
+    jp.rimtty.codematch.scanner.api.ScannerIssue.UNSUPPORTED ->
+        R.string.settings_scanner_unsupported_title
+    jp.rimtty.codematch.scanner.api.ScannerIssue.UNAVAILABLE ->
+        R.string.settings_scanner_unavailable_title
+    jp.rimtty.codematch.scanner.api.ScannerIssue.CONNECTION_FAILED ->
+        R.string.settings_scanner_connection_failed_title
+    jp.rimtty.codematch.scanner.api.ScannerIssue.CONFIGURATION_FAILED ->
+        R.string.settings_scanner_configuration_failed_title
+    jp.rimtty.codematch.scanner.api.ScannerIssue.RESTORE_FAILED ->
+        R.string.settings_scanner_restore_failed_title
+    jp.rimtty.codematch.scanner.api.ScannerIssue.NONE -> R.string.settings_scanner_title
+}
+
+@androidx.annotation.StringRes
+private fun scannerIssueDescription(
+    issue: jp.rimtty.codematch.scanner.api.ScannerIssue,
+): Int = when (issue) {
+    jp.rimtty.codematch.scanner.api.ScannerIssue.PERMISSION_DENIED ->
+        R.string.settings_scanner_permission_description
+    jp.rimtty.codematch.scanner.api.ScannerIssue.POWERED_OFF ->
+        R.string.settings_scanner_powered_off_description
+    jp.rimtty.codematch.scanner.api.ScannerIssue.UNSUPPORTED ->
+        R.string.settings_scanner_unsupported_description
+    jp.rimtty.codematch.scanner.api.ScannerIssue.UNAVAILABLE ->
+        R.string.settings_scanner_unavailable_description
+    jp.rimtty.codematch.scanner.api.ScannerIssue.CONNECTION_FAILED ->
+        R.string.settings_scanner_connection_failed_description
+    jp.rimtty.codematch.scanner.api.ScannerIssue.CONFIGURATION_FAILED ->
+        R.string.settings_scanner_configuration_failed_description
+    jp.rimtty.codematch.scanner.api.ScannerIssue.RESTORE_FAILED ->
+        R.string.settings_scanner_restore_failed_description
+    jp.rimtty.codematch.scanner.api.ScannerIssue.NONE -> R.string.settings_scanner_description
+}
 
 /** Resolve settings resources from the language carried by immutable UI state. */
 @Composable
