@@ -50,3 +50,36 @@ data class EntryEntity(
     val qrPayload: String?,
     val barcodePayload: String?,
 )
+
+/**
+ * Durable logical scan state for the single active session.
+ *
+ * The session id is both the primary key and a foreign key so a session can
+ * never accumulate multiple competing checkpoints and deleting/finishing an
+ * empty session cannot leave transient scan state behind. Payloads here are
+ * the already accepted values required to resume a comparison; camera frames,
+ * raw transport frames, and diagnostics are intentionally absent.
+ */
+@Entity(
+    tableName = "scan_checkpoints",
+    foreignKeys = [
+        ForeignKey(
+            entity = SessionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["sessionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
+data class ScanCheckpointEntity(
+    @PrimaryKey
+    val sessionId: String,
+    val version: Int,
+    val phase: String,
+    val qrPayload: String?,
+    val barcodePayload: String?,
+    val result: String?,
+    val matchedCount: Int,
+    val inputSource: String,
+    val cameraWasSelectedByUser: Boolean,
+)

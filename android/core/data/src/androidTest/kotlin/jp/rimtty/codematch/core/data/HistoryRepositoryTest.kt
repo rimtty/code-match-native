@@ -4,6 +4,10 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import jp.rimtty.codematch.core.model.EndSessionOutcome
+import jp.rimtty.codematch.core.model.MatchResult
+import jp.rimtty.codematch.core.model.ScanCheckpointInputSource
+import jp.rimtty.codematch.core.model.ScanCheckpointPhase
+import jp.rimtty.codematch.core.model.ScanSessionCheckpoint
 import java.util.UUID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -164,6 +168,68 @@ class HistoryRepositoryTest {
     }
 
     @Test
+    fun checkpointAndMatchSurviveDatabaseReopenWithEntryCountAsSourceOfTruth() = runBlocking {
+        val context = applicationContext()
+        val databaseName = "history-checkpoint-${UUID.randomUUID()}.db"
+        val checkpointId: String
+        try {
+            val firstDatabase = CodeMatchDatabaseFactory.create(context, databaseName)
+            try {
+                val firstRepository = HistoryRepository(firstDatabase)
+                checkpointId = firstRepository.beginSession(name = "checkpoint", at = 100L)
+                val checkpoint = ScanSessionCheckpoint(
+                    sessionId = checkpointId,
+                    phase = ScanCheckpointPhase.RESULT,
+                    qrPayload = "accepted-qr",
+                    barcodePayload = "accepted-barcode",
+                    result = MatchResult.MATCH,
+                    // Deliberately stale: the repository must normalize this
+                    // to the durable entries count in its transaction.
+                    matchedCount = 99,
+                    inputSource = ScanCheckpointInputSource.BLUETOOTH,
+                )
+                assertTrue(firstRepository.saveScanCheckpoint(checkpoint))
+                assertEquals(
+                    1,
+                    firstRepository.recordMatch(
+                        code = "ABC1234567",
+                        qrPayload = checkpoint.qrPayload,
+                        barcodePayload = checkpoint.barcodePayload,
+                        at = 101L,
+                        sessionId = checkpointId,
+                        checkpoint = checkpoint,
+                    ),
+                )
+            } finally {
+                firstDatabase.close()
+            }
+
+            val reopenedDatabase = CodeMatchDatabaseFactory.create(context, databaseName)
+            try {
+                val reopenedRepository = HistoryRepository(reopenedDatabase)
+                val restored = reopenedRepository.getScanCheckpoint(checkpointId)
+                assertEquals(
+                    ScanSessionCheckpoint(
+                        sessionId = checkpointId,
+                        phase = ScanCheckpointPhase.RESULT,
+                        qrPayload = "accepted-qr",
+                        barcodePayload = "accepted-barcode",
+                        result = MatchResult.MATCH,
+                        matchedCount = 1,
+                        inputSource = ScanCheckpointInputSource.BLUETOOTH,
+                    ),
+                    restored,
+                )
+                assertEquals(1, reopenedRepository.activeSession.first()?.matchedCount)
+            } finally {
+                reopenedDatabase.close()
+            }
+        } finally {
+            context.deleteDatabase(databaseName)
+        }
+    }
+
+    @Test
     fun nonBlankRenameSurvivesDatabaseReopen() = runBlocking {
         val context = applicationContext()
         val databaseName = "history-rename-${UUID.randomUUID()}.db"
@@ -205,6 +271,117 @@ class HistoryRepositoryTest {
 
         assertNull(repository.recordMatch("ABC1234567", sessionId = firstId, at = 201L))
         assertEquals(0, repository.activeSession.first()?.matchedCount)
+    }
+
+    @Test
+    fun checkpointUpsertKeepsOneRowAndClearsWhenSessionEnds() = runBlocking {
+        val id = repository.beginSession(at = 100L)
+        val waitingQr = ScanSessionCheckpoint(
+            sessionId = id,
+            phase = ScanCheckpointPhase.WAITING_QR,
+            matchedCount = 99,
+            inputSource = ScanCheckpointInputSource.CAMERA,
+        )
+        assertTrue(repository.saveScanCheckpoint(waitingQr))
+
+        val waitingCode = waitingQr.copy(
+            phase = ScanCheckpointPhase.WAITING_CODE_128,
+            qrPayload = "accepted-qr",
+            inputSource = ScanCheckpointInputSource.BLUETOOTH,
+        )
+        assertTrue(repository.saveScanCheckpoint(waitingCode))
+
+        assertEquals(waitingCode.copy(matchedCount = 0), repository.getScanCheckpoint(id))
+        assertEquals(waitingCode.sessionId, database.scanCheckpointDao().findBySessionId(id)?.sessionId)
+        assertEquals(
+            EndSessionOutcome.DeletedEmpty(id),
+            repository.endSession(id, at = 110L),
+        )
+        assertNull(database.scanCheckpointDao().findBySessionId(id))
+    }
+
+    @Test
+    fun invalidCheckpointIsDiscardedWhileSessionCountIsRetained() = runBlocking {
+        val id = repository.beginSession(at = 100L)
+        repository.recordMatch("ABC1234567", at = 101L)
+        database.scanCheckpointDao().upsert(
+            ScanCheckpointEntity(
+                sessionId = id,
+                version = ScanSessionCheckpoint.CURRENT_VERSION + 1,
+                phase = ScanCheckpointPhase.RESULT.name,
+                qrPayload = "qr",
+                barcodePayload = "barcode",
+                result = MatchResult.MATCH.name,
+                matchedCount = 1,
+                inputSource = ScanCheckpointInputSource.CAMERA.name,
+                cameraWasSelectedByUser = false,
+            ),
+        )
+
+        assertNull(repository.getScanCheckpoint(id))
+        assertEquals(1, repository.activeSession.first()?.matchedCount)
+        assertNull(database.scanCheckpointDao().findBySessionId(id))
+    }
+
+    @Test
+    fun matchAndTerminalCheckpointAreWrittenAtomically() = runBlocking {
+        val id = repository.beginSession(at = 100L)
+        val checkpoint = ScanSessionCheckpoint(
+            sessionId = id,
+            phase = ScanCheckpointPhase.RESULT,
+            qrPayload = "accepted-qr",
+            barcodePayload = "accepted-barcode",
+            result = MatchResult.MATCH,
+            matchedCount = 1,
+            inputSource = ScanCheckpointInputSource.BLUETOOTH,
+        )
+
+        assertEquals(
+            1,
+            repository.recordMatch(
+                code = "ABC1234567",
+                qrPayload = checkpoint.qrPayload,
+                barcodePayload = checkpoint.barcodePayload,
+                at = 101L,
+                sessionId = id,
+                checkpoint = checkpoint,
+            ),
+        )
+        assertEquals(checkpoint, repository.getScanCheckpoint(id))
+        assertEquals(1, database.entryDao().countForSession(id))
+        assertEquals(EndSessionOutcome.Ended(id, 110L), repository.endSession(id, at = 110L))
+        assertNull(database.scanCheckpointDao().findBySessionId(id))
+        assertNull(repository.getScanCheckpoint(id))
+    }
+
+    @Test
+    fun contradictoryTerminalCheckpointIsNotStoredWithAValidEntry() = runBlocking {
+        val id = repository.beginSession(at = 100L)
+        val waiting = ScanSessionCheckpoint(
+            sessionId = id,
+            phase = ScanCheckpointPhase.WAITING_QR,
+            inputSource = ScanCheckpointInputSource.CAMERA,
+        )
+        assertTrue(repository.saveScanCheckpoint(waiting))
+
+        repository.recordMatch(
+            code = "ABC1234567",
+            qrPayload = "actual-qr",
+            barcodePayload = "actual-barcode",
+            at = 101L,
+            sessionId = id,
+            checkpoint = ScanSessionCheckpoint(
+                sessionId = id,
+                phase = ScanCheckpointPhase.RESULT,
+                qrPayload = "other-qr",
+                barcodePayload = "other-barcode",
+                result = MatchResult.MISMATCH,
+                matchedCount = 1,
+            ),
+        )
+
+        assertEquals(waiting.copy(matchedCount = 1), repository.getScanCheckpoint(id))
+        assertEquals(1, database.entryDao().countForSession(id))
     }
 
     private fun applicationContext(): Context =

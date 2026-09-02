@@ -96,3 +96,16 @@ interface EntryDao {
     )
     suspend fun countForCode(sessionId: String, code: String): Int
 }
+
+/** Room access for the one logical scan checkpoint owned by a session. */
+@Dao
+interface ScanCheckpointDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(checkpoint: ScanCheckpointEntity)
+
+    @Query("SELECT * FROM scan_checkpoints WHERE sessionId = :sessionId LIMIT 1")
+    suspend fun findBySessionId(sessionId: String): ScanCheckpointEntity?
+
+    @Query("DELETE FROM scan_checkpoints WHERE sessionId = :sessionId")
+    suspend fun deleteBySessionId(sessionId: String)
+}

@@ -9,6 +9,7 @@ import jp.rimtty.codematch.core.model.AppSettings
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
 import jp.rimtty.codematch.core.model.MatchSession
 import jp.rimtty.codematch.core.model.MatchResult
+import jp.rimtty.codematch.core.model.ScanSessionCheckpoint
 import jp.rimtty.codematch.feedback.FeedbackPlayer
 import jp.rimtty.codematch.feature.scan.ScanEffect
 import jp.rimtty.codematch.feature.scan.CameraPermissionState
@@ -17,10 +18,12 @@ import jp.rimtty.codematch.feature.scan.ScanSessionCoordinator
 import jp.rimtty.codematch.feature.scan.ScanSessionState
 import jp.rimtty.codematch.feature.scan.ScanUiAction
 import jp.rimtty.codematch.feature.scan.ScanUiState
+import jp.rimtty.codematch.feature.scan.toScanSessionCheckpoint
 import jp.rimtty.codematch.scanner.api.ExternalScanner
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanPayload
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -101,6 +104,8 @@ class ScanViewModel @Inject constructor(
     private var sessionNameDraft: String = ""
     private var latestSettings: AppSettings = AppSettings()
     private var countdownJob: Job? = null
+    /** Serializes checkpoint writes so an older QR state cannot overwrite a newer result. */
+    private var checkpointWriteJob: Job? = null
     private var endingSession = false
     /** User intent survives a configuration change; the physical host does not. */
     private var cameraResumeOnForeground = false
@@ -273,6 +278,8 @@ class ScanViewModel @Inject constructor(
     override fun onCleared() {
         countdownJob?.cancel()
         countdownJob = null
+        checkpointWriteJob?.cancel()
+        checkpointWriteJob = null
         coordinator?.let { current ->
             if (scanner.listener === current) {
                 scanner.listener = null
@@ -289,7 +296,10 @@ class ScanViewModel @Inject constructor(
                     historyRepository.activeSession,
                 ) { settings, session -> InitialData(settings, session) }.first()
                 latestSettings = initial.settings
-                installCoordinator(initial.settings, initial.activeSession)
+                val checkpoint = initial.activeSession?.let { active ->
+                    historyRepository.getScanCheckpoint(active.id)
+                }
+                installCoordinator(initial.settings, initial.activeSession, checkpoint)
                 initialized.complete(Unit)
 
                 launch {
@@ -311,7 +321,11 @@ class ScanViewModel @Inject constructor(
         }
     }
 
-    private fun installCoordinator(settings: AppSettings, active: MatchSession?) {
+    private fun installCoordinator(
+        settings: AppSettings,
+        active: MatchSession?,
+        checkpoint: ScanSessionCheckpoint? = null,
+    ) {
         coordinator?.let { current ->
             if (scanner.listener === current) scanner.listener = null
         }
@@ -325,10 +339,14 @@ class ScanViewModel @Inject constructor(
             autoAdvanceEnabled = settings.autoAdvanceEnabled,
             autoAdvanceDelay = settings.autoAdvanceDelay,
             existingMatchedCount = active?.matchedCount ?: 0,
+            restoredCheckpoint = checkpoint,
         )
         created.onStateChanged = { publishCoordinatorState() }
         created.onEffects = ::handleEffects
-        created.onInputSourceChanged = { publishCoordinatorState() }
+        created.onInputSourceChanged = {
+            publishCoordinatorState()
+            enqueueCurrentCheckpoint()
+        }
         created.onBluetoothFallback = {
             publishCoordinatorState()
             if (_state.value.sessionActive &&
@@ -367,10 +385,11 @@ class ScanViewModel @Inject constructor(
             activeSessionName = session?.name ?: requestedName
 
             // beginSession returns an existing active session when another
-            // host won a race. Rebuild only while the local coordinator is
-            // still idle so its injected count remains exact.
-            if (session != null && session.matchedCount != current.state.matchedCount) {
-                installCoordinator(latestSettings, session)
+            // host won a race. Rebuild while the local coordinator is still
+            // idle so its injected count and durable checkpoint are exact.
+            if (session != null && current.state.phase == ScanPhase.IDLE) {
+                val checkpoint = historyRepository.getScanCheckpoint(session.id)
+                installCoordinator(latestSettings, session, checkpoint)
             }
         }
 
@@ -396,6 +415,13 @@ class ScanViewModel @Inject constructor(
                 isCameraRunning = false,
             )
             coordinator?.endSession()
+            // The coordinator's terminal reduction queues a checkpoint clear,
+            // while a preceding QR/terminal write may still be in flight.
+            // Finish those operations before ending the Room session so an
+            // older queued save cannot race the end transaction. The
+            // repository also clears atomically inside endSession() as a
+            // second line of defence for process death or other callers.
+            checkpointWriteJob?.join()
             activeSessionId = null
             activeSessionName = null
             sessionNameDraft = ""
@@ -414,6 +440,8 @@ class ScanViewModel @Inject constructor(
 
     private fun selectInputSource(source: InputSource) {
         val current = coordinator ?: return
+        val previousInputSource = current.inputSource
+        val previousCameraSelection = current.cameraWasSelectedByUser
         val selected = current.selectInputSource(source)
         if (selected && source == InputSource.CAMERA) {
             // Selecting a source is not the same as pressing Start camera;
@@ -428,6 +456,16 @@ class ScanViewModel @Inject constructor(
             )
         }
         publishCoordinatorState()
+        // The explicit-camera bit is part of the checkpoint policy even when
+        // the selected source was already CAMERA (or an unavailable Bluetooth
+        // request kept the source on CAMERA). A real source change is already
+        // persisted by onInputSourceChanged, so enqueue here only when the
+        // policy changed without changing the source.
+        if (previousInputSource == current.inputSource &&
+            previousCameraSelection != current.cameraWasSelectedByUser
+        ) {
+            enqueueCurrentCheckpoint()
+        }
     }
 
     private fun requestCameraStart() {
@@ -514,12 +552,42 @@ class ScanViewModel @Inject constructor(
         // ViewModel was idle; load it and use the same restoration path.
         val session = historyRepository.getSession(sessionId) ?: return
         if (activeSessionId == null && coordinator?.state?.phase == ScanPhase.IDLE) {
-            installCoordinator(latestSettings, session)
+            val checkpoint = historyRepository.getScanCheckpoint(session.id)
+            installCoordinator(latestSettings, session, checkpoint)
         }
     }
 
     private fun handleEffects(effects: List<ScanEffect>) {
         val currentResult = coordinator?.state?.result
+        val currentCheckpoint = coordinator?.state
+            ?.toScanSessionCheckpoint(
+                sessionId = activeSessionId ?: "",
+                cameraWasSelectedByUser = coordinator?.cameraWasSelectedByUser ?: false,
+            )
+        val matchEffect = effects.filterIsInstance<ScanEffect.RecordMatch>().firstOrNull()
+
+        // Persist the logical transition after every state-changing reducer
+        // event. A terminal match uses the repository's atomic entry+
+        // checkpoint transaction; all other non-idle states only replace the
+        // single checkpoint row. Invalid callbacks do not rewrite state.
+        if (matchEffect != null && currentCheckpoint != null) {
+            persistMatch(matchEffect, currentCheckpoint)
+        } else if (activeSessionId != null &&
+            effects.none { it is ScanEffect.InvalidScan }
+        ) {
+            if (effects.any { it === ScanEffect.SessionEnded }) {
+                val sessionId = activeSessionId ?: return
+                enqueueCheckpointOperation {
+                    historyRepository.clearScanCheckpoint(sessionId)
+                }
+            } else if (currentCheckpoint != null) {
+                val checkpoint = currentCheckpoint
+                enqueueCheckpointOperation {
+                    historyRepository.saveScanCheckpoint(checkpoint)
+                }
+            }
+        }
+
         val invalid = effects.filterIsInstance<ScanEffect.InvalidScan>().firstOrNull()
         when {
             invalid != null -> {
@@ -552,9 +620,10 @@ class ScanViewModel @Inject constructor(
                     // Reducer output contains one RecordMatch at most. Taking
                     // the first one protects the integration from accidental
                     // duplicate terminal effects without dropping a valid row.
-                    effects.filterIsInstance<ScanEffect.RecordMatch>()
-                        .firstOrNull()
-                        ?.let(::persistMatch)
+                    // The durable write is queued above together with the
+                    // matching checkpoint, so no second history write is
+                    // started here.
+                    Unit
                 }
                 ScanFeedbackEvent.MISMATCH ->
                     feedbackPlayer.playFailure(
@@ -576,9 +645,12 @@ class ScanViewModel @Inject constructor(
         }
     }
 
-    private fun persistMatch(effect: ScanEffect.RecordMatch) {
+    private fun persistMatch(
+        effect: ScanEffect.RecordMatch,
+        checkpoint: ScanSessionCheckpoint,
+    ) {
         val sessionId = activeSessionId ?: return
-        viewModelScope.launch {
+        enqueueCheckpointOperation {
             // This is the sole history entry write in the scan integration.
             // Do not log or add the payloads to scanner diagnostics.
             historyRepository.recordMatch(
@@ -586,7 +658,36 @@ class ScanViewModel @Inject constructor(
                 qrPayload = effect.qrPayload,
                 barcodePayload = effect.barcodePayload,
                 sessionId = sessionId,
+                checkpoint = checkpoint,
             )
+        }
+    }
+
+    /** Queue writes in reducer order so an older QR state cannot win a race. */
+    private fun enqueueCheckpointOperation(operation: suspend () -> Unit) {
+        val previous = checkpointWriteJob
+        checkpointWriteJob = viewModelScope.launch {
+            try {
+                previous?.join()
+                operation()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                // Persistence failures must not crash the scan UI. The next
+                // state transition can attempt the checkpoint again, while a
+                // missing/corrupt row safely falls back to Waiting QR.
+            }
+        }
+    }
+
+    private fun enqueueCurrentCheckpoint() {
+        val sessionId = activeSessionId ?: return
+        val checkpoint = coordinator?.state?.toScanSessionCheckpoint(
+            sessionId = sessionId,
+            cameraWasSelectedByUser = coordinator?.cameraWasSelectedByUser ?: false,
+        ) ?: return
+        enqueueCheckpointOperation {
+            historyRepository.saveScanCheckpoint(checkpoint)
         }
     }
 
