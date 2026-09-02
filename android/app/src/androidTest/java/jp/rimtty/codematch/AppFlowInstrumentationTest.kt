@@ -312,7 +312,12 @@ class AppFlowInstrumentationTest {
             ),
         )
         waitForText("Code 128を読み取ってください")
-        onNodeWithTag("scan_reread_qr").performClick()
+        // The action follows the waiting card and can be outside the compact
+        // API 31 viewport. Scroll it into view so the click exercises the
+        // action instead of being clipped by the root scroll container.
+        onNodeWithTag("scan_reread_qr")
+            .performScrollTo()
+            .performClick()
         waitForText("QRコードを読み取ってください")
         assertSessionCount(2)
 
@@ -543,6 +548,16 @@ class AppFlowInstrumentationTest {
         onNodeWithTag(SettingsTestTags.AUTO_ADVANCE_SWITCH)
             .performScrollTo()
             .performClick()
+        composeRule.waitUntil(5_000) {
+            try {
+                onNodeWithTag(SettingsTestTags.AUTO_ADVANCE_SWITCH).assertIsOn()
+                true
+            } catch (_: AssertionError) {
+                // Repository updates are asynchronous; slower API images can
+                // recompose after the input event has already completed.
+                false
+            }
+        }
         onNodeWithTag(SettingsTestTags.AUTO_ADVANCE_SWITCH).assertIsOn()
         onAllNodesWithTag(SettingsTestTags.DELAY_CHOICE)
             .get(0)
