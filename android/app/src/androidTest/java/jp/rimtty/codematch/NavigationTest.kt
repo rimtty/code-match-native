@@ -2,6 +2,7 @@ package jp.rimtty.codematch
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -9,6 +10,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.EntryPointAccessors
@@ -170,16 +172,16 @@ class NavigationTest {
             .performClick()
         waitForTag(HistoryTestTags.SESSION_DETAIL)
 
-        waitForTag(HistoryTestTags.GROUP_ROW)
+        composeRule.onNodeWithTag(HistoryTestTags.SESSION_DETAIL)
+            .performScrollToNode(hasTestTag(HistoryTestTags.GROUP_ROW))
         composeRule.onNodeWithTag(HistoryTestTags.GROUP_ROW)
-            .performScrollTo()
             .performClick()
         waitForTag(HistoryTestTags.GROUP_DETAIL)
-        waitForTag(HistoryTestTags.BOX_ROW)
+        composeRule.onNodeWithTag(HistoryTestTags.GROUP_DETAIL)
+            .performScrollToNode(hasTestTag(HistoryTestTags.BOX_ROW))
 
         composeRule.onAllNodesWithTag(HistoryTestTags.BOX_ROW)
             .get(0)
-            .performScrollTo()
             .performClick()
         waitForTag(HistoryTestTags.ENTRY_DETAIL)
     }

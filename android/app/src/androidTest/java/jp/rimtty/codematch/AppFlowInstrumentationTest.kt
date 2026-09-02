@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -18,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -399,14 +401,14 @@ class AppFlowInstrumentationTest {
         waitForTag(HistoryTestTags.SESSION_DETAIL)
 
         // The single persisted part is exposed as one group and one box.
-        waitForTag(HistoryTestTags.GROUP_ROW)
+        onNodeWithTag(HistoryTestTags.SESSION_DETAIL)
+            .performScrollToNode(hasTestTag(HistoryTestTags.GROUP_ROW))
         onNodeWithTag(HistoryTestTags.GROUP_ROW)
-            .performScrollTo()
             .performClick()
         waitForTag(HistoryTestTags.GROUP_DETAIL)
-        waitForTag(HistoryTestTags.BOX_ROW)
+        onNodeWithTag(HistoryTestTags.GROUP_DETAIL)
+            .performScrollToNode(hasTestTag(HistoryTestTags.BOX_ROW))
         onNodeWithTag(HistoryTestTags.BOX_ROW)
-            .performScrollTo()
             .performClick()
         waitForTag(HistoryTestTags.ENTRY_DETAIL)
         // The code is intentionally rendered in both the normalized and
