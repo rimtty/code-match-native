@@ -46,6 +46,10 @@ class BleScannerSessionCoordinator(
 ) : BleScannerListener {
     private var listener: ((BleScannerSessionState) -> Unit)? = null
     private var closed = false
+    private var applicationActive = true
+    private var pendingManualDisconnect = false
+    private var observedConnectedDeviceId: String? = null
+    private var observedConnectedLinkGeneration: Long? = null
     private var synchronizingConfiguration = false
     private var mutableState: BleScannerSessionState = stateFromCurrentValues()
 
@@ -65,6 +69,8 @@ class BleScannerSessionCoordinator(
                     synchronizingConfiguration = false
                 }
             }
+            resumeSuspendedSessionIfPossible()
+            completePendingManualDisconnectIfSafe()
             publish()
         }
         reconcileConnection(connectionCoordinator.state.connection)
@@ -73,6 +79,18 @@ class BleScannerSessionCoordinator(
 
     val state: BleScannerSessionState
         get() = mutableState
+
+    /** Devices currently reported by the adapter's discovery coordinator. */
+    val devices: List<ScannerDevice>
+        get() = connectionCoordinator.devices
+
+    /** Whether the physical QR+Code128 session has not yet been restored. */
+    val isSessionActive: Boolean
+        get() = symbologySession.isSessionActive
+
+    /** Whether a backgrounded session is waiting for foreground resumption. */
+    val isSuspendedForBackground: Boolean
+        get() = symbologySession.isSuspendedForBackground
 
     val device: ScannerDevice
         get() = symbologySession.scannerDevice
@@ -100,6 +118,19 @@ class BleScannerSessionCoordinator(
 
     fun disconnect(): Boolean {
         if (closed) return false
+        val symbologyState = symbologySession.state
+        if (symbologyState == BleSymbologySessionState.Restoring) {
+            pendingManualDisconnect = true
+            return true
+        }
+        if (symbologySession.isSessionActive) {
+            pendingManualDisconnect = true
+            if (symbologySession.endSession()) return true
+            // A timed-out link cannot accept a restore command. The transport
+            // is still closed below, while the persisted snapshot remains for
+            // recovery on the next connection.
+        }
+        pendingManualDisconnect = false
         return connectionCoordinator.disconnect()
     }
 
@@ -128,7 +159,29 @@ class BleScannerSessionCoordinator(
     /** Forward the host lifecycle state without importing Android Lifecycle. */
     fun setApplicationActive(active: Boolean, atMillis: Long) {
         if (closed) return
+        if (applicationActive == active) return
+        applicationActive = active
+        if (!active && symbologySession.isSettingsReadPending) {
+            // Invalidate a read callback before closing the link. Otherwise a
+            // response arriving after backgrounding could publish Ready while
+            // the adapter is no longer owned by the active host.
+            symbologySession.onTransportDisconnected()
+            connectionCoordinator.disconnect()
+        } else if (!active) {
+            // Restore baseline while the adapter is still foregrounded so a
+            // background transition cannot strand a restricted scanner.
+            symbologySession.suspendForBackground()
+        }
         connectionCoordinator.setApplicationActive(active, atMillis)
+        if (active) {
+            // A connected adapter may have stayed alive while the app was in
+            // the background. Reconcile it now, then resume the logical step
+            // only after the fresh settings/restore boundary is complete.
+            reconcileConnection(connectionCoordinator.state.connection)
+            resumeSuspendedSessionIfPossible()
+        }
+        completePendingManualDisconnectIfSafe()
+        publish()
     }
 
     /** A transport timeout must be acknowledged only after the link is closed. */
@@ -164,11 +217,12 @@ class BleScannerSessionCoordinator(
     override fun onStateChanged(state: BleScannerState) {
         if (closed) return
         reconcileConnection(state.connection)
+        completePendingManualDisconnectIfSafe()
         publish()
     }
 
     override fun onScanPayload(payload: ScanPayload) {
-        if (closed || !mutableState.isReadyForScanning) return
+        if (closed || !applicationActive || !mutableState.isReadyForScanning) return
         // A coordinator for a BLE transport must never forward a callback
         // mislabeled as camera input. Dropping it is safer than recording it.
         if (payload.source != InputSource.BLUETOOTH) return
@@ -183,16 +237,33 @@ class BleScannerSessionCoordinator(
     private fun reconcileConnection(connection: BleConnectionState) {
         if (closed) return
         val connected = connection.connectedDevice
+        if (!applicationActive) {
+            if (connected == null &&
+                symbologySession.state != BleSymbologySessionState.Disconnected &&
+                symbologySession.state != BleSymbologySessionState.AwaitingTransportReset
+            ) {
+                symbologySession.onTransportDisconnected()
+            }
+            return
+        }
         if (connected?.id == device.id) {
+            val isNewPhysicalLink = observedConnectedDeviceId != connected.id ||
+                (connectionCoordinator.currentLinkGeneration != null &&
+                    connectionCoordinator.currentLinkGeneration != observedConnectedLinkGeneration)
             when (symbologySession.state) {
                 BleSymbologySessionState.Disconnected,
                 BleSymbologySessionState.AwaitingReconnect,
                 is BleSymbologySessionState.Failed,
-                -> symbologySession.onConnected()
+                -> if (isNewPhysicalLink) symbologySession.onConnected()
                 else -> Unit
             }
+            observedConnectedDeviceId = connected.id
+            observedConnectedLinkGeneration = connectionCoordinator.currentLinkGeneration
             return
         }
+
+        observedConnectedDeviceId = null
+        observedConnectedLinkGeneration = null
 
         // Do not release an awaiting-timeout command until the adapter
         // explicitly acknowledges transport reset. Every other non-connected
@@ -202,6 +273,29 @@ class BleScannerSessionCoordinator(
         ) {
             symbologySession.onTransportDisconnected()
         }
+    }
+
+    private fun resumeSuspendedSessionIfPossible() {
+        if (!applicationActive) return
+        if (connectionCoordinator.connectionState.connectedDevice?.id != device.id) return
+        if (symbologySession.state != BleSymbologySessionState.Ready) return
+        symbologySession.resumeSuspendedSession()
+    }
+
+    private fun completePendingManualDisconnectIfSafe() {
+        if (!pendingManualDisconnect) return
+        if (connectionCoordinator.connectionState.connectedDevice == null) {
+            pendingManualDisconnect = false
+            return
+        }
+        when (symbologySession.state) {
+            BleSymbologySessionState.Restoring,
+            BleSymbologySessionState.AwaitingTransportReset,
+            -> return
+            else -> Unit
+        }
+        pendingManualDisconnect = false
+        connectionCoordinator.disconnect()
     }
 
     private fun isConnectedToBoundDevice(): Boolean =

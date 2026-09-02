@@ -1,0 +1,499 @@
+package jp.rimtty.codematch.scanner.ble
+
+import jp.rimtty.codematch.scanner.api.ConfigurationState
+import jp.rimtty.codematch.scanner.api.ConnectionState
+import jp.rimtty.codematch.scanner.api.ExternalScannerListener
+import jp.rimtty.codematch.scanner.api.InputSource
+import jp.rimtty.codematch.scanner.api.ScanFormat
+import jp.rimtty.codematch.scanner.api.ScanPayload
+import jp.rimtty.codematch.scanner.api.ScannerDevice
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** Crosses the same facade boundary used by the future production app adapter. */
+class BleExternalScannerTest {
+    private val device = ScannerDevice("scanner-1", "observed scanner")
+    private val profileIdentity = "adapter-profile-v1"
+
+    @Test
+    fun facadeMapsExternalScannerStateAndKeepsPayloadsOutOfDiagnostics() {
+        val transport = RecordingTransport()
+        val (_, _, scanner) = createStack(transport)
+        val received = mutableListOf<ScanPayload>()
+        val states = mutableListOf<ConnectionState>()
+        val configurations = mutableListOf<ConfigurationState>()
+        scanner.listener = object : ExternalScannerListener {
+            override fun onConnectionStateChanged(state: ConnectionState) {
+                states += state
+            }
+
+            override fun onConfigurationStateChanged(state: ConfigurationState) {
+                configurations += state
+            }
+
+            override fun onScanPayload(payload: ScanPayload) {
+                received += payload
+            }
+        }
+
+        assertTrue(scanner.connect(device))
+        transport.emit(BleTransportEvent.Connected(device))
+        assertEquals(ConnectionState.Connected(device), scanner.connectionState)
+        assertEquals(ConfigurationState.Configuring, scanner.configurationState)
+        assertFalse(scanner.isReadyForScanning)
+
+        transport.completeRead(originalSettings())
+        assertEquals(ConfigurationState.Ready, scanner.configurationState)
+        assertTrue(configurations.contains(ConfigurationState.Configuring))
+        assertTrue(configurations.contains(ConfigurationState.Ready))
+        assertFalse(scanner.isReadyForScanning)
+
+        assertTrue(scanner.setExpectedFormat(ScanFormat.QR))
+        assertEquals(1, transport.writes.size)
+        assertFalse(scanner.isReadyForScanning)
+        transport.completeWrite(0, Result.success(Unit))
+        assertTrue(scanner.isReadyForScanning)
+
+        val privateValue = "PRIVATE-BLE-SCAN"
+        transport.emit(
+            BleTransportEvent.ScanReceived(
+                ScanPayload.qr(
+                    privateValue,
+                    source = InputSource.BLUETOOTH,
+                    timestampMillis = 100L,
+                ),
+            ),
+        )
+        transport.emit(
+            BleTransportEvent.ScanReceived(
+                ScanPayload.qr("camera-value", source = InputSource.CAMERA),
+            ),
+        )
+
+        assertEquals(listOf(privateValue), received.map(ScanPayload::value))
+        assertTrue(scanner.diagnosticEvents.none { it.message.contains(privateValue) })
+        assertTrue(states.contains(ConnectionState.Connected(device)))
+    }
+
+    @Test
+    fun nullableFormatRestoresBaselineAndManualDisconnectWaitsForRestore() {
+        val transport = RecordingTransport()
+        val (session, _, scanner) = createStack(transport)
+        startReadySession(transport, scanner)
+
+        assertTrue(scanner.setExpectedFormat(null))
+        assertEquals(2, transport.writes.size)
+        assertEquals(ConnectionState.Connected(device), scanner.connectionState)
+        assertFalse(scanner.isReadyForScanning)
+
+        transport.completeWrite(1, Result.success(Unit))
+        assertNull(scanner.expectedFormat)
+        assertEquals(BleSymbologySessionState.Ready, session.state)
+        assertEquals(BleSymbologyMode.UNRESTRICTED, session.physicalMode)
+        assertFalse(scanner.isReadyForScanning)
+
+        // A second end request is a no-op once the physical baseline is safe.
+        assertFalse(scanner.setExpectedFormat(null))
+        assertTrue(scanner.disconnect())
+        assertEquals(1, transport.disconnectCalls.size)
+        assertEquals(BleSymbologySessionState.Disconnected, session.state)
+    }
+
+    @Test
+    fun manualDisconnectDefersTransportCloseUntilBaselineRestoreCompletes() {
+        val transport = RecordingTransport()
+        val (session, _, scanner) = createStack(transport)
+        startReadySession(transport, scanner)
+
+        assertTrue(scanner.disconnect())
+        assertEquals(2, transport.writes.size)
+        assertEquals(0, transport.disconnectCalls.size)
+        assertEquals(ConnectionState.Connected(device), scanner.connectionState)
+        assertFalse(scanner.isReadyForScanning)
+
+        transport.completeWrite(1, Result.success(Unit))
+        assertEquals(1, transport.disconnectCalls.size)
+        assertEquals(ConnectionState.Idle, scanner.connectionState)
+        assertEquals(BleSymbologySessionState.Disconnected, session.state)
+        assertFalse(scanner.isReadyForScanning)
+    }
+
+    @Test
+    fun backgroundRestoresBaselineAndForegroundReappliesTheSameLogicalStep() {
+        val transport = RecordingTransport()
+        val (session, bridge, scanner) = createStack(transport)
+        startReadySession(transport, scanner)
+
+        scanner.setApplicationActive(false, atMillis = 10L)
+        assertEquals(2, transport.writes.size)
+        assertEquals(ScanFormat.QR, scanner.expectedFormat)
+        assertFalse(scanner.isReadyForScanning)
+
+        val dropped = mutableListOf<ScanPayload>()
+        scanner.listener = object : ExternalScannerListener {
+            override fun onScanPayload(payload: ScanPayload) {
+                dropped += payload
+            }
+        }
+        transport.emit(BleTransportEvent.ScanReceived(ScanPayload.qr("background-value")))
+        assertTrue(dropped.isEmpty())
+
+        transport.completeWrite(1, Result.success(Unit))
+        assertEquals(BleSymbologyMode.UNRESTRICTED, session.physicalMode)
+        assertTrue(bridge.isSuspendedForBackground)
+        assertFalse(scanner.isReadyForScanning)
+
+        scanner.setApplicationActive(true, atMillis = 20L)
+        assertEquals(3, transport.writes.size)
+        assertEquals(ScanFormat.QR, scanner.expectedFormat)
+        assertFalse(scanner.isReadyForScanning)
+        transport.completeWrite(2, Result.success(Unit))
+        assertTrue(scanner.isReadyForScanning)
+        assertFalse(bridge.isSuspendedForBackground)
+
+        // The QR -> Code128 transition remains logical and does not write.
+        assertTrue(scanner.setExpectedFormat(ScanFormat.CODE_128))
+        assertEquals(3, transport.writes.size)
+        assertEquals(ScanFormat.CODE_128, scanner.expectedFormat)
+    }
+
+    @Test
+    fun failedRestoreKeepsSnapshotNonReadyAndCanBeRetriedWithoutLateCallback() {
+        val transport = RecordingTransport()
+        val store = InMemorySymbologySnapshotStore(profileIdentity)
+        val (session, _, scanner) = createStack(transport, snapshotStore = store)
+        startReadySession(transport, scanner)
+
+        assertTrue(scanner.setExpectedFormat(null))
+        transport.completeWrite(1, Result.failure(IllegalStateException("write failed")))
+        assertTrue(session.state is BleSymbologySessionState.Failed)
+        assertTrue(scanner.configurationState is ConfigurationState.Failed)
+        assertFalse(scanner.isReadyForScanning)
+        assertNotNull(store.load(device.id))
+
+        // A duplicate/late callback from the failed command cannot clear the
+        // snapshot or publish Ready after the queue accepted no new command.
+        transport.completeWrite(1, Result.success(Unit))
+        assertTrue(session.state is BleSymbologySessionState.Failed)
+        assertNotNull(store.load(device.id))
+
+        // Retrying the nullable API starts one new restore command only.
+        assertTrue(scanner.setExpectedFormat(null))
+        assertEquals(3, transport.writes.size)
+        transport.completeWrite(2, Result.success(Unit))
+        assertEquals(BleSymbologySessionState.Ready, session.state)
+        assertFalse(scanner.isReadyForScanning)
+        assertNull(store.load(device.id))
+    }
+
+    @Test
+    fun endRequestedDuringSessionApplyQueuesRestoreAndRejectsLateStartCallback() {
+        val transport = RecordingTransport()
+        val (session, _, scanner) = createStack(transport)
+        connectAndRead(transport, scanner)
+
+        assertTrue(scanner.setExpectedFormat(ScanFormat.QR))
+        assertEquals(1, transport.writes.size)
+        assertTrue(scanner.setExpectedFormat(null))
+        assertEquals(1, transport.writes.size)
+        assertEquals(BleSymbologySessionState.Restoring, session.state)
+
+        transport.completeWrite(0, Result.success(Unit))
+        assertEquals(2, transport.writes.size)
+        assertEquals(BleSymbologySessionState.Restoring, session.state)
+
+        // The old callback is delivered after the restore is in flight. The
+        // command generation boundary ignores it and does not stack a write.
+        transport.completeWrite(0, Result.success(Unit))
+        assertEquals(2, transport.writes.size)
+        assertEquals(BleSymbologySessionState.Restoring, session.state)
+
+        transport.completeWrite(1, Result.success(Unit))
+        assertEquals(BleSymbologySessionState.Ready, session.state)
+        assertFalse(scanner.isReadyForScanning)
+    }
+
+    @Test
+    fun unexpectedDisconnectRetainsSnapshotAndReconnectsIntoRecoveryBeforeReady() {
+        var now = 0L
+        val transport = RecordingTransport()
+        val store = InMemorySymbologySnapshotStore(profileIdentity)
+        val (session, bridge, scanner) = createStack(
+            transport = transport,
+            snapshotStore = store,
+            nowMillis = { now },
+            reconnectDelayMillis = { 100L },
+        )
+        startReadySession(transport, scanner)
+
+        transport.emit(
+            BleTransportEvent.Disconnected(
+                device = device,
+                unexpected = true,
+            ),
+        )
+        assertEquals(
+            ConnectionState.Failed("Bluetooth scanner disconnected"),
+            scanner.connectionState,
+        )
+        assertEquals(BleSymbologySessionState.Disconnected, session.state)
+        assertFalse(scanner.isReadyForScanning)
+        assertNotNull(store.load(device.id))
+
+        now = 100L
+        assertTrue(bridge.tick(now).connectionOperationStarted)
+        transport.emit(BleTransportEvent.Connected(device))
+        transport.completeRead(restrictedSettings())
+        assertEquals(BleSymbologySessionState.Restoring, session.state)
+        assertFalse(scanner.isReadyForScanning)
+        assertEquals(2, transport.writes.size)
+
+        transport.completeWrite(1, Result.success(Unit))
+        assertEquals(BleSymbologySessionState.Ready, session.state)
+        assertFalse(scanner.isReadyForScanning)
+        assertNull(store.load(device.id))
+    }
+
+    @Test
+    fun timeoutRequiresResetAndLateCallbackCannotOpenFacadeForScanning() {
+        var now = 0L
+        val transport = RecordingTransport()
+        val store = InMemorySymbologySnapshotStore(profileIdentity)
+        val (session, bridge, scanner) = createStack(
+            transport = transport,
+            snapshotStore = store,
+            nowMillis = { now },
+        )
+        connectAndRead(transport, scanner)
+        assertTrue(scanner.setExpectedFormat(ScanFormat.QR))
+        assertEquals(1, transport.writes.size)
+
+        now = 3_000L
+        assertTrue(bridge.tick(now).command is BleCommandTickResult.TimedOut)
+        assertEquals(BleSymbologySessionState.AwaitingTransportReset, session.state)
+        assertFalse(scanner.isReadyForScanning)
+        assertEquals(1, transport.disconnectCalls.size)
+
+        // The old command callback is late and must not make the facade ready.
+        transport.completeWrite(0, Result.success(Unit))
+        assertEquals(BleSymbologySessionState.AwaitingTransportReset, session.state)
+        assertFalse(scanner.setExpectedFormat(ScanFormat.CODE_128))
+        assertEquals(1, transport.writes.size)
+
+        transport.emit(
+            BleTransportEvent.Disconnected(
+                device = device,
+                unexpected = false,
+            ),
+        )
+        bridge.onTransportResetCompleted()
+        assertEquals(BleSymbologySessionState.AwaitingReconnect, session.state)
+        assertTrue(scanner.reconnectKnownDevice())
+        transport.emit(BleTransportEvent.Connected(device))
+        transport.completeRead(restrictedSettings())
+        assertEquals(BleSymbologySessionState.Restoring, session.state)
+        assertEquals(2, transport.writes.size)
+        transport.completeWrite(1, Result.success(Unit))
+        assertEquals(BleSymbologySessionState.Ready, session.state)
+        assertFalse(scanner.isReadyForScanning)
+        assertNull(store.load(device.id))
+    }
+
+    @Test
+    fun failedSuspendRequestDoesNotLeaveAStaleAutoResumeFlag() {
+        val transport = RecordingTransport()
+        val (session, _, scanner) = createStack(transport)
+        startReadySession(transport, scanner)
+
+        assertTrue(session.endSession())
+        assertFalse(session.suspendForBackground())
+        assertFalse(session.isSuspendedForBackground)
+        transport.completeWrite(1, Result.success(Unit))
+        assertEquals(BleSymbologySessionState.Ready, session.state)
+        assertFalse(scanner.isReadyForScanning)
+    }
+
+    @Test
+    fun relaunchUsesKnownIdentityAndRestoresPersistedSnapshotBeforeReady() {
+        val snapshotStore = InMemorySymbologySnapshotStore(profileIdentity)
+        val knownStore = InMemoryKnownDeviceStore(profileIdentity)
+        val firstTransport = RecordingTransport()
+        val (_, _, firstScanner) = createStack(firstTransport, snapshotStore, knownStore)
+        startReadySession(firstTransport, firstScanner)
+
+        // A new process/service instance receives a fresh transport and the
+        // same app-private stores. The scanner is currently restricted, so the
+        // second read reflects the restricted values, not the saved baseline.
+        val relaunchedTransport = RecordingTransport()
+        val (reloadedSession, _, reloadedScanner) = createStack(
+            relaunchedTransport,
+            snapshotStore,
+            knownStore,
+        )
+        assertTrue(reloadedScanner.reconnectKnownDevice())
+        assertEquals(listOf(device), relaunchedTransport.connectCalls)
+        relaunchedTransport.emit(BleTransportEvent.Connected(device))
+        assertEquals(BleSymbologySessionState.LoadingSettings, reloadedSession.state)
+        relaunchedTransport.completeRead(restrictedSettings())
+        assertEquals(BleSymbologySessionState.Restoring, reloadedSession.state)
+        assertFalse(reloadedScanner.isReadyForScanning)
+        assertEquals(1, relaunchedTransport.writes.size)
+
+        relaunchedTransport.completeWrite(0, Result.success(Unit))
+        assertEquals(BleSymbologySessionState.Ready, reloadedSession.state)
+        assertFalse(reloadedScanner.isReadyForScanning)
+        assertNull(snapshotStore.load(device.id))
+    }
+
+    private fun startReadySession(
+        transport: RecordingTransport,
+        scanner: BleExternalScanner,
+    ) {
+        connectAndRead(transport, scanner)
+        assertTrue(scanner.setExpectedFormat(ScanFormat.QR))
+        transport.completeWrite(0, Result.success(Unit))
+    }
+
+    private fun connectAndRead(
+        transport: RecordingTransport,
+        scanner: BleExternalScanner,
+    ) {
+        assertTrue(scanner.connect(device))
+        transport.emit(BleTransportEvent.Connected(device))
+        transport.completeRead(originalSettings())
+        assertEquals(ConfigurationState.Ready, scanner.configurationState)
+    }
+
+    private fun createStack(
+        transport: RecordingTransport,
+        snapshotStore: InMemorySymbologySnapshotStore =
+            InMemorySymbologySnapshotStore(profileIdentity),
+        knownStore: KnownDeviceStore = InMemoryKnownDeviceStore(profileIdentity),
+        nowMillis: () -> Long = { System.currentTimeMillis() },
+        reconnectDelayMillis: (Int) -> Long = { 8_000L },
+    ): Triple<BleSymbologySession, BleScannerSessionCoordinator, BleExternalScanner> {
+        val connection = BleConnectionCoordinator(
+            transport = transport,
+            knownDeviceStore = knownStore,
+            nowMillis = nowMillis,
+            reconnectDelayMillis = reconnectDelayMillis,
+        )
+        val session = BleSymbologySession(
+            device = device,
+            transport = transport,
+            profile = BleSymbologyProfile(
+                settingsCharacteristicUuid = "adapter-settings-endpoint",
+                codec = IosObservedSymbologyCodec,
+                identity = profileIdentity,
+            ),
+            snapshotStore = snapshotStore,
+            nowMillis = nowMillis,
+        )
+        val bridge = BleScannerSessionCoordinator(connection, session)
+        return Triple(session, bridge, BleExternalScanner(bridge))
+    }
+
+    private class RecordingTransport : BleTransport {
+        override var availability: BleAvailability = BleAvailability.Ready
+        override var readiness: BleTransportReadiness = BleTransportReadiness()
+        override var listener: BleTransportListener? = null
+        val connectCalls = mutableListOf<ScannerDevice>()
+        val disconnectCalls = mutableListOf<ScannerDevice>()
+        val readCallbacks = mutableListOf<(Result<ByteArray>) -> Unit>()
+        val writeCallbacks = mutableListOf<(Result<Unit>) -> Unit>()
+        val writes = mutableListOf<ByteArray>()
+
+        override fun startDiscovery(): Boolean = true
+
+        override fun stopDiscovery(): Boolean = true
+
+        override fun connect(device: ScannerDevice): Boolean {
+            connectCalls += device
+            return true
+        }
+
+        override fun disconnect(device: ScannerDevice): Boolean {
+            disconnectCalls += device
+            return true
+        }
+
+        override fun write(
+            characteristicUuid: String,
+            payload: ByteArray,
+            completion: (Result<Unit>) -> Unit,
+        ): Boolean {
+            writes += payload.copyOf()
+            writeCallbacks += completion
+            return true
+        }
+
+        override fun read(
+            characteristicUuid: String,
+            completion: (Result<ByteArray>) -> Unit,
+        ): Boolean {
+            readCallbacks += completion
+            return true
+        }
+
+        fun emit(event: BleTransportEvent) {
+            listener?.onTransportEvent(event)
+        }
+
+        fun completeRead(json: String) {
+            // Keep stale callbacks available for explicit late-callback tests,
+            // but complete the newest read after a reconnect.
+            readCallbacks.last()(Result.success(json.toByteArray(Charsets.UTF_8)))
+        }
+
+        fun completeWrite(index: Int, result: Result<Unit>) {
+            writeCallbacks[index](result)
+        }
+    }
+
+    private class InMemoryKnownDeviceStore(
+        override val profileIdentity: String,
+    ) : KnownDeviceStore {
+        private var saved: ScannerDevice? = null
+
+        override fun read(): BleKnownDeviceReadResult = saved?.let {
+            BleKnownDeviceReadResult.Found(it)
+        } ?: BleKnownDeviceReadResult.Missing
+
+        override fun save(device: ScannerDevice): BleKnownDeviceWriteResult {
+            saved = device
+            return BleKnownDeviceWriteResult.Saved
+        }
+
+        override fun clear(expectedDeviceId: String?): BleKnownDeviceClearResult {
+            if (saved == null) return BleKnownDeviceClearResult.Missing
+            if (expectedDeviceId != null && expectedDeviceId != saved?.id) {
+                return BleKnownDeviceClearResult.Rejected(
+                    BleKnownDeviceRejectionReason.DEVICE_MISMATCH,
+                )
+            }
+            saved = null
+            return BleKnownDeviceClearResult.Cleared
+        }
+    }
+
+    private fun originalSettings(): String = """
+        {"data":[
+          {"area":"qr-area","value":"1","name":"qrcode_on"},
+          {"area":"code128-area","value":"1","name":"code128_on"},
+          {"area":"code39-area","value":"1","name":"code39_on"}
+        ]}
+    """.trimIndent()
+
+    private fun restrictedSettings(): String = """
+        {"data":[
+          {"area":"qr-area","value":"1","name":"qrcode_on"},
+          {"area":"code128-area","value":"1","name":"code128_on"},
+          {"area":"code39-area","value":"0","name":"code39_on"}
+        ]}
+    """.trimIndent()
+
+}
