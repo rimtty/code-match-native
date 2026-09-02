@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.runtime.mutableStateOf
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.scanner.api.InputSource
 import org.junit.Assert.assertEquals
@@ -39,8 +41,10 @@ class ScanScreenTest {
         composeRule.onNodeWithTag("scan_session_name").performTextInput("午前便")
         composeRule.onNodeWithTag("scan_start_session").performClick()
 
-        assertEquals(ScanUiAction.SessionNameChanged("午前便"), actions.first())
-        assertTrue(actions.contains(ScanUiAction.StartSession))
+        composeRule.runOnIdle {
+            assertEquals(ScanUiAction.SessionNameChanged("午前便"), actions.first())
+            assertTrue(actions.contains(ScanUiAction.StartSession))
+        }
     }
 
     @Test
@@ -67,9 +71,13 @@ class ScanScreenTest {
             InstrumentationRegistry.getInstrumentation().targetContext
                 .getString(R.string.scan_wait_code128_title),
         ).assertIsDisplayed()
-        composeRule.onNodeWithTag("scan_reread_qr").performClick()
+        composeRule.onNodeWithTag("scan_reread_qr")
+            .performScrollTo()
+            .performClick()
 
-        assertTrue(actions.contains(ScanUiAction.RereadQr))
+        composeRule.runOnIdle {
+            assertTrue(actions.contains(ScanUiAction.RereadQr))
+        }
     }
 
     @Test
@@ -98,7 +106,9 @@ class ScanScreenTest {
         composeRule.onNodeWithTag("scan_countdown").assertIsDisplayed()
         composeRule.onNodeWithTag("scan_manual_next").performClick()
 
-        assertTrue(actions.contains(ScanUiAction.ManualNext))
+        composeRule.runOnIdle {
+            assertTrue(actions.contains(ScanUiAction.ManualNext))
+        }
     }
 
     @Test
@@ -122,6 +132,27 @@ class ScanScreenTest {
         composeRule.runOnIdle { showDebugTools.value = true }
         composeRule.onNodeWithTag("scan_debug_demo_tools").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("scan_demo_match").performScrollTo().performClick()
-        assertTrue(hiddenActions.contains(ScanUiAction.DemoMatch))
+        composeRule.runOnIdle {
+            assertTrue(hiddenActions.contains(ScanUiAction.DemoMatch))
+        }
+    }
+
+    @Test
+    fun languageOverrideRendersEnglishAndRecomposesInJapanese() {
+        val language = mutableStateOf(AppLanguage.ENGLISH)
+        composeRule.setContent {
+            ScanScreen(
+                state = ScanUiState(),
+                onAction = {},
+                language = language.value,
+            )
+        }
+
+        composeRule.onNodeWithText("Start a comparison").assertIsDisplayed()
+
+        composeRule.runOnIdle { language.value = AppLanguage.JAPANESE }
+
+        composeRule.onNodeWithText("照合を開始").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Start a comparison").assertCountEquals(0)
     }
 }

@@ -1,13 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
+        <!--
+            Nothing in the app is eligible for cloud backup. The explicit
+            root/device-root rules keep future Room, DataStore, or BLE
+            known-device files local even if their names change.
+        -->
+        <exclude domain="root" path="." />
         <exclude domain="database" path="." />
         <exclude domain="file" path="datastore/" />
+        <!-- DataStore name: codematch-ble-symbology.preferences_pb. -->
+        <exclude domain="file" path="datastore/codematch-ble-symbology.preferences_pb" />
+        <exclude domain="file" path="ble/" />
         <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_sharedpref" path="." />
     </cloud-backup>
     <device-transfer>
+        <!-- Device-to-device transfer is disabled independently of cloud. -->
+        <exclude domain="root" path="." />
         <exclude domain="database" path="." />
         <exclude domain="file" path="datastore/" />
+        <!-- Never transfer scanner recovery state to another device. -->
+        <exclude domain="file" path="datastore/codematch-ble-symbology.preferences_pb" />
+        <exclude domain="file" path="ble/" />
         <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_sharedpref" path="." />
     </device-transfer>
 </data-extraction-rules>

@@ -1,7 +1,5 @@
 package jp.rimtty.codematch.settings
 
-import androidx.appcompat.app.AppCompatDelegate
-import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -11,21 +9,21 @@ import jp.rimtty.codematch.feature.settings.SettingsPresentationState
 import jp.rimtty.codematch.feature.settings.SettingsUiAction
 import jp.rimtty.codematch.feature.settings.SettingsUiState
 import jp.rimtty.codematch.feedback.FeedbackPlayer
+import jp.rimtty.codematch.locale.AppLanguageSynchronizer
 import jp.rimtty.codematch.scanner.api.ConnectionState
 import jp.rimtty.codematch.scanner.api.ExternalScanner
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repository: SettingsRepository,
     private val scanner: ExternalScanner,
     private val feedbackPlayer: FeedbackPlayer,
+    private val appLanguageSynchronizer: AppLanguageSynchronizer,
 ) : ViewModel() {
     private val _state = MutableStateFlow(scannerState(SettingsUiState()))
     val state: StateFlow<SettingsUiState> = _state.asStateFlow()
@@ -81,12 +79,7 @@ class SettingsViewModel @Inject constructor(
             is SettingsUiAction.PreviewFailureSound ->
                 feedbackPlayer.playFailure(action.sound, state.value.feedbackVolume)
             is SettingsUiAction.SetLanguage -> viewModelScope.launch {
-                repository.setLanguage(action.language)
-                withContext(Dispatchers.Main.immediate) {
-                    AppCompatDelegate.setApplicationLocales(
-                        LocaleListCompat.forLanguageTags(action.language.code),
-                    )
-                }
+                appLanguageSynchronizer.setLanguage(action.language)
             }
         }
     }

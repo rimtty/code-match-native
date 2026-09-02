@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -22,6 +23,7 @@ import androidx.compose.ui.res.booleanResource
 import androidx.compose.ui.res.stringResource
 import jp.rimtty.codematch.history.HistoryRoute
 import jp.rimtty.codematch.scan.ScanRoute
+import jp.rimtty.codematch.scan.rememberAndroidCameraHost
 import jp.rimtty.codematch.settings.SettingsRoute
 
 private enum class AppDestination(
@@ -40,11 +42,17 @@ private enum class AppDestination(
     }
 }
 
-/** M2 application shell backed by repositories and stateless feature UIs. */
+/** Application shell backed by repositories and stateless feature UIs. */
 @Composable
 fun CodeMatchApp() {
     var selectedRoute by rememberSaveable { mutableStateOf(AppDestination.SCAN.route) }
     val selected = AppDestination.fromRoute(selectedRoute)
+    // Keep each destination's saveable child state while switching between
+    // the NavigationSuite destinations. This preserves compact history
+    // selection and the settings guide step without keeping camera content
+    // composed in the background.
+    val saveableStateHolder = rememberSaveableStateHolder()
+    val cameraHost = rememberAndroidCameraHost()
 
     NavigationSuiteScaffold(
         layoutType = NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(
@@ -68,13 +76,16 @@ fun CodeMatchApp() {
         containerColor = MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onBackground,
     ) {
-        when (selected) {
-            AppDestination.SCAN -> ScanRoute(
-                modifier = Modifier.fillMaxSize(),
-                showDebugDemoTools = booleanResource(R.bool.show_debug_demo_tools),
-            )
-            AppDestination.HISTORY -> HistoryRoute(Modifier.fillMaxSize())
-            AppDestination.SETTINGS -> SettingsRoute(Modifier.fillMaxSize())
+        saveableStateHolder.SaveableStateProvider(selected.route) {
+            when (selected) {
+                AppDestination.SCAN -> ScanRoute(
+                    modifier = Modifier.fillMaxSize(),
+                    showDebugDemoTools = booleanResource(R.bool.show_debug_demo_tools),
+                    cameraHost = cameraHost,
+                )
+                AppDestination.HISTORY -> HistoryRoute(Modifier.fillMaxSize())
+                AppDestination.SETTINGS -> SettingsRoute(Modifier.fillMaxSize())
+            }
         }
     }
 }

@@ -30,7 +30,16 @@
     <string name="scan_camera_preparing">Preparing the camera…</string>
     <string name="scan_camera_stopped">Camera is stopped</string>
     <string name="scan_camera_denied">Camera permission is unavailable. Allow it in Settings to scan.</string>
+    <string name="scan_camera_permanently_denied">Camera permission is blocked. Allow it in Settings to scan.</string>
+    <string name="scan_camera_open_settings">Open Settings</string>
+    <string name="scan_camera_permission_requesting">Checking camera permission…</string>
+    <string name="scan_camera_start_failed">The camera could not start. Try again.</string>
     <string name="scan_camera_unavailable">Camera input is unavailable on this device.</string>
+    <string name="scan_camera_qr_guide">Align the QR code inside the square frame</string>
+    <string name="scan_camera_code128_guide">Align the Code 128 barcode inside the wide frame</string>
+    <string name="scan_camera_tap_to_focus">Tap the preview to focus there</string>
+    <string name="scan_camera_focus_action">Focus the center of the preview</string>
+    <string name="scan_camera_stage_description">%1$s. %2$s.</string>
     <string name="scan_bluetooth_stage">Bluetooth scanner</string>
     <string name="scan_bluetooth_waiting">Ready to scan from the connected scanner</string>
     <string name="scan_bluetooth_device_fallback">Bluetooth scanner</string>

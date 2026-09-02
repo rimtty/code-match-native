@@ -9,17 +9,21 @@ import jp.rimtty.codematch.core.model.AppSettings
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
 import jp.rimtty.codematch.core.model.MatchSession
 import jp.rimtty.codematch.core.model.MatchResult
+import jp.rimtty.codematch.core.model.ScanSessionCheckpoint
 import jp.rimtty.codematch.feedback.FeedbackPlayer
 import jp.rimtty.codematch.feature.scan.ScanEffect
+import jp.rimtty.codematch.feature.scan.CameraPermissionState
 import jp.rimtty.codematch.feature.scan.ScanPhase
 import jp.rimtty.codematch.feature.scan.ScanSessionCoordinator
 import jp.rimtty.codematch.feature.scan.ScanSessionState
 import jp.rimtty.codematch.feature.scan.ScanUiAction
 import jp.rimtty.codematch.feature.scan.ScanUiState
+import jp.rimtty.codematch.feature.scan.toScanSessionCheckpoint
 import jp.rimtty.codematch.scanner.api.ExternalScanner
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanPayload
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +37,40 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/** Logical feedback states emitted by the scan integration. */
+internal enum class ScanFeedbackEvent {
+    SCAN_ACCEPTED,
+    INVALID_SCAN,
+    MATCH,
+    MISMATCH,
+}
+
+/**
+ * Maps one reducer reduction to at most one cue for each logical state.
+ *
+ * A successful or mismatching Code 128 reduction contains ScanAccepted plus a
+ * terminal result. The terminal result owns that reduction's cue, so the
+ * accepted blip is emitted only for a non-terminal read. This avoids an
+ * interrupting terminal cue cancelling the accepted audio and haptic twice.
+ */
+internal object ScanFeedbackEventMapper {
+    fun map(
+        effects: List<ScanEffect>,
+        result: MatchResult?,
+    ): List<ScanFeedbackEvent> = when {
+        effects.any { it is ScanEffect.InvalidScan } ->
+            listOf(ScanFeedbackEvent.INVALID_SCAN)
+        effects.any { it is ScanEffect.RecordMatch } ->
+            listOf(ScanFeedbackEvent.MATCH)
+        result == MatchResult.MISMATCH &&
+            effects.any { it === ScanEffect.ScanAccepted } ->
+            listOf(ScanFeedbackEvent.MISMATCH)
+        effects.any { it === ScanEffect.ScanAccepted } ->
+            listOf(ScanFeedbackEvent.SCAN_ACCEPTED)
+        else -> emptyList()
+    }
+}
 
 /**
  * Application-side owner for one scan session.
@@ -66,7 +104,11 @@ class ScanViewModel @Inject constructor(
     private var sessionNameDraft: String = ""
     private var latestSettings: AppSettings = AppSettings()
     private var countdownJob: Job? = null
+    /** Serializes checkpoint writes so an older QR state cannot overwrite a newer result. */
+    private var checkpointWriteJob: Job? = null
     private var endingSession = false
+    /** User intent survives a configuration change; the physical host does not. */
+    private var cameraResumeOnForeground = false
 
     init {
         initialize()
@@ -126,10 +168,14 @@ class ScanViewModel @Inject constructor(
 
     /** Update state after the camera host has successfully started capture. */
     fun onCameraStarted() {
+        if (_state.value.inputSource != InputSource.CAMERA || _state.value.expectedFormat == null) return
         _state.value = _state.value.copy(
             isCameraStarting = false,
             isCameraRunning = true,
             cameraPermissionDenied = false,
+            cameraPermissionState = CameraPermissionState.GRANTED,
+            cameraStartFailed = false,
+            cameraAvailable = true,
         )
     }
 
@@ -141,27 +187,79 @@ class ScanViewModel @Inject constructor(
         )
     }
 
+    /** Show the transient platform permission request state. */
+    fun onCameraPermissionRequesting() {
+        _state.value = _state.value.copy(
+            cameraPermissionState = CameraPermissionState.REQUESTING,
+            cameraPermissionDenied = false,
+            cameraStartFailed = false,
+        )
+    }
+
+    /** Synchronize a permission result observed by a host before a start request. */
+    fun onCameraPermissionGranted() {
+        _state.value = _state.value.copy(
+            cameraPermissionState = CameraPermissionState.GRANTED,
+            cameraPermissionDenied = false,
+            cameraStartFailed = false,
+        )
+    }
+
+    /** Reconcile permission state reported at host creation or lifecycle start. */
+    fun synchronizeCameraPermission(permission: CameraPermissionState) {
+        when (permission) {
+            CameraPermissionState.GRANTED -> onCameraPermissionGranted()
+            CameraPermissionState.DENIED -> onCameraPermissionDenied(permanently = false)
+            CameraPermissionState.PERMANENTLY_DENIED -> onCameraPermissionDenied(permanently = true)
+            CameraPermissionState.UNKNOWN,
+            CameraPermissionState.REQUESTING,
+            -> Unit
+        }
+    }
+
     /** Report a denied camera permission without leaking a platform type. */
-    fun onCameraPermissionDenied() {
+    fun onCameraPermissionDenied(permanently: Boolean = false) {
+        cameraResumeOnForeground = false
         _state.value = _state.value.copy(
             isCameraStarting = false,
             isCameraRunning = false,
             cameraPermissionDenied = true,
+            cameraPermissionState = if (permanently) {
+                CameraPermissionState.PERMANENTLY_DENIED
+            } else {
+                CameraPermissionState.DENIED
+            },
+            cameraStartFailed = false,
         )
     }
 
     /** Report that no usable camera is present on the current device. */
     fun onCameraUnavailable() {
+        cameraResumeOnForeground = false
         _state.value = _state.value.copy(
             isCameraStarting = false,
             isCameraRunning = false,
             cameraAvailable = false,
+            cameraStartFailed = false,
         )
     }
 
     /** Restore camera availability after a transient host/device error. */
     fun onCameraAvailable() {
-        _state.value = _state.value.copy(cameraAvailable = true)
+        _state.value = _state.value.copy(
+            cameraAvailable = true,
+            cameraStartFailed = false,
+        )
+    }
+
+    /** Report a recoverable camera start failure without surfacing exception text. */
+    fun onCameraStartFailed() {
+        cameraResumeOnForeground = false
+        _state.value = _state.value.copy(
+            isCameraStarting = false,
+            isCameraRunning = false,
+            cameraStartFailed = true,
+        )
     }
 
     /**
@@ -180,6 +278,8 @@ class ScanViewModel @Inject constructor(
     override fun onCleared() {
         countdownJob?.cancel()
         countdownJob = null
+        checkpointWriteJob?.cancel()
+        checkpointWriteJob = null
         coordinator?.let { current ->
             if (scanner.listener === current) {
                 scanner.listener = null
@@ -196,7 +296,10 @@ class ScanViewModel @Inject constructor(
                     historyRepository.activeSession,
                 ) { settings, session -> InitialData(settings, session) }.first()
                 latestSettings = initial.settings
-                installCoordinator(initial.settings, initial.activeSession)
+                val checkpoint = initial.activeSession?.let { active ->
+                    historyRepository.getScanCheckpoint(active.id)
+                }
+                installCoordinator(initial.settings, initial.activeSession, checkpoint)
                 initialized.complete(Unit)
 
                 launch {
@@ -218,7 +321,11 @@ class ScanViewModel @Inject constructor(
         }
     }
 
-    private fun installCoordinator(settings: AppSettings, active: MatchSession?) {
+    private fun installCoordinator(
+        settings: AppSettings,
+        active: MatchSession?,
+        checkpoint: ScanSessionCheckpoint? = null,
+    ) {
         coordinator?.let { current ->
             if (scanner.listener === current) scanner.listener = null
         }
@@ -232,10 +339,27 @@ class ScanViewModel @Inject constructor(
             autoAdvanceEnabled = settings.autoAdvanceEnabled,
             autoAdvanceDelay = settings.autoAdvanceDelay,
             existingMatchedCount = active?.matchedCount ?: 0,
+            restoredCheckpoint = checkpoint,
         )
         created.onStateChanged = { publishCoordinatorState() }
         created.onEffects = ::handleEffects
-        created.onInputSourceChanged = { publishCoordinatorState() }
+        created.onInputSourceChanged = {
+            publishCoordinatorState()
+            enqueueCurrentCheckpoint()
+        }
+        created.onBluetoothFallback = {
+            publishCoordinatorState()
+            if (_state.value.sessionActive &&
+                _state.value.expectedFormat != null &&
+                _state.value.cameraAvailable &&
+                !_state.value.cameraPermissionPermanentlyDenied
+            ) {
+                // A transport failure is different from the user's manual
+                // camera choice: resume capture automatically while keeping
+                // the current QR/Code 128 step and any accepted QR value.
+                requestCameraStart()
+            }
+        }
         coordinator = created
         publishCoordinatorState()
 
@@ -261,10 +385,11 @@ class ScanViewModel @Inject constructor(
             activeSessionName = session?.name ?: requestedName
 
             // beginSession returns an existing active session when another
-            // host won a race. Rebuild only while the local coordinator is
-            // still idle so its injected count remains exact.
-            if (session != null && session.matchedCount != current.state.matchedCount) {
-                installCoordinator(latestSettings, session)
+            // host won a race. Rebuild while the local coordinator is still
+            // idle so its injected count and durable checkpoint are exact.
+            if (session != null && current.state.phase == ScanPhase.IDLE) {
+                val checkpoint = historyRepository.getScanCheckpoint(session.id)
+                installCoordinator(latestSettings, session, checkpoint)
             }
         }
 
@@ -280,8 +405,23 @@ class ScanViewModel @Inject constructor(
         if (endingSession) return
         endingSession = true
         try {
+            cameraResumeOnForeground = false
             val id = activeSessionId
+            // The route asks the platform host to stop first. Reflect that
+            // boundary immediately as a defensive fallback for non-Compose
+            // callers of confirmEndSession().
+            _state.value = _state.value.copy(
+                isCameraStarting = false,
+                isCameraRunning = false,
+            )
             coordinator?.endSession()
+            // The coordinator's terminal reduction queues a checkpoint clear,
+            // while a preceding QR/terminal write may still be in flight.
+            // Finish those operations before ending the Room session so an
+            // older queued save cannot race the end transaction. The
+            // repository also clears atomically inside endSession() as a
+            // second line of defence for process death or other callers.
+            checkpointWriteJob?.join()
             activeSessionId = null
             activeSessionName = null
             sessionNameDraft = ""
@@ -300,27 +440,51 @@ class ScanViewModel @Inject constructor(
 
     private fun selectInputSource(source: InputSource) {
         val current = coordinator ?: return
+        val previousInputSource = current.inputSource
+        val previousCameraSelection = current.cameraWasSelectedByUser
         val selected = current.selectInputSource(source)
+        if (selected && source == InputSource.CAMERA) {
+            // Selecting a source is not the same as pressing Start camera;
+            // the host starts only after the explicit camera action.
+            cameraResumeOnForeground = false
+        }
         if (selected && source == InputSource.BLUETOOTH) {
+            cameraResumeOnForeground = false
             _state.value = _state.value.copy(
                 isCameraStarting = false,
                 isCameraRunning = false,
             )
         }
         publishCoordinatorState()
+        // The explicit-camera bit is part of the checkpoint policy even when
+        // the selected source was already CAMERA (or an unavailable Bluetooth
+        // request kept the source on CAMERA). A real source change is already
+        // persisted by onInputSourceChanged, so enqueue here only when the
+        // policy changed without changing the source.
+        if (previousInputSource == current.inputSource &&
+            previousCameraSelection != current.cameraWasSelectedByUser
+        ) {
+            enqueueCurrentCheckpoint()
+        }
     }
 
     private fun requestCameraStart() {
         val current = coordinator ?: return
         if (current.state.expectedFormat == null || current.state.phase == ScanPhase.IDLE) return
+        if (_state.value.cameraPermissionPermanentlyDenied) return
+        if (_state.value.isCameraRunning || _state.value.isCameraStarting) return
+        cameraResumeOnForeground = true
         _state.value = _state.value.copy(
             isCameraStarting = true,
             isCameraRunning = false,
             cameraPermissionDenied = false,
+            cameraPermissionState = CameraPermissionState.UNKNOWN,
+            cameraStartFailed = false,
         )
     }
 
     private fun requestCameraStop() {
+        cameraResumeOnForeground = false
         _state.value = _state.value.copy(
             isCameraStarting = false,
             isCameraRunning = false,
@@ -337,7 +501,16 @@ class ScanViewModel @Inject constructor(
 
     private fun foregrounded() {
         coordinator?.onForegrounded()
-        publishCoordinatorState()
+        if (cameraResumeOnForeground &&
+            _state.value.sessionActive &&
+            _state.value.inputSource == InputSource.CAMERA &&
+            _state.value.expectedFormat != null &&
+            !_state.value.cameraPermissionPermanentlyDenied
+        ) {
+            requestCameraStart()
+        } else {
+            publishCoordinatorState()
+        }
     }
 
     private fun setAutoAdvanceEnabled(enabled: Boolean) {
@@ -379,30 +552,89 @@ class ScanViewModel @Inject constructor(
         // ViewModel was idle; load it and use the same restoration path.
         val session = historyRepository.getSession(sessionId) ?: return
         if (activeSessionId == null && coordinator?.state?.phase == ScanPhase.IDLE) {
-            installCoordinator(latestSettings, session)
+            val checkpoint = historyRepository.getScanCheckpoint(session.id)
+            installCoordinator(latestSettings, session, checkpoint)
         }
     }
 
     private fun handleEffects(effects: List<ScanEffect>) {
-        effects.forEach { effect ->
-            when (effect) {
-                is ScanEffect.RecordMatch -> {
+        val currentResult = coordinator?.state?.result
+        val currentCheckpoint = coordinator?.state
+            ?.toScanSessionCheckpoint(
+                sessionId = activeSessionId ?: "",
+                cameraWasSelectedByUser = coordinator?.cameraWasSelectedByUser ?: false,
+            )
+        val matchEffect = effects.filterIsInstance<ScanEffect.RecordMatch>().firstOrNull()
+
+        // Persist the logical transition after every state-changing reducer
+        // event. A terminal match uses the repository's atomic entry+
+        // checkpoint transaction; all other non-idle states only replace the
+        // single checkpoint row. Invalid callbacks do not rewrite state.
+        if (matchEffect != null && currentCheckpoint != null) {
+            persistMatch(matchEffect, currentCheckpoint)
+        } else if (activeSessionId != null &&
+            effects.none { it is ScanEffect.InvalidScan }
+        ) {
+            if (effects.any { it === ScanEffect.SessionEnded }) {
+                val sessionId = activeSessionId ?: return
+                enqueueCheckpointOperation {
+                    historyRepository.clearScanCheckpoint(sessionId)
+                }
+            } else if (currentCheckpoint != null) {
+                val checkpoint = currentCheckpoint
+                enqueueCheckpointOperation {
+                    historyRepository.saveScanCheckpoint(checkpoint)
+                }
+            }
+        }
+
+        val invalid = effects.filterIsInstance<ScanEffect.InvalidScan>().firstOrNull()
+        when {
+            invalid != null -> {
+                // The feature renders this typed reason through localized
+                // resources. Do not surface scanner/exception text here.
+                _state.value = _state.value.copy(
+                    message = null,
+                    lastInvalidReason = invalid.reason,
+                )
+            }
+            effects.any { it === ScanEffect.ScanAccepted } -> {
+                _state.value = _state.value.copy(
+                    message = null,
+                    lastInvalidReason = null,
+                )
+            }
+        }
+
+        ScanFeedbackEventMapper.map(effects, currentResult).forEach { event ->
+            when (event) {
+                ScanFeedbackEvent.SCAN_ACCEPTED ->
+                    feedbackPlayer.playScanAccepted(latestSettings.feedbackVolume)
+                ScanFeedbackEvent.INVALID_SCAN ->
+                    feedbackPlayer.playInvalidScan(latestSettings.feedbackVolume)
+                ScanFeedbackEvent.MATCH -> {
                     feedbackPlayer.playSuccess(
                         latestSettings.successSound,
                         latestSettings.feedbackVolume,
-                        includeHaptic = true,
                     )
-                    persistMatch(effect)
+                    // Reducer output contains one RecordMatch at most. Taking
+                    // the first one protects the integration from accidental
+                    // duplicate terminal effects without dropping a valid row.
+                    // The durable write is queued above together with the
+                    // matching checkpoint, so no second history write is
+                    // started here.
+                    Unit
                 }
-                ScanEffect.ScanAccepted -> {
-                    if (coordinator?.state?.result == MatchResult.MISMATCH) {
-                        feedbackPlayer.playFailure(
-                            latestSettings.failureSound,
-                            latestSettings.feedbackVolume,
-                            includeHaptic = true,
-                        )
-                    }
-                }
+                ScanFeedbackEvent.MISMATCH ->
+                    feedbackPlayer.playFailure(
+                        latestSettings.failureSound,
+                        latestSettings.feedbackVolume,
+                    )
+            }
+        }
+
+        effects.forEach { effect ->
+            when (effect) {
                 is ScanEffect.AutoAdvanceStarted -> startCountdown()
                 ScanEffect.AutoAdvanceCancelled,
                 ScanEffect.AutoAdvanceCompleted,
@@ -413,9 +645,12 @@ class ScanViewModel @Inject constructor(
         }
     }
 
-    private fun persistMatch(effect: ScanEffect.RecordMatch) {
+    private fun persistMatch(
+        effect: ScanEffect.RecordMatch,
+        checkpoint: ScanSessionCheckpoint,
+    ) {
         val sessionId = activeSessionId ?: return
-        viewModelScope.launch {
+        enqueueCheckpointOperation {
             // This is the sole history entry write in the scan integration.
             // Do not log or add the payloads to scanner diagnostics.
             historyRepository.recordMatch(
@@ -423,7 +658,36 @@ class ScanViewModel @Inject constructor(
                 qrPayload = effect.qrPayload,
                 barcodePayload = effect.barcodePayload,
                 sessionId = sessionId,
+                checkpoint = checkpoint,
             )
+        }
+    }
+
+    /** Queue writes in reducer order so an older QR state cannot win a race. */
+    private fun enqueueCheckpointOperation(operation: suspend () -> Unit) {
+        val previous = checkpointWriteJob
+        checkpointWriteJob = viewModelScope.launch {
+            try {
+                previous?.join()
+                operation()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                // Persistence failures must not crash the scan UI. The next
+                // state transition can attempt the checkpoint again, while a
+                // missing/corrupt row safely falls back to Waiting QR.
+            }
+        }
+    }
+
+    private fun enqueueCurrentCheckpoint() {
+        val sessionId = activeSessionId ?: return
+        val checkpoint = coordinator?.state?.toScanSessionCheckpoint(
+            sessionId = sessionId,
+            cameraWasSelectedByUser = coordinator?.cameraWasSelectedByUser ?: false,
+        ) ?: return
+        enqueueCheckpointOperation {
+            historyRepository.saveScanCheckpoint(checkpoint)
         }
     }
 

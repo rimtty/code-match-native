@@ -47,6 +47,10 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 dependencies {
@@ -59,6 +63,7 @@ dependencies {
     implementation(project(":feature:history"))
     implementation(project(":feature:settings"))
     implementation(project(":scanner:api"))
+    implementation(project(":scanner:camera"))
 
     val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)
@@ -86,6 +91,8 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

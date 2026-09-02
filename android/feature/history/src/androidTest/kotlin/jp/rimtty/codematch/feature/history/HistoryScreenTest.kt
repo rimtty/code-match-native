@@ -1,13 +1,22 @@
 package jp.rimtty.codematch.feature.history
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.mutableStateOf
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchEntry
 import jp.rimtty.codematch.core.model.MatchSession
 import org.junit.Assert.assertEquals
@@ -22,10 +31,12 @@ class HistoryScreenTest {
 
     @Test
     fun emptyStateIsDisplayedWithHistorySemantics() {
-        composeRule.setContent { HistoryScreen(emptyList()) }
+        composeRule.setContent {
+            HistoryScreen(emptyList(), language = AppLanguage.ENGLISH)
+        }
 
         composeRule.onNodeWithTag(HistoryTestTags.SCREEN).assertIsDisplayed()
-        composeRule.onNodeWithText("履歴はまだありません").assertIsDisplayed()
+        composeRule.onNodeWithText("No history yet").assertIsDisplayed()
     }
 
     @Test
@@ -62,12 +73,73 @@ class HistoryScreenTest {
             barcodePayload = "BCJH-52-81GG@1N5X0C",
         )
         composeRule.setContent {
-            HistoryEntryDetail(entry = entry)
+            HistoryEntryDetail(entry = entry, language = AppLanguage.ENGLISH)
         }
 
         composeRule.onNodeWithTag(HistoryTestTags.ENTRY_DETAIL).assertIsDisplayed()
-        composeRule.onNodeWithText("納品書情報（QR解析）").assertIsDisplayed()
+        composeRule.onNodeWithText("Delivery information (QR)").assertIsDisplayed()
         composeRule.onNodeWithText("DCLP675300").assertIsDisplayed()
         composeRule.onNodeWithText("1N5X0C").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun expandedLayoutKeepsListAndDetailVisibleForWideWindows() {
+        val session = MatchSession(
+            id = "session",
+            startedAt = 1_000L,
+            endedAt = 2_000L,
+            name = "Morning",
+            entries = listOf(
+                MatchEntry(
+                    id = "box-1",
+                    code = "BCJH-52-81GG",
+                    matchedAt = 1_500L,
+                ),
+            ),
+        )
+        composeRule.setContent {
+            HistoryContent(
+                sessions = listOf(session),
+                selectedSessionId = session.id,
+                layoutMode = HistoryLayoutMode.EXPANDED,
+            )
+        }
+
+        composeRule.onNodeWithTag(HistoryTestTags.SCREEN).assertIsDisplayed()
+        composeRule.onNodeWithTag(HistoryTestTags.SESSION_DETAIL).assertIsDisplayed()
+        composeRule.onNodeWithTag(HistoryTestTags.SESSION_ROW).assertIsDisplayed()
+        composeRule.onNodeWithTag(HistoryTestTags.SESSION_ROW)
+            .assertHeightIsAtLeast(48.dp)
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.ContentDescription))
+        composeRule.onNodeWithTag("${HistoryTestTags.SESSION_ROW}.delete")
+            .assertHeightIsAtLeast(48.dp)
+    }
+
+    @Test
+    fun englishBoxCountsUseSingularAndPluralAndRedrawInJapanese() {
+        val language = mutableStateOf(AppLanguage.ENGLISH)
+        val session = MatchSession(
+            id = "plural-session",
+            startedAt = 1_000L,
+            endedAt = 2_000L,
+            entries = listOf(
+                MatchEntry(id = "one", code = "ONE", matchedAt = 1_100L),
+                MatchEntry(id = "two-a", code = "TWO", matchedAt = 1_200L),
+                MatchEntry(id = "two-b", code = "TWO", matchedAt = 1_300L),
+            ),
+        )
+        composeRule.setContent {
+            HistorySessionDetail(session = session, language = language.value)
+        }
+
+        composeRule.onNodeWithText("1 box").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("2 boxes").performScrollTo().assertIsDisplayed()
+
+        composeRule.runOnIdle { language.value = AppLanguage.JAPANESE }
+
+        composeRule.onNodeWithText("1箱").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("2箱").performScrollTo().assertIsDisplayed()
+        composeRule.onAllNodesWithText("1 box").assertCountEquals(0)
+        composeRule.onAllNodesWithText("2 boxes").assertCountEquals(0)
     }
 }

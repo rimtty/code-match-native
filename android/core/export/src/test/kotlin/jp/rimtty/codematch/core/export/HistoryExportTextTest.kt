@@ -50,4 +50,13 @@ class HistoryExportTextTest {
         assertTrue(HistoryExportTextFormatter.time(0L, AppLanguage.ENGLISH, utc).isNotBlank())
         assertTrue(HistoryExportTextFormatter.dateTime(0L, AppLanguage.JAPANESE, utc).isNotBlank())
     }
+
+    @Test
+    fun boxCountUsesNaturalEnglishSingularAndPlural() {
+        assertEquals("0 boxes", HistoryExportTextFormatter.boxCount(0, AppLanguage.ENGLISH))
+        assertEquals("1 box", HistoryExportTextFormatter.boxCount(1, AppLanguage.ENGLISH))
+        assertEquals("2 boxes", HistoryExportTextFormatter.boxCount(2, AppLanguage.ENGLISH))
+        assertEquals("1箱", HistoryExportTextFormatter.boxCount(1, AppLanguage.JAPANESE))
+        assertEquals("2箱", HistoryExportTextFormatter.boxCount(2, AppLanguage.JAPANESE))
+    }
 }

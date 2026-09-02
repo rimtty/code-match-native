@@ -16,6 +16,20 @@
     <string name="settings_setup_step_3_title">Save and exit setup</string>
     <string name="settings_setup_step_3_description">Scan the setup code “/*ExitSave*/” once to save the configuration.</string>
     <string name="settings_setup_step_accessibility">Step %1$d. %2$s. %3$s</string>
+    <string name="settings_setup_step_1_guidance">This code starts setup mode. The scanner does not switch to GATT yet; select GATT with the next code.</string>
+    <string name="settings_setup_step_2_guidance">After scanning, “BLE_GATT” appears on the scanner display. Saving is not complete yet; continue to the final code.</string>
+    <string name="settings_setup_step_3_guidance">Scan this final code to save the GATT setting and exit setup mode.</string>
+    <string name="settings_setup_progress">Step %1$d of %2$d</string>
+    <string name="settings_setup_previous">Back</string>
+    <string name="settings_setup_next">Scanned - next</string>
+    <string name="settings_setup_finish">Done</string>
+    <string name="settings_setup_scan_instruction">Scan the Code 128 code below once with BCST-47.</string>
+    <string name="settings_setup_barcode_accessibility">Code 128 setup code for %1$s</string>
+    <string name="settings_setup_enlarge">Show large in full screen</string>
+    <string name="settings_setup_scanner_display_label">Expected scanner display</string>
+    <string name="settings_setup_after_scan">After the scan sound or success display, continue to the next step.</string>
+    <string name="settings_setup_fullscreen_close">Close enlarged view</string>
+    <string name="settings_setup_fullscreen_hint">Confirm the scan sound or scanner display.</string>
 
     <string name="settings_scanner_title">Bluetooth scanner</string>
     <string name="settings_scanner_description">Search for and connect a supported scanner. Scan values are never recorded in diagnostics.</string>

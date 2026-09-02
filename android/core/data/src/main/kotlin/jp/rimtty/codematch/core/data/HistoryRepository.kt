@@ -4,6 +4,10 @@ import androidx.room.withTransaction
 import jp.rimtty.codematch.core.model.MatchEntry
 import jp.rimtty.codematch.core.model.MatchSession
 import jp.rimtty.codematch.core.model.EndSessionOutcome
+import jp.rimtty.codematch.core.model.MatchResult
+import jp.rimtty.codematch.core.model.ScanCheckpointInputSource
+import jp.rimtty.codematch.core.model.ScanCheckpointPhase
+import jp.rimtty.codematch.core.model.ScanSessionCheckpoint
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -21,6 +25,7 @@ class HistoryRepository(
 ) {
     private val sessionDao: SessionDao = database.sessionDao()
     private val entryDao: EntryDao = database.entryDao()
+    private val scanCheckpointDao: ScanCheckpointDao = database.scanCheckpointDao()
 
     /** Sessions ordered newest first, with entries ordered by scan sequence. */
     val sessions: Flow<List<MatchSession>>
@@ -66,6 +71,7 @@ class HistoryRepository(
         barcodePayload: String? = null,
         at: Long = now(),
         sessionId: String? = null,
+        checkpoint: ScanSessionCheckpoint? = null,
     ): Int? = database.withTransaction {
         val active = sessionDao.findActive()
             ?: return@withTransaction null
@@ -86,6 +92,24 @@ class HistoryRepository(
             barcodePayload = barcodePayload,
         )
         entryDao.insert(entry)
+        // Only a terminal MATCH checkpoint that describes this exact pair may
+        // accompany a newly inserted entry. A caller passing a mismatching or
+        // otherwise unrelated checkpoint must not make durable state claim a
+        // result that was never recorded.
+        if (checkpoint != null &&
+            checkpoint.sessionId == active.id &&
+            checkpoint.phase == ScanCheckpointPhase.RESULT &&
+            checkpoint.result == MatchResult.MATCH &&
+            checkpoint.qrPayload == qrPayload &&
+            checkpoint.barcodePayload == barcodePayload &&
+            checkpoint.isSupportedAndValid()
+        ) {
+            scanCheckpointDao.upsert(
+                checkpoint.copy(
+                    matchedCount = entryDao.countForSession(active.id),
+                ).toEntity(),
+            )
+        }
         boxNumber
     }
 
@@ -93,6 +117,62 @@ class HistoryRepository(
     suspend fun activeSessionMatchCount(code: String): Int {
         val active = sessionDao.findActive() ?: return 0
         return entryDao.countForCode(active.id, code.trim())
+    }
+
+    /**
+     * Read the active session's logical scan checkpoint.
+     *
+     * A malformed or newer-version row is discarded and treated as absent so
+     * callers can safely start at Waiting QR while retaining the Room session
+     * and its recorded box count.
+     */
+    suspend fun getScanCheckpoint(sessionId: String): ScanSessionCheckpoint? =
+        database.withTransaction {
+            val session = sessionDao.findById(sessionId)
+            if (session == null || session.endedAt != null) {
+                scanCheckpointDao.deleteBySessionId(sessionId)
+                return@withTransaction null
+            }
+
+            val entity = scanCheckpointDao.findBySessionId(sessionId)
+                ?: return@withTransaction null
+            val checkpoint = entity.toModel()
+            if (checkpoint == null || checkpoint.sessionId != sessionId) {
+                scanCheckpointDao.deleteBySessionId(sessionId)
+                null
+            } else {
+                // Entries are the durable source of truth for the count. A
+                // checkpoint written by an older build may carry a stale
+                // count, but must not make the resumed UI invent a box.
+                checkpoint.copy(matchedCount = entryDao.countForSession(sessionId))
+            }
+        }
+
+    /**
+     * Persist one valid logical checkpoint for an active session.
+     *
+     * The primary key in [ScanCheckpointEntity] makes this an upsert: one
+     * session can have exactly one current checkpoint. The count is normalized
+     * from the entries table inside the same transaction.
+     */
+    suspend fun saveScanCheckpoint(checkpoint: ScanSessionCheckpoint): Boolean =
+        database.withTransaction {
+            val active = sessionDao.findById(checkpoint.sessionId)
+            if (active == null || active.endedAt != null || !checkpoint.isSupportedAndValid()) {
+                return@withTransaction false
+            }
+            val normalized = checkpoint.copy(
+                matchedCount = entryDao.countForSession(checkpoint.sessionId),
+            )
+            scanCheckpointDao.upsert(normalized.toEntity())
+            true
+        }
+
+    /** Remove transient scan state without touching the session or history. */
+    suspend fun clearScanCheckpoint(sessionId: String) {
+        database.withTransaction {
+            scanCheckpointDao.deleteBySessionId(sessionId)
+        }
     }
 
     /** Rename any existing session; blank names are stored as null. */
@@ -151,8 +231,13 @@ class HistoryRepository(
         at: Long,
     ): EndSessionOutcome {
         session.endedAt?.let { endedAt ->
+            scanCheckpointDao.deleteBySessionId(session.id)
             return EndSessionOutcome.AlreadyEnded(session.id, endedAt)
         }
+        // Explicitly clear before either finishing or deleting. The foreign
+        // key also protects the delete path, while this makes the invariant
+        // clear for future schema changes and for non-empty sessions.
+        scanCheckpointDao.deleteBySessionId(session.id)
         return if (entryDao.countForSession(session.id) == 0) {
             sessionDao.deleteById(session.id)
             EndSessionOutcome.DeletedEmpty(session.id)
@@ -164,6 +249,34 @@ class HistoryRepository(
 
     private fun normalizeName(name: String?): String? =
         name?.trim()?.takeIf { it.isNotEmpty() }
+
+    private fun ScanSessionCheckpoint.toEntity(): ScanCheckpointEntity =
+        ScanCheckpointEntity(
+            sessionId = sessionId,
+            version = version,
+            phase = phase.name,
+            qrPayload = qrPayload,
+            barcodePayload = barcodePayload,
+            result = result?.name,
+            matchedCount = matchedCount,
+            inputSource = inputSource.name,
+            cameraWasSelectedByUser = cameraWasSelectedByUser,
+        )
+
+    private fun ScanCheckpointEntity.toModel(): ScanSessionCheckpoint? =
+        runCatching {
+            ScanSessionCheckpoint(
+                sessionId = sessionId,
+                phase = ScanCheckpointPhase.valueOf(phase),
+                qrPayload = qrPayload,
+                barcodePayload = barcodePayload,
+                result = result?.let(MatchResult::valueOf),
+                matchedCount = matchedCount,
+                inputSource = ScanCheckpointInputSource.valueOf(inputSource),
+                cameraWasSelectedByUser = cameraWasSelectedByUser,
+                version = version,
+            )
+        }.getOrNull()?.takeIf { it.isSupportedAndValid() }
 
     private fun SessionWithEntries.toModel(): MatchSession =
         MatchSession(

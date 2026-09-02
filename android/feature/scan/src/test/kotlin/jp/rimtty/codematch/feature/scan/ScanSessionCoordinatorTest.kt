@@ -1,5 +1,9 @@
 package jp.rimtty.codematch.feature.scan
 
+import jp.rimtty.codematch.core.model.MatchResult
+import jp.rimtty.codematch.core.model.ScanCheckpointInputSource
+import jp.rimtty.codematch.core.model.ScanCheckpointPhase
+import jp.rimtty.codematch.core.model.ScanSessionCheckpoint
 import jp.rimtty.codematch.scanner.api.ConfigurationState
 import jp.rimtty.codematch.scanner.api.ConnectionState
 import jp.rimtty.codematch.scanner.api.ExternalScanner
@@ -46,6 +50,8 @@ class ScanSessionCoordinatorTest {
     fun disconnectFallsBackToCameraWithoutDiscardingCurrentQrStep() {
         val scanner = TestScanner().apply { markReady() }
         val coordinator = ScanSessionCoordinator(scanner)
+        var fallbackRequests = 0
+        coordinator.onBluetoothFallback = { fallbackRequests++ }
         coordinator.startSession()
         coordinator.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.BLUETOOTH))
         assertEquals(ScanPhase.WAITING_CODE_128, coordinator.state.phase)
@@ -55,6 +61,20 @@ class ScanSessionCoordinatorTest {
         assertEquals(InputSource.CAMERA, coordinator.inputSource)
         assertEquals(ScanPhase.WAITING_CODE_128, coordinator.state.phase)
         assertEquals(qrPayload, coordinator.state.qrPayload)
+        assertEquals(1, fallbackRequests)
+    }
+
+    @Test
+    fun manualCameraSelectionDoesNotRequestAutomaticFallbackStart() {
+        val scanner = TestScanner().apply { markReady() }
+        val coordinator = ScanSessionCoordinator(scanner)
+        var fallbackRequests = 0
+        coordinator.onBluetoothFallback = { fallbackRequests++ }
+        coordinator.startSession()
+
+        assertTrue(coordinator.selectInputSource(InputSource.CAMERA))
+
+        assertEquals(0, fallbackRequests)
     }
 
     @Test
@@ -93,12 +113,213 @@ class ScanSessionCoordinatorTest {
     }
 
     @Test
+    fun delayedCameraPayloadIsIgnoredWhileBackgrounded() {
+        val coordinator = ScanSessionCoordinator(TestScanner())
+        coordinator.startSession()
+        coordinator.onBackgrounded()
+
+        val result = coordinator.submitScanPayload(
+            ScanPayload.qr(qrPayload, timestampMillis = 100L),
+        )
+
+        assertNull(result)
+        assertEquals(ScanPhase.WAITING_QR, coordinator.state.phase)
+        assertNull(coordinator.state.qrPayload)
+    }
+
+    @Test
     fun coordinatorCanStartWithRestoredMatchCount() {
         val coordinator = ScanSessionCoordinator(TestScanner(), existingMatchedCount = 4)
 
         coordinator.startSession()
 
         assertEquals(4, coordinator.state.matchedCount)
+    }
+
+    @Test
+    fun restoredWaitingCode128KeepsStepAndFallsBackToCameraWhenBluetoothIsUnavailable() {
+        val coordinator = ScanSessionCoordinator(
+            scanner = TestScanner(),
+            existingMatchedCount = 3,
+            restoredCheckpoint = ScanSessionCheckpoint(
+                sessionId = "session",
+                phase = ScanCheckpointPhase.WAITING_CODE_128,
+                qrPayload = qrPayload,
+                matchedCount = 3,
+                inputSource = ScanCheckpointInputSource.BLUETOOTH,
+            ),
+        )
+
+        coordinator.startSession()
+
+        assertEquals(ScanPhase.WAITING_CODE_128, coordinator.state.phase)
+        assertEquals(qrPayload, coordinator.state.qrPayload)
+        assertEquals(3, coordinator.state.matchedCount)
+        assertEquals(InputSource.CAMERA, coordinator.inputSource)
+        assertEquals(InputSource.CAMERA, coordinator.state.inputSource)
+        assertNull(coordinator.lastEffects.filterIsInstance<ScanEffect.RecordMatch>().firstOrNull())
+    }
+
+    @Test
+    fun restoredBluetoothFallbackPromotesBackWhenReadyWithoutLosingQr() {
+        val scanner = TestScanner()
+        val coordinator = ScanSessionCoordinator(
+            scanner = scanner,
+            restoredCheckpoint = ScanSessionCheckpoint(
+                sessionId = "session",
+                phase = ScanCheckpointPhase.WAITING_CODE_128,
+                qrPayload = qrPayload,
+                matchedCount = 2,
+                inputSource = ScanCheckpointInputSource.BLUETOOTH,
+            ),
+        )
+
+        coordinator.startSession()
+        assertEquals(InputSource.CAMERA, coordinator.inputSource)
+        assertEquals(qrPayload, coordinator.state.qrPayload)
+
+        scanner.markReady()
+
+        assertEquals(InputSource.BLUETOOTH, coordinator.inputSource)
+        assertEquals(ScanPhase.WAITING_CODE_128, coordinator.state.phase)
+        assertEquals(qrPayload, coordinator.state.qrPayload)
+        assertEquals(2, coordinator.state.matchedCount)
+    }
+
+    @Test
+    fun explicitRestoredCameraChoiceStaysCameraAfterBluetoothBecomesReady() {
+        val scanner = TestScanner().apply { markReady() }
+        val coordinator = ScanSessionCoordinator(
+            scanner = scanner,
+            restoredCheckpoint = ScanSessionCheckpoint(
+                sessionId = "session",
+                phase = ScanCheckpointPhase.WAITING_QR,
+                inputSource = ScanCheckpointInputSource.CAMERA,
+                cameraWasSelectedByUser = true,
+            ),
+        )
+
+        coordinator.startSession()
+        scanner.markReady()
+
+        assertEquals(InputSource.CAMERA, coordinator.inputSource)
+        assertTrue(coordinator.cameraWasSelectedByUser)
+    }
+
+    @Test
+    fun selectingAlreadyActiveCameraPersistsIntentAndSurvivesReadyCallback() {
+        val scanner = TestScanner()
+        val coordinator = ScanSessionCoordinator(scanner)
+        coordinator.startSession()
+
+        // The source is already camera, but this selection changes the policy
+        // bit that must survive process recreation.
+        assertEquals(InputSource.CAMERA, coordinator.inputSource)
+        coordinator.selectInputSource(InputSource.CAMERA)
+        val checkpoint = coordinator.state.toScanSessionCheckpoint(
+            sessionId = "session",
+            cameraWasSelectedByUser = coordinator.cameraWasSelectedByUser,
+        )
+        assertTrue(checkpoint?.cameraWasSelectedByUser == true)
+
+        val restoredScanner = TestScanner()
+        val restored = ScanSessionCoordinator(
+            scanner = restoredScanner,
+            restoredCheckpoint = checkpoint,
+        )
+        restored.startSession()
+        restoredScanner.markReady()
+
+        assertEquals(InputSource.CAMERA, restored.inputSource)
+        assertTrue(restored.cameraWasSelectedByUser)
+    }
+
+    @Test
+    fun restoredResultDoesNotReplayMatchOrRestartAutoAdvance() {
+        val coordinator = ScanSessionCoordinator(
+            scanner = TestScanner(),
+            autoAdvanceEnabled = true,
+            restoredCheckpoint = ScanSessionCheckpoint(
+                sessionId = "session",
+                phase = ScanCheckpointPhase.RESULT,
+                qrPayload = qrPayload,
+                barcodePayload = barcodePayload,
+                result = MatchResult.MATCH,
+                matchedCount = 1,
+                inputSource = ScanCheckpointInputSource.CAMERA,
+            ),
+        )
+
+        val reduction = coordinator.startSession()
+
+        assertEquals(ScanPhase.RESULT, coordinator.state.phase)
+        assertEquals(MatchResult.MATCH, coordinator.state.result)
+        assertNull(coordinator.state.autoAdvanceSecondsRemaining)
+        assertTrue(reduction.effects.none { it is ScanEffect.RecordMatch })
+        assertTrue(reduction.effects.none { it is ScanEffect.AutoAdvanceStarted })
+    }
+
+    @Test
+    fun unsupportedCheckpointFallsBackToWaitingQrWithExistingCount() {
+        val coordinator = ScanSessionCoordinator(
+            scanner = TestScanner(),
+            existingMatchedCount = 5,
+            restoredCheckpoint = ScanSessionCheckpoint(
+                sessionId = "session",
+                phase = ScanCheckpointPhase.RESULT,
+                qrPayload = "qr",
+                barcodePayload = "barcode",
+                result = MatchResult.MATCH,
+                matchedCount = 5,
+                version = ScanSessionCheckpoint.CURRENT_VERSION + 1,
+            ),
+        )
+
+        coordinator.startSession()
+
+        assertEquals(ScanPhase.WAITING_QR, coordinator.state.phase)
+        assertEquals(5, coordinator.state.matchedCount)
+        assertEquals(InputSource.CAMERA, coordinator.inputSource)
+    }
+
+    @Test
+    fun rereadQrCheckpointRestoresWaitingQrInsteadOfTheOldAcceptedQr() {
+        val coordinator = ScanSessionCoordinator(TestScanner())
+        coordinator.startSession()
+        coordinator.submitScanPayload(ScanPayload.qr(qrPayload))
+        coordinator.rereadQr()
+
+        val checkpoint = coordinator.state.toScanSessionCheckpoint("session")
+        val restored = ScanSessionCoordinator(
+            scanner = TestScanner(),
+            restoredCheckpoint = checkpoint,
+        )
+        restored.startSession()
+
+        assertEquals(ScanPhase.WAITING_QR, restored.state.phase)
+        assertNull(restored.state.qrPayload)
+    }
+
+    @Test
+    fun manualNextCheckpointRestoresWaitingQrWithoutReplayingTerminalMatch() {
+        val coordinator = ScanSessionCoordinator(TestScanner())
+        coordinator.startSession()
+        coordinator.submitScanPayload(ScanPayload.qr(qrPayload))
+        coordinator.submitScanPayload(ScanPayload.code128(barcodePayload, timestampMillis = 300L))
+        coordinator.submitScanPayload(ScanPayload.code128(barcodePayload, timestampMillis = 400L))
+        assertEquals(ScanPhase.RESULT, coordinator.state.phase)
+        coordinator.manualNext()
+
+        val checkpoint = coordinator.state.toScanSessionCheckpoint("session")
+        val restored = ScanSessionCoordinator(
+            scanner = TestScanner(),
+            restoredCheckpoint = checkpoint,
+        )
+        val start = restored.startSession()
+
+        assertEquals(ScanPhase.WAITING_QR, restored.state.phase)
+        assertEquals(1, restored.state.matchedCount)
+        assertTrue(start.effects.none { it is ScanEffect.RecordMatch })
     }
 
     private class TestScanner : ExternalScanner {

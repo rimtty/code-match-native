@@ -27,5 +27,6 @@ class SettingsModelsTest {
         assertEquals(SuccessSound.POS_BEEP, SuccessSound.fromStorageValue("future"))
         assertEquals(FailureSound.ALARM, FailureSound.fromStorageValue("future"))
         assertEquals(AppLanguage.JAPANESE, AppLanguage.fromCode("future"))
+        assertEquals(AppLanguage.JAPANESE, AppLanguage.fromCode(null))
     }
 }

@@ -80,6 +80,25 @@ class HistoryPdfContentTest {
     }
 
     @Test
+    fun englishContentInflectsBoxUnitForOneAndMany() {
+        val session = MatchSession(
+            endedAt = 2_000L,
+            entries = listOf(
+                MatchEntry(id = "one", code = "ONE"),
+                MatchEntry(id = "two", code = "TWO"),
+                MatchEntry(id = "three", code = "TWO"),
+            ),
+        )
+
+        val text = HistoryPdfContent.build(session, AppLanguage.ENGLISH)
+            .joinToString("\n") { it.text }
+
+        assertTrue(text.contains("Boxes: 3 boxes (part numbers: 2)"))
+        assertTrue(text.contains("#1 ONE (1 box)"))
+        assertTrue(text.contains("#2 TWO (2 boxes)"))
+    }
+
+    @Test
     fun oneBlockIsEmittedPerPayloadSoLongRawValuesCannotBeDropped() {
         val rawQr = "Q".repeat(2_000)
         val rawBarcode = "B".repeat(2_000)

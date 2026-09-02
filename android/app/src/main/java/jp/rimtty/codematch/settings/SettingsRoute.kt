@@ -7,6 +7,8 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import jp.rimtty.codematch.feature.settings.SettingsScreen
+import jp.rimtty.codematch.feature.settings.SettingsUiAction
+import jp.rimtty.codematch.navigation.CodeMatchBackHandler
 
 @Composable
 fun SettingsRoute(
@@ -15,5 +17,11 @@ fun SettingsRoute(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.refreshScannerState() }
+    // The scanner guide is an inline settings destination. Predictive/system
+    // back closes it first; once closed, the Activity owns root back behavior.
+    CodeMatchBackHandler(
+        enabled = state.setupGuideVisible,
+        onBack = { viewModel.onAction(SettingsUiAction.CloseSetupGuide) },
+    )
     SettingsScreen(state = state, onAction = viewModel::onAction, modifier = modifier)
 }
