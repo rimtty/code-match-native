@@ -1,5 +1,7 @@
 package jp.rimtty.codematch.feature.scan
 
+import android.content.res.Configuration
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +50,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -61,12 +65,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import jp.rimtty.codematch.core.matching.CodeMatcher
+import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
+import java.util.Locale
 
 /**
  * Stateless scan screen. The host owns [ScanUiState] and translates
@@ -86,6 +94,44 @@ fun ScanScreen(
     onCameraFocus: (CameraFocusPoint) -> Unit = {},
     /** Opens the app's camera permission page for a permanently denied permission. */
     onOpenCameraSettings: () -> Unit = {},
+    /**
+     * Optional language owned by the host's immutable settings state.
+     *
+     * The application normally applies its per-app locale at the root. A
+     * feature-level override keeps this stateless surface deterministic for
+     * hosts that render the language as state before Android recreates the
+     * Activity (and for direct Compose tests).
+     */
+    language: AppLanguage? = null,
+) {
+    val content: @Composable () -> Unit = {
+        ScanScreenContent(
+            state = state,
+            onAction = onAction,
+            modifier = modifier,
+            showDebugDemoTools = showDebugDemoTools,
+            cameraPreview = cameraPreview,
+            onCameraFocus = onCameraFocus,
+            onOpenCameraSettings = onOpenCameraSettings,
+        )
+    }
+    if (language == null) {
+        content()
+    } else {
+        ScanLocalized(language, content)
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun ScanScreenContent(
+    state: ScanUiState,
+    onAction: (ScanUiAction) -> Unit,
+    modifier: Modifier,
+    showDebugDemoTools: Boolean,
+    cameraPreview: CameraPreviewContent?,
+    onCameraFocus: (CameraFocusPoint) -> Unit,
+    onOpenCameraSettings: () -> Unit,
 ) {
     val screenDescription = stringResource(R.string.scan_accessibility_description)
     val countDescription = stringResource(R.string.scan_count_format, state.matchedCount)
@@ -166,14 +212,16 @@ fun ScanRoute(
     cameraPreview: CameraPreviewContent? = null,
     onCameraFocus: (CameraFocusPoint) -> Unit = {},
     onOpenCameraSettings: () -> Unit = {},
+    language: AppLanguage? = null,
 ) = ScanScreen(
-    state,
-    onAction,
-    modifier,
-    showDebugDemoTools,
-    cameraPreview,
-    onCameraFocus,
-    onOpenCameraSettings,
+    state = state,
+    onAction = onAction,
+    modifier = modifier,
+    showDebugDemoTools = showDebugDemoTools,
+    cameraPreview = cameraPreview,
+    onCameraFocus = onCameraFocus,
+    onOpenCameraSettings = onOpenCameraSettings,
+    language = language,
 )
 
 /** Alias kept small so app integration can choose either naming convention. */
@@ -186,14 +234,16 @@ fun ScanDestination(
     cameraPreview: CameraPreviewContent? = null,
     onCameraFocus: (CameraFocusPoint) -> Unit = {},
     onOpenCameraSettings: () -> Unit = {},
+    language: AppLanguage? = null,
 ) = ScanScreen(
-    state,
-    onAction,
-    modifier,
-    showDebugDemoTools,
-    cameraPreview,
-    onCameraFocus,
-    onOpenCameraSettings,
+    state = state,
+    onAction = onAction,
+    modifier = modifier,
+    showDebugDemoTools = showDebugDemoTools,
+    cameraPreview = cameraPreview,
+    onCameraFocus = onCameraFocus,
+    onOpenCameraSettings = onOpenCameraSettings,
+    language = language,
 )
 
 @Composable
@@ -950,6 +1000,24 @@ private fun DebugDemoTools(onAction: (ScanUiAction) -> Unit) {
             }
         }
     }
+}
+
+/** Resolve scan resources from an optional immutable language override. */
+@Composable
+private fun ScanLocalized(language: AppLanguage, content: @Composable () -> Unit) {
+    val baseContext = LocalContext.current
+    val baseConfiguration = LocalConfiguration.current
+    val localizedContext = remember(baseContext, baseConfiguration, language) {
+        val configuration = Configuration(baseConfiguration).apply {
+            setLocale(Locale.forLanguageTag(language.code))
+        }
+        baseContext.createConfigurationContext(configuration)
+    }
+    CompositionLocalProvider(
+        LocalContext provides localizedContext,
+        LocalConfiguration provides localizedContext.resources.configuration,
+        content = content,
+    )
 }
 
 @Preview(showBackground = true, showSystemUi = false)

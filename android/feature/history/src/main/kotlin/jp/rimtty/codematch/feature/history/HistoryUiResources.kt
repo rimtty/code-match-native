@@ -1,12 +1,18 @@
 package jp.rimtty.codematch.feature.history
 
+import android.content.res.Configuration
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalConfiguration
 import jp.rimtty.codematch.core.export.HistoryExportTextFormatter
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchSession
 import java.time.ZoneId
+import java.util.Locale
 
 /**
  * Resource-backed strings for the history Compose surface.
@@ -89,11 +95,14 @@ object HistoryUiResources {
     }
 
     @Composable
-    fun boxCount(count: Int, language: AppLanguage): String = pluralStringResource(
-        R.plurals.history_box_count,
-        count,
-        HistoryExportTextFormatter.integer(count, language),
-    )
+    fun boxCount(count: Int, language: AppLanguage): String {
+        val safeCount = count.coerceAtLeast(0)
+        return pluralStringResource(
+            R.plurals.history_box_count,
+            safeCount,
+            HistoryExportTextFormatter.integer(safeCount, language),
+        )
+    }
 
     @Composable
     fun groupAccessibilitySummary(
@@ -154,4 +163,29 @@ object HistoryUiResources {
 
     @Composable
     fun notAvailable(): String = stringResource(R.string.history_not_available)
+}
+
+/**
+ * Resolve this feature's resources from the language in immutable app state.
+ *
+ * The app also synchronizes Android's per-app locale, but keeping this narrow
+ * provider at the feature boundary makes a language change redraw immediately
+ * (and keeps Compose tests deterministic even when the host device is in the
+ * other language). Font scale and all other configuration values are retained.
+ */
+@Composable
+internal fun HistoryLocalized(language: AppLanguage, content: @Composable () -> Unit) {
+    val baseContext = LocalContext.current
+    val baseConfiguration = LocalConfiguration.current
+    val localizedContext = remember(baseContext, baseConfiguration, language) {
+        val configuration = Configuration(baseConfiguration).apply {
+            setLocale(Locale.forLanguageTag(language.code))
+        }
+        baseContext.createConfigurationContext(configuration)
+    }
+    CompositionLocalProvider(
+        LocalContext provides localizedContext,
+        LocalConfiguration provides localizedContext.resources.configuration,
+        content = content,
+    )
 }

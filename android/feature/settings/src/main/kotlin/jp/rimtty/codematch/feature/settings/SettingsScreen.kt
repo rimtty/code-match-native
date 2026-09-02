@@ -1,5 +1,7 @@
 package jp.rimtty.codematch.feature.settings
 
+import android.content.res.Configuration
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -54,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -70,6 +73,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -89,6 +94,7 @@ import jp.rimtty.codematch.scanner.api.DiagnosticEvent
 import jp.rimtty.codematch.scanner.api.ScannerDevice
 import kotlin.math.floor
 import kotlin.math.roundToInt
+import java.util.Locale
 
 /**
  * Stateless settings destination. The caller owns persistence, scanner
@@ -102,33 +108,35 @@ fun SettingsScreen(
     onAction: (SettingsUiAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val screenDescription = stringResource(R.string.settings_accessibility_description)
-    Scaffold(
-        modifier = modifier
-            .fillMaxSize()
-            .semantics {
-                this.contentDescription = screenDescription
-                this.testTagsAsResourceId = true
-            }
-            .testTag(SettingsTestTags.SCREEN),
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.settings_title),
-                        modifier = Modifier.semantics {
-                            stateDescription = screenDescription
-                        },
-                    )
-                },
+    SettingsLocalized(state.language) {
+        val screenDescription = stringResource(R.string.settings_accessibility_description)
+        Scaffold(
+            modifier = modifier
+                .fillMaxSize()
+                .semantics {
+                    this.contentDescription = screenDescription
+                    this.testTagsAsResourceId = true
+                }
+                .testTag(SettingsTestTags.SCREEN),
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = stringResource(R.string.settings_title),
+                            modifier = Modifier.semantics {
+                                stateDescription = screenDescription
+                            },
+                        )
+                    },
+                )
+            },
+        ) { innerPadding ->
+            SettingsContent(
+                state = state,
+                onAction = onAction,
+                contentPadding = innerPadding,
             )
-        },
-    ) { innerPadding ->
-        SettingsContent(
-            state = state,
-            onAction = onAction,
-            contentPadding = innerPadding,
-        )
+        }
     }
 }
 
@@ -1391,5 +1399,23 @@ private fun diagnosticCategoryText(category: DiagnosticCategory): String = strin
         DiagnosticCategory.ERROR -> R.string.settings_diagnostic_error
     },
 )
+
+/** Resolve settings resources from the language carried by immutable UI state. */
+@Composable
+private fun SettingsLocalized(language: AppLanguage, content: @Composable () -> Unit) {
+    val baseContext = LocalContext.current
+    val baseConfiguration = LocalConfiguration.current
+    val localizedContext = remember(baseContext, baseConfiguration, language) {
+        val configuration = Configuration(baseConfiguration).apply {
+            setLocale(Locale.forLanguageTag(language.code))
+        }
+        baseContext.createConfigurationContext(configuration)
+    }
+    CompositionLocalProvider(
+        LocalContext provides localizedContext,
+        LocalConfiguration provides localizedContext.resources.configuration,
+        content = content,
+    )
+}
 
 private const val MAX_DIAGNOSTIC_EVENTS = 20

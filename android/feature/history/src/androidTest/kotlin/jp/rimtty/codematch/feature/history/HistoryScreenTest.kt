@@ -2,18 +2,21 @@ package jp.rimtty.codematch.feature.history
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.mutableStateOf
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
+import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchEntry
 import jp.rimtty.codematch.core.model.MatchSession
 import org.junit.Assert.assertEquals
@@ -28,11 +31,12 @@ class HistoryScreenTest {
 
     @Test
     fun emptyStateIsDisplayedWithHistorySemantics() {
-        val emptyTitle = targetString(R.string.history_empty_title)
-        composeRule.setContent { HistoryScreen(emptyList()) }
+        composeRule.setContent {
+            HistoryScreen(emptyList(), language = AppLanguage.ENGLISH)
+        }
 
         composeRule.onNodeWithTag(HistoryTestTags.SCREEN).assertIsDisplayed()
-        composeRule.onNodeWithText(emptyTitle).assertIsDisplayed()
+        composeRule.onNodeWithText("No history yet").assertIsDisplayed()
     }
 
     @Test
@@ -63,18 +67,17 @@ class HistoryScreenTest {
 
     @Test
     fun entryDetailDisplaysParsedAndLegacyPayloadValues() {
-        val qrParsed = targetString(R.string.history_qr_parsed)
         val entry = MatchEntry(
             code = "BCJH-52-81GG",
             qrPayload = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
             barcodePayload = "BCJH-52-81GG@1N5X0C",
         )
         composeRule.setContent {
-            HistoryEntryDetail(entry = entry)
+            HistoryEntryDetail(entry = entry, language = AppLanguage.ENGLISH)
         }
 
         composeRule.onNodeWithTag(HistoryTestTags.ENTRY_DETAIL).assertIsDisplayed()
-        composeRule.onNodeWithText(qrParsed).assertIsDisplayed()
+        composeRule.onNodeWithText("Delivery information (QR)").assertIsDisplayed()
         composeRule.onNodeWithText("DCLP675300").assertIsDisplayed()
         composeRule.onNodeWithText("1N5X0C").performScrollTo().assertIsDisplayed()
     }
@@ -112,6 +115,31 @@ class HistoryScreenTest {
             .assertHeightIsAtLeast(48.dp)
     }
 
-    private fun targetString(resourceId: Int): String =
-        InstrumentationRegistry.getInstrumentation().targetContext.getString(resourceId)
+    @Test
+    fun englishBoxCountsUseSingularAndPluralAndRedrawInJapanese() {
+        val language = mutableStateOf(AppLanguage.ENGLISH)
+        val session = MatchSession(
+            id = "plural-session",
+            startedAt = 1_000L,
+            endedAt = 2_000L,
+            entries = listOf(
+                MatchEntry(id = "one", code = "ONE", matchedAt = 1_100L),
+                MatchEntry(id = "two-a", code = "TWO", matchedAt = 1_200L),
+                MatchEntry(id = "two-b", code = "TWO", matchedAt = 1_300L),
+            ),
+        )
+        composeRule.setContent {
+            HistorySessionDetail(session = session, language = language.value)
+        }
+
+        composeRule.onNodeWithText("1 box").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("2 boxes").performScrollTo().assertIsDisplayed()
+
+        composeRule.runOnIdle { language.value = AppLanguage.JAPANESE }
+
+        composeRule.onNodeWithText("1箱").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("2箱").performScrollTo().assertIsDisplayed()
+        composeRule.onAllNodesWithText("1 box").assertCountEquals(0)
+        composeRule.onAllNodesWithText("2 boxes").assertCountEquals(0)
+    }
 }

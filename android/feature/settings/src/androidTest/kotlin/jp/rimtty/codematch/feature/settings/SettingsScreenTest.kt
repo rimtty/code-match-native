@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
@@ -187,6 +188,36 @@ class SettingsScreenTest {
         assertTrue(actions.contains(SettingsUiAction.PreviewFailureSound(FailureSound.FAIL_SAMPLE)))
         assertTrue(actions.contains(SettingsUiAction.SetLanguage(AppLanguage.ENGLISH)))
         assertTrue(actions.contains(SettingsUiAction.SetAutoAdvanceEnabled(true)))
+    }
+
+    @Test
+    fun languageStateRedrawsSettingsTextWithoutWaitingForActivityRecreation() {
+        val state = mutableStateOf(SettingsUiState())
+        composeRule.setContent {
+            MaterialTheme {
+                SettingsScreen(
+                    state = state.value,
+                    onAction = { action ->
+                        if (action is SettingsUiAction.SetLanguage) {
+                            state.value = state.value.copy(
+                                settings = state.value.settings.copy(language = action.language),
+                            )
+                        }
+                    },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("表示言語").performScrollTo().assertIsDisplayed()
+        composeRule.onAllNodesWithText("Display language").assertCountEquals(0)
+
+        composeRule.onAllNodesWithTag(SettingsTestTags.LANGUAGE_CHOICE)
+            .get(1)
+            .performScrollTo()
+            .performClick()
+
+        composeRule.onNodeWithText("Display language").assertIsDisplayed()
+        composeRule.onAllNodesWithText("表示言語").assertCountEquals(0)
     }
 
     @Test

@@ -36,10 +36,11 @@ JDK/SDKがない環境ではGradle結果を推測せず、実行不能として�
 
 ## 2026-09-02 統合検証記録
 
-- Android Studio付属JDK 25とAndroid SDKを明示し、`testDebugUnitTest lintDebug assembleDebug assembleRelease bundleRelease --no-parallel` を実行した。1,110 tasksが成功し、cameraの新規非同期test 7件を含む全JVM test、lint、debug/release APK、release AABが完了した。
+- Android Studio付属JDK 25とAndroid SDKを明示し、`testDebugUnitTest lintDebug assembleDebug assembleRelease bundleRelease --no-parallel` を実行した。1,110 tasks、JVM test 162件が成功し、cameraの非同期test 7件を含む全JVM test、lint、debug/release APK、release AABが完了した。
 - release dependency reportと生成済みAPK/AABに対してhardening検査を実行し、Fake/analytics/crash依存、不要な権限、FileProvider、backup/D2D resource、全module manifestの検査が成功した。
-- USB接続したPixel 7（Android 16）1台を明示選択し、自動instrumentationを43件実行した。app 4、core:data 12、feature:history 4、feature:scan 9、feature:settings 10、scanner:ble persistence 4がすべて成功した。
-- Apple SiliconのAndroid 17/API 37.1・16KB page-size Pixel 6 emulatorでも、同じ自動instrumentation 43件がすべて成功した。検証後はemulatorだけを正常停止した。
+- USB接続したPixel 7（Android 16 / API 36）1台を明示選択し、自動instrumentationを53件実行した。app 8、core:data 12、feature:history 5、feature:scan 10、feature:settings 11、scanner:camera 3、scanner:ble persistence 4がすべて成功した。appの追加4件はdebug Fakeを同じDI graphから操作し、接続・入力切替・逆順拒否・照合保存・履歴、設定ガイドと再接続、言語のActivity再生成後保持、実時間auto-advanceを検査する。
+- `scanner:camera`の3件は複製していない共有QR/Code 128画像を同梱ML Kitへメモリ入力し、各形式のdecodeと誤形式拒否を検査した。画像・frame・payloadの保存やlog出力は行わない。この証拠は実カメラ撮影やCameraX preview frameを意味しない。
+- Apple SiliconのAndroid 17/API 37.1・16KB page-size Pixel 6 emulatorでも、同じ自動instrumentation 53件がすべて成功した。英語端末設定で見つかったHistoryテストのlocale依存を修正し、検証後はemulatorだけを正常停止した。
 - Swift unit 68本/UI 5本とAndroid証拠の全対応・未対応境界は[`TEST_PARITY.md`](TEST_PARITY.md)に記録した。
 
 この節のPixel結果は自動testの証拠であり、QR/Code 128の実撮影、tap focus、TalkBack、対象BLE scanner通信や設定復元を完了扱いにしない。

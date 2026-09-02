@@ -8,6 +8,7 @@ test_tasks=(
   :feature:history:connectedDebugAndroidTest
   :feature:scan:connectedDebugAndroidTest
   :feature:settings:connectedDebugAndroidTest
+  :scanner:camera:connectedDebugAndroidTest
   :scanner:ble:connectedDebugAndroidTest
 )
 

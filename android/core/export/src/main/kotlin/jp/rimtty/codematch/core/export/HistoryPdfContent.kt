@@ -97,7 +97,7 @@ object HistoryPdfContent {
         labels: HistoryExportLabels,
     ) {
         val number = HistoryExportTextFormatter.integer(groupIndex + 1, language)
-        val count = boxCount(group.boxCount, language, labels)
+        val count = HistoryExportTextFormatter.boxCount(group.boxCount, language)
         blocks += HistoryPdfBlock(
             text = "#$number ${group.code} ($count)",
             style = PdfTextStyle.MONOSPACE_BOLD,
@@ -178,12 +178,12 @@ object HistoryPdfContent {
         language: AppLanguage,
         labels: HistoryExportLabels,
     ): String = if (language == AppLanguage.JAPANESE) {
-        "${labels.inspectionBoxCount}: ${HistoryExportTextFormatter.integer(session.matchedCount, language)}" +
-            "${labels.box}（${labels.partCount}: " +
+        "${labels.inspectionBoxCount}: ${HistoryExportTextFormatter.boxCount(session.matchedCount, language)}" +
+            "（${labels.partCount}: " +
             HistoryExportTextFormatter.integer(session.groupedEntries.size, language) + "）"
     } else {
-        "${labels.inspectionBoxCount}: ${HistoryExportTextFormatter.integer(session.matchedCount, language)} " +
-            "${labels.boxCount} (${labels.partCount}: " +
+        "${labels.inspectionBoxCount}: ${HistoryExportTextFormatter.boxCount(session.matchedCount, language)} " +
+            "(${labels.partCount}: " +
             HistoryExportTextFormatter.integer(session.groupedEntries.size, language) + ")"
     }
 
@@ -193,13 +193,4 @@ object HistoryPdfContent {
         labels: HistoryExportLabels,
     ): String = if (language == AppLanguage.JAPANESE) "$number${labels.box}" else "${labels.box} $number"
 
-    private fun boxCount(
-        count: Int,
-        language: AppLanguage,
-        labels: HistoryExportLabels,
-    ): String = if (language == AppLanguage.JAPANESE) {
-        "${HistoryExportTextFormatter.integer(count, language)}${labels.boxCount}"
-    } else {
-        "${HistoryExportTextFormatter.integer(count, language)} ${labels.boxCount}"
-    }
 }

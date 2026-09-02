@@ -45,12 +45,16 @@ class HistoryUiTextTest {
 
     @Test
     fun japaneseAndEnglishHistoryResourcesHaveTheSameKeys() {
-        val japanese = resourceKeys(resourceFile("values"))
-        val english = resourceKeys(resourceFile("values-en"))
+        val japanese = resourceShape(resourceFile("values"))
+        val english = resourceShape(resourceFile("values-en"))
 
-        assertEquals(japanese.toSet(), english.toSet())
-        assertEquals(japanese.size, japanese.toSet().size)
-        assertEquals(english.size, english.toSet().size)
+        assertEquals(japanese.keys, english.keys)
+        assertEquals(japanese.keys.size, japanese.keys.toSet().size)
+        assertEquals(english.keys.size, english.keys.toSet().size)
+        assertEquals(japanese.pluralQuantities.keys, english.pluralQuantities.keys)
+        assertTrue(japanese.pluralQuantities.values.all { "other" in it })
+        assertTrue(english.pluralQuantities.values.all { setOf("one", "other") == it })
+        assertEquals(japanese.formatTokens, english.formatTokens)
     }
 
     private fun resourceFile(directory: String): File {
@@ -67,15 +71,46 @@ class HistoryUiTextTest {
         error("Unable to locate history resource: $relativePath")
     }
 
-    private fun resourceKeys(file: File): List<String> {
+    private data class ResourceShape(
+        val keys: Set<String>,
+        val pluralQuantities: Map<String, Set<String>>,
+        val formatTokens: Map<String, List<String>>,
+    )
+
+    private fun resourceShape(file: File): ResourceShape {
         val document = DocumentBuilderFactory.newInstance()
             .newDocumentBuilder()
             .parse(file)
-        return listOf("string", "plurals").flatMap { resourceType ->
+        val entries = listOf("string", "plurals").flatMap { resourceType ->
             val nodes = document.getElementsByTagName(resourceType)
             (0 until nodes.length).map { index ->
-                (nodes.item(index) as Element).getAttribute("name")
+                resourceType to (nodes.item(index) as Element)
             }
         }
+        val keys = entries.map { (type, element) -> "$type:${element.getAttribute("name")}" }.toSet()
+        val pluralQuantities = entries
+            .filter { (type, _) -> type == "plurals" }
+            .associate { (_, element) ->
+                element.getAttribute("name") to (0 until element.childNodes.length)
+                    .mapNotNull { index ->
+                        (element.childNodes.item(index) as? Element)
+                            ?.takeIf { it.tagName == "item" }
+                            ?.getAttribute("quantity")
+                    }
+                    .toSet()
+            }
+        val formatTokens = entries.associate { (type, element) ->
+            "$type:${element.getAttribute("name")}" to FORMAT_TOKEN_PATTERN
+                .findAll(element.textContent.orEmpty())
+                .map { it.value }
+                .distinct()
+                .sorted()
+                .toList()
+        }
+        return ResourceShape(keys, pluralQuantities, formatTokens)
+    }
+
+    private companion object {
+        val FORMAT_TOKEN_PATTERN: Regex = Regex("%\\d+\\$[a-zA-Z]")
     }
 }
