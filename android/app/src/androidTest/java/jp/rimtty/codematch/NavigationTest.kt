@@ -170,6 +170,7 @@ class NavigationTest {
             .performClick()
         waitForTag(HistoryTestTags.SESSION_DETAIL)
 
+        waitForTag(HistoryTestTags.GROUP_ROW)
         composeRule.onNodeWithTag(HistoryTestTags.GROUP_ROW)
             .performScrollTo()
             .performClick()

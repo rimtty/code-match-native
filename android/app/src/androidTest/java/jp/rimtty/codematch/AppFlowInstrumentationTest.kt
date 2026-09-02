@@ -399,6 +399,7 @@ class AppFlowInstrumentationTest {
         waitForTag(HistoryTestTags.SESSION_DETAIL)
 
         // The single persisted part is exposed as one group and one box.
+        waitForTag(HistoryTestTags.GROUP_ROW)
         onNodeWithTag(HistoryTestTags.GROUP_ROW)
             .performScrollTo()
             .performClick()
