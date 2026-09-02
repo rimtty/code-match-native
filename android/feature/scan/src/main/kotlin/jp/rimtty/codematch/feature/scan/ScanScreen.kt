@@ -420,7 +420,10 @@ private fun BluetoothConfigurationStatus(state: ScanUiState) {
     val messageRes = when (state.bluetoothConfigurationState) {
         ConfigurationState.Unavailable -> return
         ConfigurationState.Configuring -> R.string.scan_bluetooth_configuration_configuring
-        ConfigurationState.Ready -> R.string.scan_bluetooth_restriction_session
+        // Ready guidance belongs inside the waiting card, after the current
+        // QR/Code 128 instruction. Keeping it as a separate row above the
+        // card can push the primary instruction below a compact viewport.
+        ConfigurationState.Ready -> return
         is ConfigurationState.Failed -> R.string.scan_bluetooth_configuration_failed
     }
     Text(
@@ -732,6 +735,17 @@ private fun ScanWaitingCard(
                 },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (state.inputSource == InputSource.BLUETOOTH &&
+                state.bluetoothConfigurationState === ConfigurationState.Ready
+            ) {
+                Text(
+                    text = stringResource(R.string.scan_bluetooth_restriction_session),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.testTag("scan_bluetooth_configuration_status"),
+                )
+            }
             if (state.inputSource == InputSource.CAMERA) {
                 CameraStage(
                     format = expected,
