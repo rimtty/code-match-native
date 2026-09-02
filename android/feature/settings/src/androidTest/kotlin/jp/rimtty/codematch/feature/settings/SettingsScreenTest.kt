@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.AppSettings
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
@@ -269,6 +270,47 @@ class SettingsScreenTest {
 
         composeRule.onNodeWithTag(SettingsTestTags.RECONNECT).performScrollTo().performClick()
         assertTrue(actions.contains(SettingsUiAction.Reconnect))
+    }
+
+    @Test
+    fun configurationStatusIsLocalizedAndFailureReasonStaysHidden() {
+        val privateReason = "private adapter setting detail"
+        val state = mutableStateOf(
+            SettingsUiState(
+                connectionState = ConnectionState.Connected(
+                    ScannerDevice("scanner-1", "Scanner one"),
+                ),
+                configurationState = ConfigurationState.Configuring,
+            ),
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                SettingsScreen(state = state.value, onAction = {})
+            }
+        }
+
+        composeRule.onNodeWithTag(SettingsTestTags.SCANNER_CONFIGURATION_STATUS)
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText(
+            InstrumentationRegistry.getInstrumentation().targetContext
+                .getString(R.string.settings_configuration_configuring),
+        ).assertIsDisplayed()
+
+        composeRule.runOnIdle {
+            state.value = state.value.copy(
+                configurationState = ConfigurationState.Failed(privateReason),
+            )
+        }
+
+        composeRule.onNodeWithText(
+            InstrumentationRegistry.getInstrumentation().targetContext
+                .getString(R.string.settings_configuration_failed),
+        ).assertIsDisplayed()
+        composeRule.onAllNodesWithText(privateReason).assertCountEquals(0)
+        composeRule.onNodeWithTag(SettingsTestTags.SCANNER_ISSUE_MESSAGE)
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     @Test

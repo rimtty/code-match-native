@@ -15,6 +15,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchResult
+import jp.rimtty.codematch.scanner.api.ConfigurationState
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScannerIssue
 import org.junit.Assert.assertEquals
@@ -220,5 +221,103 @@ class ScanScreenTest {
             assertTrue(actions.contains(ScanUiAction.ReconnectBluetooth))
             assertEquals(1, settingsOpenCount)
         }
+    }
+
+    @Test
+    fun bluetoothConfigurationStatusReturnsToSessionRestrictionAfterReady() {
+        val language = mutableStateOf(AppLanguage.ENGLISH)
+        val state = mutableStateOf(
+            ScanUiState.fromSession(
+                session = ScanSessionState(
+                    scan = ScanState.WaitingQr(),
+                    inputSource = InputSource.BLUETOOTH,
+                ),
+                sessionActive = true,
+                bluetoothReady = true,
+                bluetoothConfigurationState = ConfigurationState.Configuring,
+            ),
+        )
+        composeRule.setContent {
+            ScanScreen(
+                state = state.value,
+                onAction = {},
+                language = language.value,
+            )
+        }
+
+        composeRule.onNodeWithTag("scan_bluetooth_configuration_status")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "Preparing scanner scan targets. Please wait.",
+        ).assertIsDisplayed()
+
+        composeRule.runOnIdle {
+            state.value = state.value.copy(
+                bluetoothConfigurationState = ConfigurationState.Ready,
+            )
+        }
+
+        composeRule.onNodeWithText(
+            "Scan targets: QR and Code 128 (comparison session)",
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText("Scan a QR code").assertIsDisplayed()
+        composeRule.onAllNodesWithText(
+            "Preparing scanner scan targets. Please wait.",
+        ).assertCountEquals(0)
+
+        composeRule.runOnIdle {
+            language.value = AppLanguage.JAPANESE
+        }
+        composeRule.onNodeWithText("読み取り対象：QR・Code 128（照合セッション）").assertIsDisplayed()
+    }
+
+    @Test
+    fun bluetoothConfigurationFailureUsesGenericCopyWithoutRawReason() {
+        val privateReason = "private adapter setting detail"
+        composeRule.setContent {
+            ScanScreen(
+                state = ScanUiState.fromSession(
+                    session = ScanSessionState(
+                        scan = ScanState.WaitingQr(),
+                        inputSource = InputSource.BLUETOOTH,
+                    ),
+                    sessionActive = true,
+                    bluetoothReady = false,
+                    bluetoothConfigurationState = ConfigurationState.Failed(privateReason),
+                ),
+                onAction = {},
+                language = AppLanguage.ENGLISH,
+            )
+        }
+
+        composeRule.onNodeWithText(
+            "Scanner scan settings could not be verified. Continue with the camera.",
+        ).assertIsDisplayed()
+        composeRule.onAllNodesWithText(privateReason).assertCountEquals(0)
+    }
+
+    @Test
+    fun configurationFallbackUsesTypedCopyWithoutRawReason() {
+        val privateReason = "private adapter setting detail"
+        composeRule.setContent {
+            ScanScreen(
+                state = ScanUiState.fromSession(
+                    session = ScanSessionState(
+                        scan = ScanState.WaitingCode128(qrPayload),
+                        inputSource = InputSource.CAMERA,
+                    ),
+                    sessionActive = true,
+                    bluetoothIssue = ScannerIssue.CONFIGURATION_FAILED,
+                    bluetoothFallbackActive = true,
+                ),
+                onAction = {},
+                language = AppLanguage.ENGLISH,
+            )
+        }
+
+        composeRule.onNodeWithText(
+            "Scanner scan settings could not be applied. Continue with the camera at the current step.",
+        ).assertIsDisplayed()
+        composeRule.onAllNodesWithText(privateReason).assertCountEquals(0)
     }
 }

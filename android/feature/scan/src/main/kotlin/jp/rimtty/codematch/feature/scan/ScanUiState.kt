@@ -2,6 +2,7 @@ package jp.rimtty.codematch.feature.scan
 
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
 import jp.rimtty.codematch.core.model.MatchResult
+import jp.rimtty.codematch.scanner.api.ConfigurationState
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
 import jp.rimtty.codematch.scanner.api.ScanPayload
@@ -21,6 +22,8 @@ data class ScanUiState(
     val session: ScanSessionState = ScanSessionState(),
     val bluetoothReady: Boolean = false,
     val bluetoothDeviceName: String? = null,
+    /** Current scanner configuration state; failure details stay outside UI state. */
+    val bluetoothConfigurationState: ConfigurationState = ConfigurationState.Unavailable,
     val cameraAvailable: Boolean = true,
     val cameraPermissionDenied: Boolean = false,
     val isCameraRunning: Boolean = false,
@@ -52,6 +55,7 @@ data class ScanUiState(
     val cameraPermissionPermanentlyDenied: Boolean
         get() = cameraPermissionState == CameraPermissionState.PERMANENTLY_DENIED
     val scannerIssue: ScannerIssue get() = bluetoothIssue
+    val scannerConfigurationState: ConfigurationState get() = bluetoothConfigurationState
     val isBluetoothFallbackActive: Boolean get() = bluetoothFallbackActive
 
     companion object {
@@ -62,6 +66,7 @@ data class ScanUiState(
             sessionName: String? = null,
             bluetoothReady: Boolean = false,
             bluetoothDeviceName: String? = null,
+            bluetoothConfigurationState: ConfigurationState = ConfigurationState.Unavailable,
             cameraAvailable: Boolean = true,
             cameraPermissionDenied: Boolean = false,
             isCameraRunning: Boolean = false,
@@ -84,6 +89,7 @@ data class ScanUiState(
             session = session,
             bluetoothReady = bluetoothReady,
             bluetoothDeviceName = bluetoothDeviceName,
+            bluetoothConfigurationState = bluetoothConfigurationState,
             cameraAvailable = cameraAvailable,
             cameraPermissionDenied = cameraPermissionDenied,
             cameraPermissionState = cameraPermissionState,

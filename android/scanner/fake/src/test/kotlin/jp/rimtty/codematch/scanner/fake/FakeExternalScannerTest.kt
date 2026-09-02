@@ -7,6 +7,7 @@ import jp.rimtty.codematch.scanner.api.ExternalScannerListener
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
 import jp.rimtty.codematch.scanner.api.ScanPayload
+import jp.rimtty.codematch.scanner.api.ScannerIssue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -160,6 +161,13 @@ class FakeExternalScannerTest {
         assertFalse(scanner.setExpectedFormat(ScanFormat.QR))
         assertEquals(ConfigurationState.Failed("settings rejected"), scanner.configurationState)
         assertFalse(scanner.isReadyForScanning)
+        assertEquals(
+            ScannerIssue.CONFIGURATION_FAILED,
+            jp.rimtty.codematch.scanner.api.scannerIssueFor(
+                scanner.connectionState,
+                scanner.configurationState,
+            ),
+        )
     }
 
     @Test

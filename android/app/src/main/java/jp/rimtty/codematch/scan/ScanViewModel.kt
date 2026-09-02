@@ -363,13 +363,14 @@ class ScanViewModel @Inject constructor(
             publishCoordinatorState()
             enqueueCurrentCheckpoint()
         }
+        created.onScannerConfigurationStateChanged = {
+            publishCoordinatorState()
+        }
+        created.onBluetoothFallbackIssue = { issue ->
+            bluetoothFallbackIssue = issue
+        }
         created.onBluetoothFallback = {
             bluetoothFallbackActive = true
-            bluetoothFallbackIssue = scannerIssueFor(
-                scanner.connectionState,
-                scanner.configurationState,
-            ).takeIf { it != ScannerIssue.NONE }
-                ?: ScannerIssue.CONNECTION_FAILED
             publishCoordinatorState()
             if (_state.value.sessionActive &&
                 _state.value.expectedFormat != null &&
@@ -791,7 +792,7 @@ class ScanViewModel @Inject constructor(
             scanner.configurationState,
         )
         val projectedBluetoothIssue = when {
-            scanner.isReadyForScanning -> {
+            scanner.isReadyForScanning && current?.inputSource == InputSource.BLUETOOTH -> {
                 bluetoothFallbackActive = false
                 bluetoothFallbackIssue = ScannerIssue.NONE
                 ScannerIssue.NONE
@@ -807,6 +808,7 @@ class ScanViewModel @Inject constructor(
             session = session,
             bluetoothReady = scanner.isReadyForScanning,
             bluetoothDeviceName = scanner.connectedDevice?.name,
+            bluetoothConfigurationState = scanner.configurationState,
             bluetoothIssue = projectedBluetoothIssue,
             bluetoothFallbackActive = bluetoothFallbackActive,
         )
