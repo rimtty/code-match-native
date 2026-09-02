@@ -48,6 +48,8 @@ fun ScanRoute(
     viewModel: ScanViewModel = hiltViewModel(),
     /** Optional CameraX/ML Kit adapter. Null keeps previews deterministic in M2. */
     cameraHost: CameraHost? = null,
+    /** Host-owned, testable hook for opening platform Bluetooth settings. */
+    onOpenBluetoothSettings: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -220,6 +222,7 @@ fun ScanRoute(
         cameraPreview = cameraPreview,
         onCameraFocus = { point -> currentCameraHost?.focus(point) },
         onOpenCameraSettings = { currentCameraHost?.openSettings() },
+        onOpenBluetoothSettings = onOpenBluetoothSettings,
     )
 
     if (showEndSessionDialog && state.sessionActive) {

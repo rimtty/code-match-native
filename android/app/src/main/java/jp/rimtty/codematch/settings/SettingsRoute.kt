@@ -14,6 +14,8 @@ import jp.rimtty.codematch.navigation.CodeMatchBackHandler
 fun SettingsRoute(
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
+    /** Host-owned, testable hook for opening platform Bluetooth settings. */
+    onOpenBluetoothSettings: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.refreshScannerState() }
@@ -23,5 +25,10 @@ fun SettingsRoute(
         enabled = state.setupGuideVisible,
         onBack = { viewModel.onAction(SettingsUiAction.CloseSetupGuide) },
     )
-    SettingsScreen(state = state, onAction = viewModel::onAction, modifier = modifier)
+    SettingsScreen(
+        state = state,
+        onAction = viewModel::onAction,
+        modifier = modifier,
+        onOpenBluetoothSettings = onOpenBluetoothSettings,
+    )
 }

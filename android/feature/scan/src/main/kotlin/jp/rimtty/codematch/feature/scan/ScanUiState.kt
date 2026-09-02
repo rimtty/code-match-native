@@ -5,6 +5,7 @@ import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
 import jp.rimtty.codematch.scanner.api.ScanPayload
+import jp.rimtty.codematch.scanner.api.ScannerIssue
 
 /**
  * All information needed to render the scan feature.
@@ -32,6 +33,10 @@ data class ScanUiState(
     val cameraPermissionState: CameraPermissionState = CameraPermissionState.UNKNOWN,
     /** A recoverable start error is intentionally represented without an exception message. */
     val cameraStartFailed: Boolean = false,
+    /** Last BLE failure/fallback classification, with no raw transport text. */
+    val bluetoothIssue: ScannerIssue = ScannerIssue.NONE,
+    /** True when the current logical step was moved to camera after BLE loss. */
+    val bluetoothFallbackActive: Boolean = false,
 ) {
     val scan: ScanState get() = session.scan
     val phase: ScanPhase get() = session.phase
@@ -46,6 +51,8 @@ data class ScanUiState(
     val autoAdvanceDelay: AutoAdvanceDelay get() = session.autoAdvanceDelay
     val cameraPermissionPermanentlyDenied: Boolean
         get() = cameraPermissionState == CameraPermissionState.PERMANENTLY_DENIED
+    val scannerIssue: ScannerIssue get() = bluetoothIssue
+    val isBluetoothFallbackActive: Boolean get() = bluetoothFallbackActive
 
     companion object {
         fun fromSession(
@@ -68,6 +75,8 @@ data class ScanUiState(
                 CameraPermissionState.UNKNOWN
             },
             cameraStartFailed: Boolean = false,
+            bluetoothIssue: ScannerIssue = ScannerIssue.NONE,
+            bluetoothFallbackActive: Boolean = false,
         ): ScanUiState = ScanUiState(
             sessionActive = sessionActive,
             sessionNameDraft = sessionNameDraft,
@@ -81,6 +90,8 @@ data class ScanUiState(
             isCameraRunning = isCameraRunning,
             isCameraStarting = isCameraStarting,
             cameraStartFailed = cameraStartFailed,
+            bluetoothIssue = bluetoothIssue,
+            bluetoothFallbackActive = bluetoothFallbackActive,
             message = message,
             lastInvalidReason = lastInvalidReason,
             debugDemoEnabled = debugDemoEnabled,
@@ -102,6 +113,8 @@ sealed interface ScanUiAction {
     data object CancelAutoAdvance : ScanUiAction
     data object Backgrounded : ScanUiAction
     data object Foregrounded : ScanUiAction
+    /** Retry the remembered scanner after a temporary BLE loss/unavailable state. */
+    data object ReconnectBluetooth : ScanUiAction
     data class SetAutoAdvanceEnabled(val enabled: Boolean) : ScanUiAction
     data class SetAutoAdvanceDelay(val delay: AutoAdvanceDelay) : ScanUiAction
 

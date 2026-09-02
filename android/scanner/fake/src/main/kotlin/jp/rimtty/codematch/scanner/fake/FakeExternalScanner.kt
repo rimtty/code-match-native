@@ -40,6 +40,10 @@ class FakeExternalScanner(
     private var sessionConfigurationApplied = false
     private var nextConnectionFailure: String? = null
     private var nextConfigurationFailure: String? = null
+    private var forcedUnavailableReason: String? = null
+
+    /** Explicitly fan out state/payload callbacks to all app observers. */
+    private val listenerHub = FakeScannerListenerHub()
 
     private var mutableConnectionState: ConnectionState = ConnectionState.Idle
     private var mutableConfigurationState: ConfigurationState = ConfigurationState.Unavailable
@@ -77,7 +81,21 @@ class FakeExternalScanner(
     val preferredDevice: ScannerDevice?
         get() = knownDevice
 
-    override var listener: ExternalScannerListener? = null
+    /**
+     * Legacy single-listener property. New callers should use
+     * [ExternalScanner.addListener] so Settings and Scan can coexist.
+     */
+    override var listener: ExternalScannerListener?
+        get() = listenerHub.primary
+        set(value) {
+            listenerHub.primary = value
+        }
+
+    override fun addListener(listener: ExternalScannerListener): Boolean =
+        listenerHub.add(listener)
+
+    override fun removeListener(listener: ExternalScannerListener): Boolean =
+        listenerHub.remove(listener)
 
     /** Optional lambda hooks make the fake convenient in small unit tests. */
     var onPayload: ((ScanPayload) -> Unit)? = null
@@ -95,7 +113,79 @@ class FakeExternalScanner(
         nextConfigurationFailure = reason
     }
 
+    /**
+     * Make discovery/connection report a permission failure until
+     * [restoreBluetooth] is called. This models the platform boundary only;
+     * it does not request Android permissions or add a manifest entry.
+     */
+    fun simulatePermissionDenied(): Boolean = simulateUnavailable(PERMISSION_DENIED_REASON)
+
+    /** Alternate spelling used by scanner-oriented tests. */
+    fun simulateBluetoothPermissionDenied(): Boolean = simulatePermissionDenied()
+
+    /** Make discovery/connection report a powered-off radio state. */
+    fun simulatePoweredOff(): Boolean = simulateUnavailable(POWERED_OFF_REASON)
+
+    /** Alternate spelling used by scanner-oriented tests. */
+    fun simulateBluetoothPoweredOff(): Boolean = simulatePoweredOff()
+
+    /**
+     * Make the current connected scanner fail its settings restoration. The
+     * state remains connected but is never ready, matching the safety rule
+     * that an unverified scanner configuration must not receive scan input.
+     */
+    fun simulateRestoreFailure(
+        reason: String = DEFAULT_RESTORE_FAILURE,
+    ): Boolean {
+        if (!isConnected) return false
+        transitionConfiguration(ConfigurationState.Failed(reason))
+        record(DiagnosticCategory.ERROR, "Scanner settings restoration failed")
+        return true
+    }
+
+    /** Alternate spelling for tests that model a recovery handshake. */
+    fun failNextRestore(reason: String = DEFAULT_RESTORE_FAILURE) {
+        failNextConfiguration(reason)
+    }
+
+    /**
+     * Clear a simulated availability problem. Existing links are not
+     * fabricated; callers still perform the normal discovery/reconnect flow.
+     */
+    fun restoreBluetooth(): Boolean {
+        if (forcedUnavailableReason == null) return false
+        forcedUnavailableReason = null
+        transitionConfiguration(ConfigurationState.Unavailable)
+        transitionConnection(ConnectionState.Idle)
+        record(DiagnosticCategory.CONNECTION, "Bluetooth availability restored")
+        return true
+    }
+
+    /** Compatibility spelling for adapter tests. */
+    fun restoreAvailability(): Boolean = restoreBluetooth()
+
+    /**
+     * Inject a platform-neutral unavailable state with a sanitized reason.
+     * This is useful for UI tests that need an unrecognized failure without
+     * constructing a platform adapter.
+     */
+    fun simulateUnavailable(reason: String): Boolean {
+        if (reason.isBlank()) return false
+        forcedUnavailableReason = reason
+        mutableExpectedFormat = null
+        sessionConfigurationApplied = false
+        transitionConfiguration(ConfigurationState.Unavailable)
+        transitionConnection(ConnectionState.Unavailable(reason))
+        record(DiagnosticCategory.ERROR, "Bluetooth scanner is unavailable")
+        return true
+    }
+
     override fun startDiscovery(): Boolean {
+        forcedUnavailableReason?.let { reason ->
+            transitionConnection(ConnectionState.Unavailable(reason))
+            record(DiagnosticCategory.ERROR, "Bluetooth discovery unavailable")
+            return false
+        }
         if (mutableConnectionState === ConnectionState.Searching) return false
 
         transitionConnection(ConnectionState.Searching)
@@ -119,6 +209,12 @@ class FakeExternalScanner(
     override fun connect(device: ScannerDevice): Boolean {
         appendDevice(device)
         knownDevice = device
+        forcedUnavailableReason?.let { reason ->
+            transitionConfiguration(ConfigurationState.Unavailable)
+            transitionConnection(ConnectionState.Unavailable(reason))
+            record(DiagnosticCategory.ERROR, "Bluetooth connection unavailable")
+            return false
+        }
         transitionConnection(ConnectionState.Connecting(device))
 
         val connectionFailure = nextConnectionFailure
@@ -163,7 +259,8 @@ class FakeExternalScanner(
 
     override fun reconnectKnownDevice(): Boolean {
         val device = knownDevice ?: return false
-        if (isConnected && connectedDevice == device) return true
+        if (isConnected && connectedDevice == device && isReadyForScanning) return true
+        if (isConnected) disconnect()
         return connect(device)
     }
 
@@ -223,7 +320,7 @@ class FakeExternalScanner(
         val delivered = payload.copy(value = value, timestampMillis = timestamp)
         lastDeliveredValue = value
         lastDeliveredAt = timestamp
-        listener?.onScanPayload(delivered)
+        listenerHub.notifyScanPayload(delivered)
         onPayload?.invoke(delivered)
         onScanPayload?.invoke(delivered)
         return true
@@ -270,13 +367,13 @@ class FakeExternalScanner(
 
     private fun transitionConnection(state: ConnectionState) {
         mutableConnectionState = state
-        listener?.onConnectionStateChanged(state)
+        listenerHub.notifyConnectionStateChanged(state)
         onConnectionStateChanged?.invoke(state)
     }
 
     private fun transitionConfiguration(state: ConfigurationState) {
         mutableConfigurationState = state
-        listener?.onConfigurationStateChanged(state)
+        listenerHub.notifyConfigurationStateChanged(state)
         onConfigurationStateChanged?.invoke(state)
     }
 
@@ -301,6 +398,9 @@ class FakeExternalScanner(
         const val MAX_DIAGNOSTIC_EVENTS: Int = 20
         const val DEFAULT_CONNECTION_FAILURE: String = "Fake scanner connection failed"
         const val DEFAULT_CONFIGURATION_FAILURE: String = "Fake scanner configuration failed"
+        const val DEFAULT_RESTORE_FAILURE: String = "Saved scanner settings could not be restored"
+        const val PERMISSION_DENIED_REASON: String = "Bluetooth permission denied"
+        const val POWERED_OFF_REASON: String = "Bluetooth is powered off"
 
         val DEFAULT_DEVICE = ScannerDevice(
             id = "FAKE-BCST-47",
@@ -313,6 +413,37 @@ class FakeExternalScanner(
                 value = value.dropLast(1)
             }
             return value
+        }
+    }
+}
+
+/** Small identity-based callback hub used by the synchronous Fake. */
+private class FakeScannerListenerHub {
+    var primary: ExternalScannerListener? = null
+    private val listeners = java.util.Collections.newSetFromMap(
+        java.util.IdentityHashMap<ExternalScannerListener, Boolean>(),
+    )
+
+    fun add(listener: ExternalScannerListener): Boolean = listeners.add(listener)
+
+    fun remove(listener: ExternalScannerListener): Boolean = listeners.remove(listener)
+
+    fun notifyConnectionStateChanged(state: ConnectionState) {
+        snapshot().forEach { it.onConnectionStateChanged(state) }
+    }
+
+    fun notifyConfigurationStateChanged(state: ConfigurationState) {
+        snapshot().forEach { it.onConfigurationStateChanged(state) }
+    }
+
+    fun notifyScanPayload(payload: ScanPayload) {
+        snapshot().forEach { it.onScanPayload(payload) }
+    }
+
+    private fun snapshot(): List<ExternalScannerListener> = buildList {
+        primary?.let(::add)
+        listeners.forEach { candidate ->
+            if (none { it === candidate }) add(candidate)
         }
     }
 }

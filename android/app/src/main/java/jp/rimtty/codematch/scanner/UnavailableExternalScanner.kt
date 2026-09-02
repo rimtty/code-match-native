@@ -10,6 +10,7 @@ import jp.rimtty.codematch.scanner.api.ScannerDevice
 
 /** Release-safe placeholder until the real BLE adapter is delivered in M4. */
 class UnavailableExternalScanner : ExternalScanner {
+    override val supportsConnectionControls: Boolean = false
     override val devices: List<ScannerDevice> = emptyList()
     override val connectionState: ConnectionState =
         ConnectionState.Unavailable("Bluetooth scanner support is not installed")

@@ -9,6 +9,8 @@ import jp.rimtty.codematch.scanner.api.ConfigurationState
 import jp.rimtty.codematch.scanner.api.ConnectionState
 import jp.rimtty.codematch.scanner.api.DiagnosticEvent
 import jp.rimtty.codematch.scanner.api.ScannerDevice
+import jp.rimtty.codematch.scanner.api.ScannerIssue
+import jp.rimtty.codematch.scanner.api.scannerIssueFor
 
 /**
  * Which scanner controls should be presented to the user.
@@ -52,6 +54,10 @@ object SettingsTestTags {
     const val CONNECT = "settings_scanner_connect"
     const val DISCONNECT = "settings_scanner_disconnect"
     const val RECONNECT = "settings_scanner_reconnect"
+    const val RETRY = "settings_scanner_retry"
+    const val OPEN_BLUETOOTH_SETTINGS = "settings_scanner_open_bluetooth_settings"
+    const val SCANNER_ISSUE = "settings_scanner_issue"
+    const val SCANNER_ISSUE_MESSAGE = "settings_scanner_issue_message"
     const val DIAGNOSTICS = "settings_scanner_diagnostics"
     const val DIAGNOSTIC_ROW = "settings_scanner_diagnostic"
     const val CAMERA_ONLY = "settings_camera_only"
@@ -96,6 +102,8 @@ data class SettingsUiState(
     val selectedDeviceId: String? = null,
     val setupGuideVisible: Boolean = true,
     val presentation: SettingsPresentationState = SettingsPresentationState.FAKE_BLE,
+    /** Typed scanner issue; raw adapter reason strings never reach the UI. */
+    val scannerIssue: ScannerIssue = ScannerIssue.NONE,
 ) {
     /** Compatibility/readability aliases for hosts that name these values explicitly. */
     val appSettings: AppSettings get() = settings
@@ -112,6 +120,14 @@ data class SettingsUiState(
     val isReleaseCameraOnly: Boolean
         get() = presentation == SettingsPresentationState.RELEASE_CAMERA_ONLY
     val cameraOnly: Boolean get() = isReleaseCameraOnly
+    /** Derive a typed issue for direct feature previews/tests as well as app state. */
+    val resolvedScannerIssue: ScannerIssue
+        get() = if (scannerIssue != ScannerIssue.NONE) {
+            scannerIssue
+        } else {
+            scannerIssueFor(connectionState, configurationState)
+        }
+    val bluetoothIssue: ScannerIssue get() = resolvedScannerIssue
 
     val autoAdvanceEnabled: Boolean get() = settings.autoAdvanceEnabled
     val autoAdvanceDelay: AutoAdvanceDelay get() = settings.autoAdvanceDelay
@@ -132,6 +148,8 @@ sealed interface SettingsUiAction {
     data class Connect(val device: ScannerDevice) : SettingsUiAction
     data object Disconnect : SettingsUiAction
     data object Reconnect : SettingsUiAction
+    /** Retry the current discovery, connection, or recovery operation. */
+    data object RetryScanner : SettingsUiAction
 
     data class SetAutoAdvanceEnabled(val enabled: Boolean) : SettingsUiAction
     data class SetAutoAdvanceDelay(val delay: AutoAdvanceDelay) : SettingsUiAction

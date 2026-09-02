@@ -10,6 +10,7 @@ import jp.rimtty.codematch.scanner.api.ConnectionState
 import jp.rimtty.codematch.scanner.api.DiagnosticCategory
 import jp.rimtty.codematch.scanner.api.DiagnosticEvent
 import jp.rimtty.codematch.scanner.api.ScannerDevice
+import jp.rimtty.codematch.scanner.api.ScannerIssue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -77,5 +78,25 @@ class SettingsUiStateTest {
         assertEquals(true, state.appSettings.autoAdvanceEnabled)
         assertEquals(listOf(event), state.diagnostics)
         assertEquals(ConfigurationState.Ready, state.scannerConfigurationState)
+    }
+
+    @Test
+    fun scannerIssueIsTypedAndDoesNotExposeTheAdapterReason() {
+        val state = SettingsUiState(
+            connectionState = ConnectionState.Unavailable("permission denied: platform detail"),
+        )
+
+        assertEquals(ScannerIssue.PERMISSION_DENIED, state.resolvedScannerIssue)
+        assertEquals(ScannerIssue.PERMISSION_DENIED, state.bluetoothIssue)
+    }
+
+    @Test
+    fun restoreFailureTakesPriorityOverAStaleConnectionState() {
+        val state = SettingsUiState(
+            connectionState = ConnectionState.Connected(ScannerDevice("id", "Scanner")),
+            configurationState = ConfigurationState.Failed("saved settings restore failed"),
+        )
+
+        assertEquals(ScannerIssue.RESTORE_FAILED, state.resolvedScannerIssue)
     }
 }
