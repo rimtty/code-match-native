@@ -174,6 +174,7 @@ class NavigationTest {
             .performScrollTo()
             .performClick()
         waitForTag(HistoryTestTags.GROUP_DETAIL)
+        waitForTag(HistoryTestTags.BOX_ROW)
 
         composeRule.onAllNodesWithTag(HistoryTestTags.BOX_ROW)
             .get(0)

@@ -403,6 +403,7 @@ class AppFlowInstrumentationTest {
             .performScrollTo()
             .performClick()
         waitForTag(HistoryTestTags.GROUP_DETAIL)
+        waitForTag(HistoryTestTags.BOX_ROW)
         onNodeWithTag(HistoryTestTags.BOX_ROW)
             .performScrollTo()
             .performClick()
