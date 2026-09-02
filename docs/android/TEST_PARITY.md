@@ -1,6 +1,6 @@
 # iOS↔Android テスト意図パリティ表
 
-監査日: 2026-09-02。対象は [`CodeMatcherTests.swift`](../../ios/CodeMatchTests/CodeMatcherTests.swift) の XCTest 68本と [`CodeMatchUITests.swift`](../../ios/CodeMatchUITests/CodeMatchUITests.swift) の UI テスト5本。件数やテスト名の一致ではなく、各テストが保証する意図を Android 側の証拠へ対応付ける。Android の `D` は同じ契約を同等の層で検査、`P` は近接する状態・部品の検査（元テスト全体の代替ではない）、`—` は Android の証拠なしを表す。
+監査日: 2026-09-03。対象は [`CodeMatcherTests.swift`](../../ios/CodeMatchTests/CodeMatcherTests.swift) の XCTest 68本と [`CodeMatchUITests.swift`](../../ios/CodeMatchUITests/CodeMatchUITests.swift) の UI テスト5本。件数やテスト名の一致ではなく、各テストが保証する意図を Android 側の証拠へ対応付ける。Android の `D` は同じ契約を同等の層で検査、`P` は近接する状態・部品の検査（元テスト全体の代替ではない）、`—` は Android に適用されるが証拠がない行、`N/A` は Android の現行共通仕様に含まれず対応不要と根拠リンクで確認した行を表す。
 
 共通照合データは [`matching-cases.json`](../../shared/test-fixtures/matching-cases.json)（schemaVersion 1、5ケース）であり、Swift はファイルを直接読み、Kotlin は test runtime classpath から読む。`src/test` は JVM テスト、`src/androidTest` は端末・エミュレーター依存の証拠である。D/P は「実カメラ読取」や「対象 BLE scanner 通信」の成功を意味しない。
 
@@ -16,6 +16,7 @@
 | `BundledMlKitImageDecodeTest` | `android/scanner/camera/src/androidTest/kotlin/jp/rimtty/codematch/scanner/camera/BundledMlKitImageDecodeTest.kt` |
 | `CameraStopBoundaryTest` | `android/app/src/test/java/jp/rimtty/codematch/scan/CameraStopBoundaryTest.kt` |
 | `CameraPermissionStateTest` | `android/app/src/test/java/jp/rimtty/codematch/scan/CameraPermissionStateTest.kt` |
+| `CameraModelsTest` | `android/scanner/camera/src/test/kotlin/jp/rimtty/codematch/scanner/camera/CameraModelsTest.kt` |
 | `CodeMatcherTest` | `android/core/matching/src/test/kotlin/jp/rimtty/codematch/core/matching/CodeMatcherTest.kt` |
 | `SettingsModelsTest` | `android/core/model/src/test/kotlin/jp/rimtty/codematch/core/model/SettingsModelsTest.kt` |
 | `SettingsRepositoryTest` | `android/core/data/src/androidTest/kotlin/jp/rimtty/codematch/core/data/SettingsRepositoryTest.kt` |
@@ -34,6 +35,8 @@
 | `BlePayloadTest` | `android/scanner/ble/src/test/kotlin/jp/rimtty/codematch/scanner/ble/BlePayloadTest.kt` |
 | `BleConnectionCoordinatorTest` | `android/scanner/ble/src/test/kotlin/jp/rimtty/codematch/scanner/ble/BleConnectionCoordinatorTest.kt` |
 | `BleSymbologySnapshotStoreTest` | `android/scanner/ble/src/androidTest/kotlin/jp/rimtty/codematch/scanner/ble/BleSymbologySnapshotStoreTest.kt` |
+| `BleKnownDeviceRecoveryTest` | `android/scanner/ble/src/test/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceRecoveryTest.kt` |
+| `BleKnownDeviceStoreTest` | `android/scanner/ble/src/androidTest/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceStoreTest.kt` |
 | `ScanReducerTest` | `android/feature/scan/src/test/kotlin/jp/rimtty/codematch/feature/scan/ScanReducerTest.kt` |
 | `ScanSessionCoordinatorTest` | `android/feature/scan/src/test/kotlin/jp/rimtty/codematch/feature/scan/ScanSessionCoordinatorTest.kt` |
 | `BleScannerSessionCoordinatorTest` | `android/scanner/ble/src/test/kotlin/jp/rimtty/codematch/scanner/ble/BleScannerSessionCoordinatorTest.kt` |
@@ -55,8 +58,8 @@
 | 2 | Preview dismantle で session を外し復旧を無効化する（`CodeMatcherTests.swift:23`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::preview dismantle unbind invalidates a pending provider callback` + `::preview dismantle invalidates an in-flight ML Kit failure callback`。dismantle後のprovider/解析callbackを世代で破棄する | D |
 | 3 | inactive 化で再利用 session を detach/rebind する（`CodeMatcherTests.swift:35`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::inactive stop then start rebinds the same host after teardown` + `::clearing the format stops then rebinds on the same attached host` | D |
 | 4 | queued teardown 完了まで scanner を保持する（`CodeMatcherTests.swift:50`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::unbind completion waits for an in-flight ML Kit task to drain` + `CameraStopBoundaryTest.kt::sessionEndWaitsForDelayedHostStopCompletion` は処理中frame完了前に論理sessionを終了しないことを検査する | D |
-| 5 | metadata region を正規化座標へ clamp する（`CodeMatcherTests.swift:70`、`CameraPreviewTests`） | `CameraModelsTest.kt::roi rejects coordinates outside the preview instead of clamping them` + `::roi accepts coordinates exactly on the normalized preview boundary`。Androidは範囲外をclampせず拒否する安全側policyで同じ正規化境界を保証 | D（Android reject policy） |
-| 6 | screen capture 中でも multitasking camera 対応時は開始し、非対応時だけ block（`CodeMatcherTests.swift:85`、`CameraPreviewTests`） | Android の permission 状態テストはあるが、この screen-capture policy は未実装・未検査 | — |
+| 5 | metadata region を正規化座標へ clamp する（`CodeMatcherTests.swift:70`、`CameraPreviewTests`） | iOSの [`CameraScanner.swift#L204`](../../ios/CodeMatch/Services/CameraScanner.swift#L204) が正規化矩形をclampするのに対し、Androidは [`CameraModelsTest.kt#L60`](../../android/scanner/camera/src/test/kotlin/jp/rimtty/codematch/scanner/camera/CameraModelsTest.kt#L60) `roi rejects coordinates outside the preview instead of clamping them` + [`#L72`](../../android/scanner/camera/src/test/kotlin/jp/rimtty/codematch/scanner/camera/CameraModelsTest.kt#L72) `roi accepts coordinates exactly on the normalized preview boundary` で範囲外を拒否する安全側policyを検査する。iOSのclamp動作そのものは移植していない | P（policy差） |
+| 6 | screen capture 中でも multitasking camera 対応時は開始し、非対応時だけ block（`CodeMatcherTests.swift:85`、`CameraPreviewTests`） | iOSの [`CameraScanner.swift#L209`](../../ios/CodeMatch/Services/CameraScanner.swift#L209) / [`#L217`](../../ios/CodeMatch/Services/CameraScanner.swift#L217) と [`CodeMatcherTests.swift#L85`](../../ios/CodeMatchTests/CodeMatcherTests.swift#L85) がscene captureとmultitasking cameraの組合せを固定する。一方、共通 [`PRODUCT_SPEC.md#L3`](../PRODUCT_SPEC.md#L3) にこの要件はなく、Androidの現行camera状態は [`CameraModels.kt#L11`](../../android/scanner/camera/src/main/kotlin/jp/rimtty/codematch/scanner/camera/CameraModels.kt#L11)、Manifestは [`AndroidManifest.xml#L5`](../../android/app/src/main/AndroidManifest.xml#L5) のCAMERA/任意cameraだけである | N/A（iOS固有の防御策。Android要件が追加される場合は別仕様） |
 | 7 | Code 128 から品番を抽出する（`:125`） | `CodeMatcherTest.kt::partNumberFromBarcodeUsesTextBeforeFirstAt` | D |
 | 8 | 標準 QR の固定位置と非標準入力の品番抽出（`:132`） | `CodeMatcherTest.kt::partNumberFromQrReadsTheStandardCardAndItemPositions` | D |
 | 9 | 実データの QR/Code 128 が一致する（`:144`） | `CodeMatcherTest.kt::compareMatchesRealPairAndIgnoresManagementCode` | D |
@@ -88,11 +91,11 @@
 | 35 | simulator scanner の discovery/connect と preferred reconnect（`:582`） | `FakeExternalScannerTest.kt::discoveryAndConnectionAreSynchronousAndObservable` + `::disconnectPreservesKnownDeviceForExplicitReconnect`、`BleKnownDeviceRecoveryTest.kt::coordinatorReusesPersistedKnownDeviceAfterServiceRecreation`。別instanceへのidentity永続化は安全コア層で検査済みだが、実SDK cacheは未検査 | P |
 | 36 | 最近の接続イベントだけ保持し scan payload を診断へ出さない（`:604`） | `FakeExternalScannerTest.kt::diagnosticsKeepOnlyConnectionConfigurationEventsAndNeverPayloads` + `BleConnectionCoordinatorTest.kt::scanPayloadIsForwardedButNeverWrittenToDiagnostics` | D |
 | 37 | 再起動後 restricted scanner を安全 baseline へ復元（`:631`） | `BleSymbologySessionTest.kt::connectedSessionRequiresFreshInventoryAndKeepsLogicalStepChangesPhysical` + `BleSymbologySnapshotStoreTest.kt::dataStoreRoundTripsAndClearsOnlyTheMatchingDevice` + `BleKnownDeviceStoreTest.kt::recreatedServiceReconnectsKnownDeviceAndRestoresSnapshotBeforeReady`。再生成後のfresh inventory→restore→Ready境界を検査済みだが、対象scanner実通信は未検査 | P |
-| 38 | 旧 stuck build の Code128-only recovery を移行（`:664`） | Android に同じ legacy recovery mode/migration の証拠なし | — |
+| 38 | 旧 stuck build の Code128-only recovery を移行（`:664`） | iOSの [`BluetoothScannerService.swift#L1396`](../../ios/CodeMatch/Services/BluetoothScannerService.swift#L1396) と [`CodeMatcherTests.swift#L664`](../../ios/CodeMatchTests/CodeMatcherTests.swift#L664) は、旧iOS UserDefaultsの制限状態を新しい全種snapshotへ移す互換処理を検査する。Androidは独立Gradle projectの [`README.md#L1`](../../android/README.md#L1) で、現行の復旧値は [`BleSymbologySnapshotStore.kt#L63`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleSymbologySnapshotStore.kt#L63) のversioned envelopeだけを受理し、未知versionは [`#L109`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleSymbologySnapshotStore.kt#L109) 以降で拒否する。旧iOS stateを受けるAndroid移行契約はない | N/A（Androidに旧iOSデータ移行元なし） |
 | 39 | manual disconnect で unrestricted baseline へ戻る（`:701`） | `BleSymbologySessionTest.kt::connectedSessionRequiresFreshInventoryAndKeepsLogicalStepChangesPhysical`（endSession の restore/clear）+ `FakeExternalScannerTest.kt::disconnectPreservesKnownDeviceForExplicitReconnect` | D（安全コア層） |
 | 40 | manual disconnect 後、検索結果がなくても既知端末を reconnect（`:720`） | `FakeExternalScannerTest.kt::disconnectPreservesKnownDeviceForExplicitReconnect` + `::discoveryCanBeStoppedOrEndedByConnection` + `BleKnownDeviceRecoveryTest.kt::coordinatorReusesPersistedKnownDeviceAfterServiceRecreation`。永続IDからdiscoveryなしで再接続開始できるが、実SDK cacheは未検査 | P |
 | 41 | service 再起動後も manual disconnect 済み既知端末を保持（`:747`） | `BleKnownDeviceRecoveryTest.kt::coordinatorReusesPersistedKnownDeviceAfterServiceRecreation` + `BleKnownDeviceStoreTest.kt::knownDeviceSurvivesDataStoreReopenAndWrongDeviceCannotClearIt`。version/profile一致時だけ再生成後に復元し、別deviceからのclearを拒否する | D（安全コア層） |
-| 42 | 旧 diagnostics から last connected device を migration（`:764`） | Android に同じ diagnostics migration の証拠なし | — |
+| 42 | 旧 diagnostics から last connected device を migration（`:764`） | iOSの [`BluetoothScannerService.swift#L612`](../../ios/CodeMatch/Services/BluetoothScannerService.swift#L612) と [`CodeMatcherTests.swift#L764`](../../ios/CodeMatchTests/CodeMatcherTests.swift#L764) は、旧診断eventの文字列から既知端末identityを復元する互換処理を検査する。Androidの [`BleKnownDeviceStore.kt#L90`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceStore.kt#L90) はprofile/device identityだけの新規versioned envelopeであり、DataStore再オープンは [`BleKnownDeviceStoreTest.kt#L34`](../../android/scanner/ble/src/androidTest/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceStoreTest.kt#L34) で検査するが、旧diagnosticsを入力する契約はない | N/A（Androidに旧iOS diagnostics移行元なし） |
 | 43 | 750ms 未満の重複 callback を抑止（`:804`） | `BlePayloadTest.kt::duplicateGateUsesStrictLessThanSevenHundredFiftyMillis` + `FakeExternalScannerTest.kt::duplicateCallbacksAreSuppressedByInjectedClock` | D |
 | 44 | 一致後 countdown を表示し次の QR 工程へ自動遷移（`:851`） | `ScanReducerTest.kt::autoAdvanceSupportsOneThreeAndFiveSecondsWithVirtualTicks` + `AppFlowInstrumentationTest.kt::enabledOneSecondAutoAdvanceMovesFromResultToNextQrInRealTime` | D |
 | 45 | auto-advance OFF で countdown を取消し結果を残す（`:887`） | `ScanReducerTest.kt::turningAutoAdvanceOffCancelsAndKeepsMatchResult` | D |
@@ -136,15 +139,15 @@ Swift UI 5本の直接対応とは別に、`NavigationTest`は履歴のsession�
 
 ## 残る物理・手動・未対応の証拠
 
-- AVFoundation の Preview 層 attach/detach、queued shutdown、metadata clamp、screen-capture policy は Android の別 API であり、上表の `—/P` を同等実装とは扱わない。
+- AVFoundationのPreview層attach/detachとqueued shutdownはAndroidのCameraX境界へ対応済みだが、#5はiOSのclampとAndroidのrejectでpolicyが異なるためPのままにする。#6のscreen-capture policyはiOS固有であり、共通仕様にないことを根拠リンクで確認したN/Aである。
 - Android の camera adapter について、実端末での QR→Code 128 実読取、focus 成否、連続箱、回転、background/foreground、権限の実結果は [`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md) に記録する。Compose stage/ROI テストだけでは完了にならない。
 - Android BLE はSDK/UUID非依存 safety core、`ExternalScanner` facade、注入profile方式の汎用GATT transport、権限/電源OFF/復元失敗のFake/UI境界まで自動化した。対象scannerの実測profileとrelease接続はなく、全symbology inventoryの実読取・QR/Code 128固定・完全復元・Nearby権限・Pixel/Samsung通信は未完了。
-- iOS 固有の legacy Code128-only recoveryとdiagnosticsからの既知端末migrationにはAndroidの証拠がない。service再生成後の既知端末identity保持、fresh inventory、復元完了前Ready禁止は`BleKnownDeviceRecoveryTest` / `BleKnownDeviceStoreTest`で自動化したが、対象scanner実通信の証拠ではない。
+- #38のlegacy Code128-only recoveryと#42のdiagnosticsからの既知端末migrationは、旧iOS UserDefaults/diagnosticsをAndroidへ移すproduct-history-only処理なのでN/Aとする。Android側の新規snapshot/known-device envelope、service再生成後のidentity保持、fresh inventory、復元完了前Ready禁止は [`BleKnownDeviceRecoveryTest`](../../android/scanner/ble/src/test/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceRecoveryTest.kt) / [`BleKnownDeviceStoreTest`](../../android/scanner/ble/src/androidTest/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceStoreTest.kt) で自動化したが、対象scanner実通信の証拠ではない。
 - Swift UI 5本のうち、Fake接続、一致→duplicate→読み直し→不一致、設定ガイド、実時間auto-advanceは同じdebug Fake/DI/repositoryを通すapp instrumentationへ昇格した。0件破棄、履歴名称変更・詳細・削除、履歴選択のActivity再生成/画面往復/system back、英語1/2 plural、テスト専用ランダムファイルを使ったDataStore/Room再オープン（active session、全checkpoint phase、全設定値）、PDF render/Intent契約も自動化済み。これらはストレージと復元経路の証拠であり、OSのprocess kill/force-stop後にアプリを再起動するUI証拠ではない。実DocumentProvider/共有先、TalkBack/Switch Access、実カメラ、対象BLE、Samsung受け入れは引き続き別ゲートである。
 
 ## この監査で追加した純 JVM 証拠
 
-`android/core/model/src/test/kotlin/jp/rimtty/codematch/core/model/SettingsModelsTest.kt::unknownPreferenceValuesUseSafeDefaults` に `AppLanguage.fromCode(null) == JAPANESE` を追加した。これは Swift の「保存値なし」fallback を Android の framework-free model 層で直接固定するもので、production code や BLE/camera/navigation は変更していない。上記のほかは Android に対応する純 JVM 契約が存在しないため、AVCapture lifetime や legacy migration を推測するテストは追加していない。
+`android/core/model/src/test/kotlin/jp/rimtty/codematch/core/model/SettingsModelsTest.kt::unknownPreferenceValuesUseSafeDefaults` に `AppLanguage.fromCode(null) == JAPANESE` を追加した。これは Swift の「保存値なし」fallback を Android の framework-free model 層で直接固定するもので、production code や BLE/camera/navigation は変更していない。#6/#38/#42は根拠付きN/Aであり、AVCapture lifetimeや旧iOS migrationを推測するテストは追加していない。
 
 今回のカメラ監査では、実カメラを要求しない境界として、既存バインディング後のPreviewView回転時rebind、権限待ち、背面カメラなし、停止後のfocus結果破棄、focus開始例外の型付き通知を `CameraScannerAsyncTest` に追加した。`CameraStageTest::pointerFocusTracksRunningStateAcrossStartAndStop` は開始/停止を跨いで古いCompose pointer callbackがfocusを発火しないことを検査し、`CameraPermissionStateTest::canceledPermissionResultCannotAffectTheNextCameraBinding` はキャンセル済みActivityResultを次の要求へ誤帰属しないtombstone境界を固定する。ROI中間Bitmapの例外経路も解放する。iOS固有の画面録画ポリシー、実カメラdecode、process kill/relaunchは追加していない。
 

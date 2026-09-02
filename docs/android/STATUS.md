@@ -15,6 +15,12 @@
 
 現在のrelease構成は `UnavailableExternalScanner` によるカメラ入力のみです。汎用GATT transportはscanner固有値を持たず、release DI・Manifestへ未接続です。候補Inateck SDKはライセンス、ABI/target SDK、権限、rawログ、scan callbackの評価が未解決で採用保留です（詳細は [`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)）。
 
+## パリティ分類の補足
+
+[`TEST_PARITY.md`](TEST_PARITY.md) の `N/A` は、Androidに未実装のまま残した行ではなく、現行Androidの共通仕様に含まれないことをソースと仕様のリンクで確認した行です。現在の対象は、iOS固有の画面収録防御（#6）、旧iOS UserDefaultsのCode128-only recovery移行（#38）、旧iOS diagnosticsからの既知端末migration（#42）です。Android版は独立Gradle projectとして導入され、現行のBLE復旧はversion/profile付きの新規snapshot・known-device envelopeを使うため、これら旧iOS状態を読む入口はありません（[`android/README.md`](../../android/README.md#L1)、[`BleSymbologySnapshotStore.kt`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleSymbologySnapshotStore.kt#L63)、[`BleKnownDeviceStore.kt`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceStore.kt#L90)）。
+
+これは実機・手動ゲートの免除ではありません。ROIのclamp（#5）はiOSとAndroidでpolicyが異なるため `P` のまま、status/message未検査（#27、#54）、camera lifetime（#58）、OS設定画面・force-stop/relaunch（UI #4）、対象scannerのBLE通信・完全復元（#35、#37、#40）は未完了境界として残します。
+
 ## 再現可能なチェック
 
 Androidプロジェクトで次を実行できます。
