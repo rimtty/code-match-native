@@ -51,6 +51,7 @@ enum ScanStep: Equatable {
 enum MatchResult: Equatable {
     case match
     case mismatch
+    case duplicate
 }
 
 enum ExpectedCode: Equatable {

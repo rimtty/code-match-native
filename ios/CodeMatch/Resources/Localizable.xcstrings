@@ -1726,6 +1726,54 @@
         }
       }
     },
+    "すでに照合済みです" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already matched"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すでに照合済みです"
+          }
+        }
+      }
+    },
+    "すでに照合済みです。このコードは照合件数に加えていません。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already matched. This code was not added to the match count."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すでに照合済みです。このコードは照合件数に加えていません。"
+          }
+        }
+      }
+    },
+    "このコードは照合件数に加えていません。次のコードを読み取ってください。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This code was not added to the match count. Scan the next code."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このコードは照合件数に加えていません。次のコードを読み取ってください。"
+          }
+        }
+      }
+    },
     "この組み合わせは正しいです。" : {
       "localizations" : {
         "en" : {
@@ -2436,6 +2484,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "一致した%lld件は履歴に保存されます。"
+          }
+        }
+      }
+    },
+    "照合済み" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already matched"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合済み"
           }
         }
       }
