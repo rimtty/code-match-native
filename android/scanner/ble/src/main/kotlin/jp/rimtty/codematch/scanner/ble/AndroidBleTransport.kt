@@ -10,6 +10,7 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
@@ -289,6 +290,7 @@ private class AndroidBluetoothPlatform(
     }
 
     @SuppressLint("MissingPermission")
+    @Suppress("DEPRECATION")
     override fun connect(device: ScannerDevice, callback: BlePlatformGattCallback): BlePlatformGatt? {
         val adapter = bluetoothAdapter ?: return null
         val bluetoothDevice = runCatching { adapter.getRemoteDevice(device.id) }.getOrNull() ?: return null
@@ -377,6 +379,7 @@ private class AndroidBluetoothPlatform(
                 false,
                 androidCallback,
                 BluetoothDevice.TRANSPORT_LE,
+                BluetoothDevice.PHY_LE_1M_MASK,
             ) ?: return@runCatching null
             wrapper ?: AndroidBluetoothGatt(device, gatt, callback)
         }.getOrNull()
@@ -433,9 +436,15 @@ private class AndroidBluetoothGatt(
     ): Boolean {
         val characteristic = findCharacteristic(serviceUuid, characteristicUuid) ?: return false
         return runCatching {
-            characteristic.writeType = writeType
-            characteristic.value = payload.clone()
-            gatt.writeCharacteristic(characteristic)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                gatt.writeCharacteristic(
+                    characteristic,
+                    payload.clone(),
+                    writeType,
+                ) == BluetoothStatusCodes.SUCCESS
+            } else {
+                writeCharacteristicLegacy(characteristic, payload, writeType)
+            }
         }.getOrDefault(false)
     }
 
@@ -449,12 +458,19 @@ private class AndroidBluetoothGatt(
         val localEnabled = runCatching { gatt.setCharacteristicNotification(characteristic, true) }
             .getOrDefault(false)
         if (!localEnabled) return false
-        val descriptor = characteristic.descriptors.firstOrNull { descriptorUuid == null || it.uuid == descriptorUuid }
-            ?: return true
+        // Never guess which descriptor is the CCCD. Some scanners expose
+        // multiple descriptors and writing the first one could mutate an
+        // unrelated vendor value. A profile that requires a descriptor write
+        // must provide the UUID observed for that device/protocol.
+        val descriptor = descriptorUuid?.let(characteristic::getDescriptor) ?: return true
         return runCatching {
-            descriptor.value = enableValue?.clone()
+            val value = enableValue?.clone()
                 ?: BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE.clone()
-            gatt.writeDescriptor(descriptor)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                gatt.writeDescriptor(descriptor, value) == BluetoothStatusCodes.SUCCESS
+            } else {
+                writeDescriptorLegacy(descriptor, value)
+            }
         }.getOrDefault(false)
     }
 
@@ -477,6 +493,26 @@ private class AndroidBluetoothGatt(
 
     private fun findCharacteristic(serviceUuid: UUID, characteristicUuid: UUID): BluetoothGattCharacteristic? =
         runCatching { gatt.getService(serviceUuid)?.getCharacteristic(characteristicUuid) }.getOrNull()
+
+    @Suppress("DEPRECATION")
+    private fun writeCharacteristicLegacy(
+        characteristic: BluetoothGattCharacteristic,
+        payload: ByteArray,
+        writeType: Int,
+    ): Boolean {
+        characteristic.writeType = writeType
+        characteristic.value = payload.clone()
+        return gatt.writeCharacteristic(characteristic)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun writeDescriptorLegacy(
+        descriptor: BluetoothGattDescriptor,
+        value: ByteArray,
+    ): Boolean {
+        descriptor.value = value
+        return gatt.writeDescriptor(descriptor)
+    }
 }
 
 /**
