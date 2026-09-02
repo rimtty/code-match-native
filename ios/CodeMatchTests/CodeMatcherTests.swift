@@ -956,6 +956,35 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertTrue(context.viewModel.message.contains("照合件数に加えていません"))
     }
 
+    func testDifferentBoxQRsWithSameBarcodeAreBothCounted() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        let firstBoxQR = "DAAL134150BCJH5581GG020000120000001200A      000000BAB15LAB07   0*"
+        let secondBoxQR = "DAAL134140BCJH5581GG020000120000001200A      000000BAB15LAB07   0*"
+        let sharedBarcode = "BCJH-55-81GG@1KVQ0C"
+
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(firstBoxQR)
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(sharedBarcode)
+
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+
+        context.viewModel.reset()
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(secondBoxQR)
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(sharedBarcode)
+
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 2)
+        XCTAssertEqual(context.viewModel.sessionBoxNumber, 2)
+    }
+
     func testBluetoothRejectsCode128BeforeQRWithoutAdvancing() async {
         let context = makeContext()
         defer { context.cleanup() }
@@ -1334,34 +1363,24 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(restored.sessions.first?.entries.first?.barcodePayload, "BCJH-52-81GG@1N5X0C")
     }
 
-    func testActiveSessionDetectsPreviouslyMatchedQRAndBarcodePayloads() {
+    func testActiveSessionDetectsOnlyPreviouslyMatchedBoxQR() {
         let storageURL = temporaryStorageURL()
         defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
         let store = HistoryStore(storageURL: storageURL)
         store.beginSession()
+        let firstBoxQR = "DAAL134150BCJH5581GG020000120000001200A      000000BAB15LAB07   0*"
+        let secondBoxQR = "DAAL134140BCJH5581GG020000120000001200A      000000BAB15LAB07   0*"
         store.recordMatch(
-            code: "BCJH-52-81GG",
-            qrPayload: "DCLP675300BCJH5281GG02...",
-            barcodePayload: "BCJH-52-81GG@1N5X0C"
+            code: "BCJH-55-81GG",
+            qrPayload: firstBoxQR,
+            barcodePayload: "BCJH-55-81GG@1KVQ0C"
         )
 
         XCTAssertTrue(
-            store.activeSessionContainsMatchedPayload(
-                qrPayload: " dclp675300bcjh5281gg02...\n",
-                barcodePayload: "OTHER-00-0000@NEW"
-            )
-        )
-        XCTAssertTrue(
-            store.activeSessionContainsMatchedPayload(
-                qrPayload: "OTHER-QR",
-                barcodePayload: " bcjh-52-81gg@1n5x0c\r"
-            )
+            store.activeSessionContainsMatchedQRPayload(" \(firstBoxQR.lowercased())\n")
         )
         XCTAssertFalse(
-            store.activeSessionContainsMatchedPayload(
-                qrPayload: "OTHER-QR",
-                barcodePayload: "BCJH-52-81GG@1N5X0D"
-            )
+            store.activeSessionContainsMatchedQRPayload(secondBoxQR)
         )
     }
 

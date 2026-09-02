@@ -65,19 +65,14 @@ final class HistoryStore: ObservableObject {
         activeSession?.matchCount(code: code.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
     }
 
-    /// アクティブセッションの成功履歴に、今回のQRまたはCode 128がすでに含まれるかを確認する。
-    /// 品番だけでは判定しないため、同一品番でも異なるラベルの箱は別の照合として扱える。
-    func activeSessionContainsMatchedPayload(
-        qrPayload: String,
-        barcodePayload: String
-    ) -> Bool {
+    /// アクティブセッションの成功履歴に、今回の箱固有QRがすでに含まれるかを確認する。
+    /// Code 128は同一品番の全箱で共通になるため、重複判定には使用しない。
+    func activeSessionContainsMatchedQRPayload(_ qrPayload: String) -> Bool {
         let normalizedQR = Self.normalizedPayload(qrPayload)
-        let normalizedBarcode = Self.normalizedPayload(barcodePayload)
-        guard !normalizedQR.isEmpty, !normalizedBarcode.isEmpty else { return false }
+        guard !normalizedQR.isEmpty else { return false }
 
         return activeSession?.entries.contains { entry in
             entry.qrPayload.map(Self.normalizedPayload) == normalizedQR
-                || entry.barcodePayload.map(Self.normalizedPayload) == normalizedBarcode
         } ?? false
     }
 
