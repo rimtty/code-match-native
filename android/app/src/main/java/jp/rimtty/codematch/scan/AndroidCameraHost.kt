@@ -129,11 +129,30 @@ private class AndroidCameraHost(
     }
 
     override fun stop() {
-        if (closed) return
-        scanner.unbind()
-        scanner.updateExpectedFormat(null)
-        callbacks?.onStopped()
-        callbacks = null
+        stop(onComplete = {})
+    }
+
+    override fun stop(onComplete: () -> Unit) {
+        if (closed) {
+            onComplete()
+            return
+        }
+
+        // Clear ML Kit's format while retaining the host until the stop
+        // barrier finishes. CameraScanner.unbind's completion is after the
+        // synchronous CameraX provider unbind and any in-flight ML Kit task.
+        val callbacksBeingStopped = callbacks
+        runCatching { scanner.updateExpectedFormat(null) }
+        scanner.unbind {
+            // A new start may have replaced the callback while the previous
+            // ML Kit task was draining. Never deliver a stale stop event to
+            // that new binding or clear its callback slot.
+            if (callbacks === callbacksBeingStopped) {
+                callbacksBeingStopped?.onStopped()
+                callbacks = null
+            }
+            onComplete()
+        }
     }
 
     override fun focus(point: CameraFocusPoint): Boolean =
@@ -189,13 +208,20 @@ private class AndroidCameraHost(
         if (closed) return
         closed = true
         callbacks = null
-        scanner.close()
+        // Compose disposal may race a pending stop. Keep the scanner alive
+        // through its own unbind/drain callback before closing ML Kit and its
+        // analysis executor.
+        runCatching { scanner.updateExpectedFormat(null) }
+        scanner.unbind { scanner.close() }
     }
 
     private fun onCaptureStateChanged(state: CameraCaptureState) {
         when (state) {
             CameraCaptureState.RUNNING -> callbacks?.onStarted()
-            CameraCaptureState.STOPPED -> callbacks?.onStopped()
+            // STOPPED is emitted only by the scanner's drain boundary. The
+            // host's stop callback is the single source of truth so a new
+            // binding cannot receive a stale stop event during a rebind.
+            CameraCaptureState.STOPPED -> Unit
             CameraCaptureState.UNAVAILABLE -> callbacks?.onUnavailable()
             CameraCaptureState.ERROR -> callbacks?.onFailed()
             CameraCaptureState.IDLE,

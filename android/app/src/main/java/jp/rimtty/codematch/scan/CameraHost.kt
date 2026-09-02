@@ -45,6 +45,16 @@ interface CameraHost {
     /** Stop capture and release analysis resources. This must be idempotent. */
     fun stop()
 
+    /**
+     * Stop capture and notify after the adapter's physical teardown boundary.
+     * The default implementation preserves synchronous hosts; CameraX hosts
+     * override this to wait for unbind and any in-flight analysis drain.
+     */
+    fun stop(onComplete: () -> Unit) {
+        stop()
+        onComplete()
+    }
+
     /** Map a normalized preview tap to CameraX focus/metering. */
     fun focus(point: CameraFocusPoint): Boolean
 
@@ -54,6 +64,32 @@ interface CameraHost {
     /** Render the host's PreviewView when capture is running. */
     @Composable
     fun Preview(modifier: Modifier, request: CameraPreviewRequest) = Unit
+}
+
+/**
+ * Keep logical session teardown behind the host's physical stop boundary.
+ *
+ * CameraX hosts use the completion callback after use cases are unbound and
+ * any asynchronous analysis frame has drained. Keeping this sequencing in a
+ * small app-side helper makes it impossible for a destination to accidentally
+ * confirm the session before the camera has actually stopped, while retaining
+ * the immediate behavior for destinations without a camera host.
+ */
+internal fun stopCameraBeforeSessionEnd(
+    cameraHost: CameraHost?,
+    onCameraStopped: () -> Unit,
+    onSessionEnded: () -> Unit,
+) {
+    if (cameraHost == null) {
+        onCameraStopped()
+        onSessionEnded()
+        return
+    }
+
+    cameraHost.stop {
+        onCameraStopped()
+        onSessionEnded()
+    }
 }
 
 /** Immutable camera start request; the adapter chooses the back camera. */

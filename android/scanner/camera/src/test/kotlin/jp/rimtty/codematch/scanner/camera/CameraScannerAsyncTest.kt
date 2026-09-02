@@ -161,6 +161,34 @@ class CameraScannerAsyncTest {
     }
 
     @Test
+    fun `clearing the format stops then rebinds on the same attached host`() {
+        val firstFuture = ManualProviderFuture()
+        val secondFuture = ManualProviderFuture()
+        val provider = RecordingCameraProvider()
+        val scanner = newScanner(ArrayDeque(listOf(firstFuture, secondFuture)))
+        val owner = StartedLifecycleOwner()
+        val preview = previewView()
+
+        scanner.bind(owner, preview, expectedFormat = ScanFormat.QR)
+        firstFuture.complete(provider)
+        assertEquals(CameraCaptureState.RUNNING, scanner.captureState)
+
+        scanner.updateExpectedFormat(null)
+        assertEquals(CameraCaptureState.STOPPED, scanner.captureState)
+
+        // updateExpectedFormat(null) is a physical stop, not a host detach;
+        // the same lifecycle owner and PreviewView can be used for the next
+        // logical step without creating a second host.
+        scanner.updateExpectedFormat(ScanFormat.QR)
+        assertEquals(1, secondFuture.pendingListenerCount)
+        secondFuture.complete(provider)
+
+        assertEquals(CameraCaptureState.RUNNING, scanner.captureState)
+        assertEquals(2, provider.boundGroups.size)
+        scanner.close()
+    }
+
+    @Test
     fun `lifecycle stop invalidates a pending provider callback`() {
         val future = ManualProviderFuture()
         val provider = RecordingCameraProvider()
@@ -174,6 +202,61 @@ class CameraScannerAsyncTest {
 
         assertEquals(CameraCaptureState.STOPPED, scanner.captureState)
         assertTrue(provider.boundGroups.isEmpty())
+        scanner.close()
+    }
+
+    @Test
+    fun `unbind completion waits for an in-flight ML Kit task to drain`() {
+        val future = ManualProviderFuture()
+        val provider = RecordingCameraProvider()
+        val pendingResult = TaskCompletionSource<List<Barcode>>()
+        val barcodeScanner = FakeBarcodeScanner()
+        var attachedPreview: PreviewView? = null
+        val analyzer = MlKitImageAnalyzer(
+            previewViewProvider = { attachedPreview },
+            guideProvider = { CameraGuide.forFormat(ScanFormat.QR) },
+            onPayload = {},
+            onError = {},
+            mainExecutor = directExecutor,
+            scannerFactory = { barcodeScanner },
+            processFrame = { _, _ -> pendingResult.task },
+        )
+        val dependencies = CameraScannerDependencies(
+            providerFutureFactory = { future },
+            scannerFactory = { barcodeScanner },
+            mainExecutorFactory = { directExecutor },
+            analysisExecutorFactory = { Executors.newSingleThreadExecutor() },
+            analyzerFactory = { _, _, _, _, _, _ -> analyzer },
+        )
+        val scanner = CameraScanner(
+            application,
+            dependencies,
+            onPayload = {},
+            onStateChanged = {},
+            onError = {},
+        )
+        val owner = StartedLifecycleOwner()
+        val preview = previewView()
+        attachedPreview = preview
+
+        scanner.bind(owner, preview, expectedFormat = ScanFormat.QR)
+        future.complete(provider)
+        assertEquals(CameraCaptureState.RUNNING, scanner.captureState)
+
+        val image = EmptyImageProxy()
+        analyzer.analyze(image)
+        var completed = false
+        scanner.unbind { completed = true }
+
+        assertTrue(provider.unbindCalls >= 2)
+        assertTrue(!completed)
+        assertEquals(CameraCaptureState.RUNNING, scanner.captureState)
+
+        pendingResult.setResult(emptyList())
+
+        assertTrue(completed)
+        assertTrue(image.isClosed)
+        assertEquals(CameraCaptureState.STOPPED, scanner.captureState)
         scanner.close()
     }
 

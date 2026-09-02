@@ -503,7 +503,7 @@ M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触�
 - 権限、背景復帰、回転、focus、連続箱
 - BLE以外の完全パリティへ向けたcamera production gate
 
-実装済み: CameraX 1.6.2 Preview/ImageAnalysis、端末同梱ML Kit 17.3.0、QR/Code 128の工程別限定、`KEEP_ONLY_LATEST`とin-flight frame drop、表示枠と共通のROI、変換後四隅判定、elapsed realtime timestamp、AF/AE tap focus、権限状態、lifecycle停止、解析世代による停止後callback破棄。release APKから`INTERNET` / `ACCESS_NETWORK_STATE`権限が除外されることも確認済み。AABを含む継続的な検査はrelease hardening checkerで行う。
+実装済み: CameraX 1.6.2 Preview/ImageAnalysis、端末同梱ML Kit 17.3.0、QR/Code 128の工程別限定、`KEEP_ONLY_LATEST`とin-flight frame drop、表示枠と共通のROI、変換後四隅判定、elapsed realtime timestamp、AF/AE tap focus、権限状態、lifecycle停止、解析世代による停止後callback破棄、処理中ML Kit taskをdrainしてから論理sessionを終了する境界、同一hostでのQR読み直し後rebind。release APKから`INTERNET` / `ACCESS_NETWORK_STATE`権限が除外されることも確認済み。AABを含む継続的な検査はrelease hardening checkerで行う。
 
 コード、CameraX/ML Kit境界、権限状態、ROI、lifecycle、semantics focus action、instrumentation testは存在する。実Android端末でのQR → Code 128実読取、タップfocus、連続箱、回転・背景復帰の受け入れ記録が揃うまでM3完了とは扱わない。実施時は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)へ端末情報と証跡を残す。
 
@@ -513,7 +513,7 @@ M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触�
 - Pixel系/Samsung系で実機回帰
 - Swift版との機能対応表に未完了がない
 
-準備済み: SDK/UUID非依存のBLE safety core、1 command直列化、3秒timeout後のtransport reset必須化、QR+Code 128固定mode、全reported item snapshot、復元完了前Ready禁止、payload parser、750ms重複境界のJVM test。Android実通信adapter、設定profile、永続snapshotのアプリ接続、Nearby devices権限、対象scannerでの受け入れ試験は未完了のため、M4完了とは扱わない。
+準備済み: SDK/UUID非依存のBLE safety core、1 command直列化、3秒timeout後のtransport reset必須化、QR+Code 128固定mode、全reported item snapshot、復元完了前Ready禁止、payload parser、750ms重複境界のJVM test。設定画面の3つのCode 128は同梱ML Kitでexact decode済みだが、Android実通信adapter、設定profile、永続snapshotのアプリ接続、Nearby devices権限、対象scannerでの設定コード読取と受け入れ試験は未完了のため、M4完了とは扱わない。
 
 候補SDKのライセンス、ABI、target SDK、権限、rawログ、scan callbackの静的評価も未解決であり、[`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)に採用保留理由を記録する。対象scanner実機と正式な供給条件が確定するまで、BLE成功やfull parityを宣言しない。
 

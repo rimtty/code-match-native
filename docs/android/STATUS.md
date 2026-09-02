@@ -9,7 +9,7 @@
 | Domain / matching | 純Kotlin matcher/parser、shared fixture、JVM test、Swift unit 68本/UI 5本との意図対応表 | Swift/Kotlinの全ケースを同一CI実行で確認した記録 |
 | UI / navigation | Composeの照合・履歴・設定、3 destination、system/predictive back境界、保存可能なdestination/履歴選択、debug Fake境界 | predictive gestureの視覚遷移、process kill後の実履歴復元、TalkBack、font scale 2.0、複数OEMの人手確認 |
 | History / settings / PDF | Room/DataStore、日英リソース、PDF export、保存/共有の実装 | 保存先・共有先を含む実端末の業務受け入れ |
-| Camera | CameraX/ML Kit adapter、ROI、権限・lifecycle・focus、非同期provider/format切替/古いcallback破棄の自動test | Pixel/SamsungでQR→Code 128実読取、連続箱、focus結果の完了記録 |
+| Camera | CameraX/ML Kit adapter、ROI、権限・lifecycle・focus、非同期provider/format切替/古いcallback破棄、処理中frameをdrainしてからsession終了する自動test | Pixel/SamsungでQR→Code 128実読取、連続箱、focus結果の完了記録 |
 | Privacy / release | Manifest、backup規則、FileProvider、source/APK/AAB checker | 通信観測、ストア提出回答、署名済み配布物の運用承認 |
 | BLE | SDK/UUID非依存の安全コア、Fake/Unavailable境界、snapshot/queue JVM test | Android adapter、権限、対象scanner通信、全symbology復元、Pixel/Samsung受け入れ |
 
@@ -36,11 +36,12 @@ JDK/SDKがない環境ではGradle結果を推測せず、実行不能として�
 
 ## 2026-09-02 統合検証記録
 
-- Android Studio付属JDK 25とAndroid SDKを明示し、`testDebugUnitTest lintDebug assembleDebug assembleRelease bundleRelease --no-parallel` を実行した。1,110 tasks、JVM test 162件が成功し、cameraの非同期test 7件を含む全JVM test、lint、debug/release APK、release AABが完了した。
+- Android Studio付属JDK 25とAndroid SDKを明示し、`testDebugUnitTest lintDebug assembleDebug assembleRelease bundleRelease --no-parallel` を実行した。1,110 tasks、JVM test 166件が成功し、cameraの非同期test 9件とappのcamera停止境界test 2件を含む全JVM test、lint、debug/release APK、release AABが完了した。
 - release dependency reportと生成済みAPK/AABに対してhardening検査を実行し、Fake/analytics/crash依存、不要な権限、FileProvider、backup/D2D resource、全module manifestの検査が成功した。
-- USB接続したPixel 7（Android 16 / API 36）1台を明示選択し、自動instrumentationを53件実行した。app 8、core:data 12、feature:history 5、feature:scan 10、feature:settings 11、scanner:camera 3、scanner:ble persistence 4がすべて成功した。appの追加4件はdebug Fakeを同じDI graphから操作し、接続・入力切替・逆順拒否・照合保存・履歴、設定ガイドと再接続、言語のActivity再生成後保持、実時間auto-advanceを検査する。
+- USB接続したPixel 7（Android 16 / API 36）1台を明示選択し、自動instrumentationを57件実行した。app 9、core:data 14、feature:history 5、feature:scan 10、feature:settings 12、scanner:camera 3、scanner:ble persistence 4がすべて成功した。appの5件はdebug Fakeを同じDI graphから操作し、接続・入力切替・逆順拒否・一致、duplicate、QR読み直し、不一致非保存、履歴、設定ガイドと再接続、言語のActivity再生成後保持、実時間auto-advanceを検査する。core:dataは言語と履歴名変更をそれぞれDataStore/Room再オープン後にも確認した。
 - `scanner:camera`の3件は複製していない共有QR/Code 128画像を同梱ML Kitへメモリ入力し、各形式のdecodeと誤形式拒否を検査した。画像・frame・payloadの保存やlog出力は行わない。この証拠は実カメラ撮影やCameraX preview frameを意味しない。
-- Apple SiliconのAndroid 17/API 37.1・16KB page-size Pixel 6 emulatorでも、同じ自動instrumentation 53件がすべて成功した。英語端末設定で見つかったHistoryテストのlocale依存を修正し、検証後はemulatorだけを正常停止した。
+- `feature:settings`の追加1件は、生成した3つの設定用Code 128を同梱ML Kitへメモリ入力し、`/*EnterSet*/`、`/*BLE_GATT*/`、`/*ExitSave*/`へexact decodeできることを確認した。対象BCST-47が実際に読み取って設定を変更することは、別のBLE実機ゲートで確認する。
+- Apple SiliconのAndroid 17/API 37.1・16KB page-size Pixel 6 emulatorでも、同じ自動instrumentation 57件がすべて成功した。英語端末設定で見つかったHistoryテストのlocale依存を修正し、検証後はemulatorだけを正常停止した。
 - Swift unit 68本/UI 5本とAndroid証拠の全対応・未対応境界は[`TEST_PARITY.md`](TEST_PARITY.md)に記録した。
 
 この節のPixel結果は自動testの証拠であり、QR/Code 128の実撮影、tap focus、TalkBack、対象BLE scanner通信や設定復元を完了扱いにしない。

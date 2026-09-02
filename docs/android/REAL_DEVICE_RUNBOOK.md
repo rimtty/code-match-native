@@ -107,10 +107,12 @@ checker通過は静的・artifact証拠です。端末外通信がないこと�
 
 対象scanner、firmware、Android向けSDK、ライセンス、ABI、target SDK、実通信形式が確定するまで、次を実行しません。候補SDKの静的評価と保留理由は [`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md) に記録しています。
 
+設定画面が生成する3つのCode 128は、自動instrumentationで同梱ML Kitから `/*EnterSet*/` → `/*BLE_GATT*/` → `/*ExitSave*/` の順にexact decodeできることを確認済みです。これは画像生成と復号の証拠であり、BCST-47が実際に読み取って設定を変更・保存した証拠ではありません。
+
 実装が用意された後だけ、次を対象端末で行います。
 
 1. Android 12以降のPixel系とSamsung系で、必要時だけNearby devices権限を要求する。
-2. 初回設定ガイド、検索、接続、pairing、scan通知、切断、既知端末再接続を確認する。
+2. 初回設定ガイドの3コードを順に実機scannerで読み、GATT modeが保存されたことを確認してから、検索、接続、pairing、scan通知、切断、既知端末再接続を確認する。
 3. QR→Code 128の一致、不一致、逆順拒否、重複callback抑止、連続箱を確認する。
 4. 接続前のscanner報告を全symbology保存し、QR+Code 128固定mode後、終了・背景・切断・再接続で完全復元する。
 5. timeout後にGATT commandが重ならず、安全にカメラへfallbackすることを確認する。

@@ -32,6 +32,7 @@ import jp.rimtty.codematch.scanner.fake.FakeExternalScanner
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -98,31 +99,7 @@ class AppFlowInstrumentationTest {
 
     @Test
     fun fakeScannerConnectsCameraSwitchRejectsReverseOrderAndRecordsTwoMatches() {
-        openDestination(R.string.destination_settings)
-
-        // Settings uses the same app-owned Fake instance that ScanViewModel
-        // observes. Discovery and connection therefore exercise the real app
-        // graph, not a feature-only state fixture.
-        openGuideAtFirstStep()
-        repeat(3) {
-            onNodeWithTag(SettingsTestTags.SETUP_NEXT)
-                .performScrollTo()
-                .performClick()
-        }
-        waitForTag(SettingsTestTags.SCANNER_SECTION)
-        onNodeWithTag(SettingsTestTags.DISCOVERY)
-            .performScrollTo()
-            .performClick()
-        waitForTag(SettingsTestTags.DEVICE_ROW)
-        onNodeWithTag(SettingsTestTags.DEVICE_ROW)
-            .performScrollTo()
-            .performClick()
-        onNodeWithTag(SettingsTestTags.CONNECT)
-            .performScrollTo()
-            .performClick()
-        onNodeWithTag(SettingsTestTags.SCANNER_STATUS)
-            .performScrollTo()
-            .assertTextContains("接続済み")
+        connectFakeScannerThroughSettings()
 
         openDestination(R.string.destination_scan)
         onNodeWithTag("scan_session_name")
@@ -230,6 +207,120 @@ class AppFlowInstrumentationTest {
         onNodeWithText(composeRule.activity.getString(R.string.end_session_confirm)).performClick()
         waitForTag("scan_start_session")
 
+        openDestination(R.string.destination_history)
+        waitForTag(HistoryTestTags.SESSION_ROW)
+        onNodeWithTag(HistoryTestTags.SESSION_ROW).assertIsDisplayed()
+    }
+
+    /**
+     * Mirrors the iOS match -> duplicate -> reset/reread -> mismatch flow
+     * through the app-owned ViewModel, Room repository, and debug Fake.
+     *
+     * The first two comparisons use the same normalized part number and must
+     * become two persisted boxes. The final comparison is deliberately a
+     * mismatch after a QR reread and must leave both the count and history
+     * unchanged before the session is ended.
+     */
+    @Test
+    fun fakeScannerMatchDuplicateRereadAndMismatchPreserveCountAndHistory() {
+        connectFakeScannerThroughSettings()
+        openDestination(R.string.destination_scan)
+        onNodeWithTag("scan_start_session").performClick()
+        waitForTag("scan_waiting_card")
+
+        // First successful comparison records box 1.
+        emitBluetooth(
+            ScanPayload.qr(
+                value = qrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 1_000L,
+            ),
+        )
+        emitBluetooth(
+            ScanPayload.code128(
+                value = barcodePayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 2_000L,
+            ),
+        )
+        waitForTag("scan_result_card")
+        onNodeWithText("一致").assertIsDisplayed()
+        assertSessionCount(1)
+        awaitActiveEntryCount(1)
+
+        // Manual next is the reset equivalent. The same part is a second box,
+        // not a replacement of the first history entry.
+        onNodeWithTag("scan_manual_next").performClick()
+        waitForText("QRコードを読み取ってください")
+        emitBluetooth(
+            ScanPayload.qr(
+                value = qrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 3_000L,
+            ),
+        )
+        emitBluetooth(
+            ScanPayload.code128(
+                value = barcodePayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 4_000L,
+            ),
+        )
+        waitForTag("scan_result_card")
+        onNodeWithText("一致").assertIsDisplayed()
+        assertSessionCount(2)
+        awaitActiveEntryCount(2)
+
+        // Start a third comparison, then explicitly reread the QR. The
+        // reread preserves the two successful boxes and returns to QR input.
+        onNodeWithTag("scan_manual_next").performClick()
+        waitForText("QRコードを読み取ってください")
+        emitBluetooth(
+            ScanPayload.qr(
+                value = qrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 5_000L,
+            ),
+        )
+        waitForText("Code 128を読み取ってください")
+        onNodeWithTag("scan_reread_qr").performClick()
+        waitForText("QRコードを読み取ってください")
+        assertSessionCount(2)
+
+        // Re-read the correct QR and then submit a different Code 128. A
+        // mismatch is visible but is never persisted or counted as a box.
+        emitBluetooth(
+            ScanPayload.qr(
+                value = qrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 6_000L,
+            ),
+        )
+        waitForText("Code 128を読み取ってください")
+        emitBluetooth(
+            ScanPayload.code128(
+                value = mismatchBarcodePayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 7_000L,
+            ),
+        )
+        waitForTag("scan_result_card")
+        onNodeWithText("不一致").assertIsDisplayed()
+        assertSessionCount(2)
+        awaitActiveEntryCount(2)
+        assertActiveEntries(
+            expectedCodes = listOf(
+                "BCJH-52-81GG",
+                "BCJH-52-81GG",
+            ),
+        )
+
+        // Ending publishes the two successful boxes to history; the mismatch
+        // never creates a third entry.
+        onNodeWithTag("scan_end_session").performClick()
+        onNodeWithText(composeRule.activity.getString(R.string.end_session_confirm)).performClick()
+        waitForTag("scan_start_session")
+        awaitHistoryEntryCount(expectedSessions = 1, expectedEntries = 2)
         openDestination(R.string.destination_history)
         waitForTag(HistoryTestTags.SESSION_ROW)
         onNodeWithTag(HistoryTestTags.SESSION_ROW).assertIsDisplayed()
@@ -380,6 +471,31 @@ class AppFlowInstrumentationTest {
         normalizeGuideToFirstStep()
     }
 
+    /** Connect the same debug Fake instance that the Settings screen owns. */
+    private fun connectFakeScannerThroughSettings() {
+        openDestination(R.string.destination_settings)
+        openGuideAtFirstStep()
+        repeat(3) {
+            onNodeWithTag(SettingsTestTags.SETUP_NEXT)
+                .performScrollTo()
+                .performClick()
+        }
+        waitForTag(SettingsTestTags.SCANNER_SECTION)
+        onNodeWithTag(SettingsTestTags.DISCOVERY)
+            .performScrollTo()
+            .performClick()
+        waitForTag(SettingsTestTags.DEVICE_ROW)
+        onNodeWithTag(SettingsTestTags.DEVICE_ROW)
+            .performScrollTo()
+            .performClick()
+        onNodeWithTag(SettingsTestTags.CONNECT)
+            .performScrollTo()
+            .performClick()
+        onNodeWithTag(SettingsTestTags.SCANNER_STATUS)
+            .performScrollTo()
+            .assertTextContains("接続済み")
+    }
+
     private fun waitForTag(tag: String) {
         composeRule.waitUntil(5_000) {
             try {
@@ -406,6 +522,31 @@ class AppFlowInstrumentationTest {
     private fun assertSessionCount(expected: Int) {
         onNodeWithTag("scan_session_count")
             .assertTextEquals("${expected}件照合済み")
+    }
+
+    private fun awaitActiveEntryCount(expected: Int) {
+        composeRule.waitUntil(5_000) {
+            runBlocking {
+                dependencies.historyRepository().activeSession.first()?.entries?.size == expected
+            }
+        }
+    }
+
+    private fun awaitHistoryEntryCount(expectedSessions: Int, expectedEntries: Int) {
+        composeRule.waitUntil(5_000) {
+            runBlocking {
+                val sessions = dependencies.historyRepository().sessions.first()
+                sessions.size == expectedSessions &&
+                    sessions.firstOrNull()?.entries?.size == expectedEntries
+            }
+        }
+    }
+
+    private fun assertActiveEntries(expectedCodes: List<String>) {
+        val entries = runBlocking {
+            dependencies.historyRepository().activeSession.first()?.entries.orEmpty()
+        }
+        assertEquals(expectedCodes, entries.map { it.code })
     }
 
     private fun emitBluetooth(payload: ScanPayload) = emit(payload)

@@ -43,11 +43,36 @@ import java.util.concurrent.Executors
  * constructor; the internal constructor lets JVM tests control provider
  * completion and ML Kit client creation without a real camera service.
  */
+internal typealias CameraAnalyzerFactory = (
+    previewViewProvider: () -> PreviewView?,
+    guideProvider: () -> CameraGuide,
+    onPayload: (ScanPayload) -> Unit,
+    onError: (CameraError) -> Unit,
+    mainExecutor: Executor,
+    scannerFactory: (ScanFormat) -> BarcodeScanner,
+) -> MlKitImageAnalyzer
+
 internal class CameraScannerDependencies(
     val providerFutureFactory: (Context) -> CameraProviderFuture = ::defaultCameraProviderFuture,
     val scannerFactory: (ScanFormat) -> BarcodeScanner = ::createBarcodeScanner,
     val mainExecutorFactory: (Context) -> Executor = { ContextCompat.getMainExecutor(it) },
     val analysisExecutorFactory: () -> ExecutorService = ::newCameraAnalysisExecutor,
+    val analyzerFactory: CameraAnalyzerFactory = { previewViewProvider,
+        guideProvider,
+        onPayload,
+        onError,
+        mainExecutor,
+        scannerFactory,
+    ->
+        MlKitImageAnalyzer(
+            previewViewProvider = previewViewProvider,
+            guideProvider = guideProvider,
+            onPayload = onPayload,
+            onError = onError,
+            mainExecutor = mainExecutor,
+            scannerFactory = scannerFactory,
+        )
+    },
 )
 
 /** Small adapter around CameraX's Guava future for deterministic tests. */
@@ -161,13 +186,13 @@ class CameraScanner private constructor(
     private val appContext = context.applicationContext
     private val mainExecutor = dependencies.mainExecutorFactory(appContext)
     private val analysisExecutor: ExecutorService = dependencies.analysisExecutorFactory()
-    private val analyzer = MlKitImageAnalyzer(
-        previewViewProvider = { previewView },
-        guideProvider = { guide },
-        onPayload = onPayload,
-        onError = onError,
-        mainExecutor = mainExecutor,
-        scannerFactory = dependencies.scannerFactory,
+    private val analyzer = dependencies.analyzerFactory(
+        { previewView },
+        { guide },
+        onPayload,
+        onError,
+        mainExecutor,
+        dependencies.scannerFactory,
     )
 
     private val lifecycleObserver = object : DefaultLifecycleObserver {
@@ -176,7 +201,7 @@ class CameraScanner private constructor(
         }
 
         override fun onStop(owner: LifecycleOwner) {
-            if (owner === lifecycleOwner) unbindUseCases()
+            if (owner === lifecycleOwner) requestStopUseCases()
         }
 
         override fun onDestroy(owner: LifecycleOwner) {
@@ -198,6 +223,11 @@ class CameraScanner private constructor(
     private var bindGeneration: Long = 0L
     /** Generation of the provider future currently allowed to bind. */
     private var pendingBindGeneration: Long? = null
+    /** True while CameraX has been unbound and ML Kit frames are draining. */
+    private var unbindInProgress = false
+    /** A start/bind request observed while the stop barrier was active. */
+    private var rebindAfterUnbind = false
+    private val unbindCompletions = ArrayList<() -> Unit>()
     private var viewPortRetryPending = false
     private var targetRotation: Int? = null
     private var isClosed = false
@@ -290,7 +320,10 @@ class CameraScanner private constructor(
         }
 
         if (format == null) {
-            unbindUseCases()
+            // Stop the physical use cases but retain the attached lifecycle
+            // owner and PreviewView. A later non-null format can therefore
+            // rebind the same host after this drain completes.
+            requestStopUseCases()
         } else {
             requestBind()
         }
@@ -306,8 +339,11 @@ class CameraScanner private constructor(
     @MainThread
     fun onPermissionDenied() {
         if (isClosed) return
-        unbindUseCases()
-        setCaptureState(CameraCaptureState.PERMISSION_DENIED)
+        requestStopUseCases(
+            onComplete = {
+                if (!isClosed) setCaptureState(CameraCaptureState.PERMISSION_DENIED)
+            },
+        )
     }
 
     /**
@@ -315,15 +351,38 @@ class CameraScanner private constructor(
      * later [bind]. Lifecycle backgrounding uses this same safe boundary.
      */
     @MainThread
-    fun unbind() {
-        if (isClosed) return
+    fun unbind(onComplete: () -> Unit = {}) {
+        requestStopUseCases(onComplete = onComplete, detachHost = true)
+    }
+
+    /**
+     * Begin the CameraX stop boundary. CameraX's provider unbind is
+     * synchronous, but an ImageAnalysis frame can still be waiting on an
+     * asynchronous ML Kit Task. [onComplete] is delivered only after both
+     * boundaries have completed.
+     */
+    @MainThread
+    private fun requestStopUseCases(
+        onComplete: () -> Unit = {},
+        detachHost: Boolean = false,
+    ) {
+        if (isClosed) {
+            dispatchOnMain(onComplete)
+            return
+        }
+        unbindCompletions += onComplete
+        if (unbindInProgress) {
+            if (detachHost) detachHostBindings()
+            return
+        }
+
+        unbindInProgress = true
         bindGeneration += 1
-        previewView?.removeOnLayoutChangeListener(previewLayoutListener)
-        lifecycleOwner?.lifecycle?.removeObserver(lifecycleObserver)
+        if (detachHost) detachHostBindings()
         unbindUseCases()
-        lifecycleOwner = null
-        previewView = null
-        targetRotation = null
+        analyzer.awaitIdle {
+            dispatchOnMain(::finishUnbind)
+        }
     }
 
     /**
@@ -400,15 +459,25 @@ class CameraScanner private constructor(
         )
     }
 
-    /** Release the analyzer and its executor. The instance cannot be reused. */
+    /**
+     * Release the analyzer and its executor. If a frame is still being
+     * analyzed, the analyzer keeps its ML Kit task and image alive until that
+     * task completes; the task's completion path therefore remains safe even
+     * after this instance is no longer reachable by the UI.
+     */
     @MainThread
     override fun close() {
         if (isClosed) return
         isClosed = true
         bindGeneration += 1
-        previewView?.removeOnLayoutChangeListener(previewLayoutListener)
-        lifecycleOwner?.lifecycle?.removeObserver(lifecycleObserver)
-        unbindUseCases()
+        detachHostBindings()
+        if (!unbindInProgress) {
+            unbindInProgress = true
+            unbindUseCases()
+            analyzer.awaitIdle {
+                dispatchOnMain(::finishUnbind)
+            }
+        }
         lifecycleOwner = null
         previewView = null
         targetRotation = null
@@ -418,6 +487,10 @@ class CameraScanner private constructor(
 
     private fun requestBind() {
         if (isClosed || _captureState == CameraCaptureState.ERROR) return
+        if (unbindInProgress) {
+            rebindAfterUnbind = true
+            return
+        }
         val owner = lifecycleOwner ?: return
         val currentPreview = previewView ?: return
         val format = expectedFormat ?: return
@@ -626,10 +699,43 @@ class CameraScanner private constructor(
         camera = null
         targetRotation = null
         viewPortRetryPending = false
+    }
+
+    private fun finishUnbind() {
+        if (!unbindInProgress) return
+        unbindInProgress = false
         if (_captureState == CameraCaptureState.RUNNING ||
             _captureState == CameraCaptureState.STARTING
         ) {
             setCaptureState(CameraCaptureState.STOPPED)
+        }
+
+        val completions = unbindCompletions.toList()
+        unbindCompletions.clear()
+        completions.forEach { it() }
+
+        if (rebindAfterUnbind) {
+            rebindAfterUnbind = false
+            requestBind()
+        }
+    }
+
+    private fun detachHostBindings() {
+        previewView?.removeOnLayoutChangeListener(previewLayoutListener)
+        lifecycleOwner?.lifecycle?.removeObserver(lifecycleObserver)
+        lifecycleOwner = null
+        previewView = null
+        targetRotation = null
+    }
+
+    private fun dispatchOnMain(action: () -> Unit) {
+        try {
+            mainExecutor.execute(action)
+        } catch (_: RuntimeException) {
+            // The production main executor is process-owned and does not
+            // reject work. A test/embedding executor may be shutting down;
+            // complete the stop boundary rather than dropping its callback.
+            action()
         }
     }
 
@@ -731,6 +837,18 @@ internal class MlKitImageAnalyzer(
     fun invalidateInFlightCallbacks() {
         synchronized(lock) {
             generation += 1
+        }
+    }
+
+    /**
+     * Invoke [onIdle] after the current ML Kit task has released its frame.
+     * This is the asynchronous half of the CameraX stop boundary; provider
+     * unbind itself has already returned by the time this is registered.
+     */
+    fun awaitIdle(onIdle: () -> Unit) {
+        gate.whenIdle {
+            closeRetiredIfIdle()
+            onIdle()
         }
     }
 

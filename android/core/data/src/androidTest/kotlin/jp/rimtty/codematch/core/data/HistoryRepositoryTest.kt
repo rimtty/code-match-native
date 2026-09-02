@@ -164,6 +164,40 @@ class HistoryRepositoryTest {
     }
 
     @Test
+    fun nonBlankRenameSurvivesDatabaseReopen() = runBlocking {
+        val context = applicationContext()
+        val databaseName = "history-rename-${UUID.randomUUID()}.db"
+        try {
+            val firstDatabase = CodeMatchDatabaseFactory.create(context, databaseName)
+            val sessionId = try {
+                val firstRepository = HistoryRepository(firstDatabase)
+                val id = firstRepository.beginSession(name = "before rename", at = 100L)
+                firstRepository.recordMatch("ABC1234567", at = 101L)
+                firstRepository.endActiveSession(at = 110L)
+                firstRepository.renameSession(id, "  Renamed after reopen  ")
+                id
+            } finally {
+                firstDatabase.close()
+            }
+
+            // Recreate the persistent database and verify the normalized
+            // non-blank name, rather than only checking the in-memory Flow.
+            val restoredDatabase = CodeMatchDatabaseFactory.create(context, databaseName)
+            try {
+                val restored = HistoryRepository(restoredDatabase).observeSession(sessionId).first()
+                assertNotNull(restored)
+                assertEquals("Renamed after reopen", restored?.name)
+                assertEquals("Renamed after reopen", restored?.displayName)
+                assertEquals(1, restored?.matchedCount)
+            } finally {
+                restoredDatabase.close()
+            }
+        } finally {
+            context.deleteDatabase(databaseName)
+        }
+    }
+
+    @Test
     fun staleSessionIdCannotWriteIntoNewActiveSession() = runBlocking {
         val firstId = repository.beginSession(at = 100L)
         repository.endActiveSession(at = 101L)

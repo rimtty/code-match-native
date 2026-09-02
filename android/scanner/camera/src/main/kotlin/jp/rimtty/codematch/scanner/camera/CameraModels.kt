@@ -207,14 +207,45 @@ data class CameraGuide(
  * frame that is delivered while ML Kit is still processing the prior frame.
  */
 internal class AnalysisFrameGate {
-    private val inFlight = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val lock = Any()
+    private var inFlight = false
+    private val idleListeners = ArrayList<() -> Unit>()
 
-    fun tryAcquire(): Boolean = inFlight.compareAndSet(false, true)
+    fun tryAcquire(): Boolean = synchronized(lock) {
+        if (inFlight) {
+            false
+        } else {
+            inFlight = true
+            true
+        }
+    }
 
+    /**
+     * Release the current frame and notify callbacks registered by a stop
+     * operation. Registration and the idle transition share one lock so a
+     * stop callback cannot miss the very last ML Kit completion.
+     */
     fun release() {
-        inFlight.set(false)
+        val callbacks = synchronized(lock) {
+            if (!inFlight) return
+            inFlight = false
+            idleListeners.toList().also { idleListeners.clear() }
+        }
+        callbacks.forEach { it() }
+    }
+
+    fun whenIdle(listener: () -> Unit) {
+        val runImmediately = synchronized(lock) {
+            if (inFlight) {
+                idleListeners += listener
+                false
+            } else {
+                true
+            }
+        }
+        if (runImmediately) listener()
     }
 
     val isBusy: Boolean
-        get() = inFlight.get()
+        get() = synchronized(lock) { inFlight }
 }

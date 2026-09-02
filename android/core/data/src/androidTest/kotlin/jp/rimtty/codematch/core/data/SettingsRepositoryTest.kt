@@ -15,6 +15,10 @@ import jp.rimtty.codematch.core.model.SuccessSound
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -50,6 +54,47 @@ class SettingsRepositoryTest {
             assertEquals(AppLanguage.ENGLISH, updated.language)
 
             file.delete()
+        }
+    }
+
+    @Test
+    fun languageSurvivesDataStoreReopen() {
+        runBlocking {
+            val file = temporaryFile()
+            try {
+                val firstJob = SupervisorJob()
+                val firstScope = CoroutineScope(Dispatchers.IO + firstJob)
+                try {
+                    val dataStore = PreferenceDataStoreFactory.create(
+                        scope = firstScope,
+                        produceFile = { file },
+                    )
+                    SettingsRepository(dataStore).setLanguage(AppLanguage.ENGLISH)
+                } finally {
+                    // DataStore has no close API; canceling the dedicated
+                    // test scope finishes this isolated store before reopen.
+                    firstJob.cancelAndJoin()
+                }
+
+                val reopenedJob = SupervisorJob()
+                val reopenedScope = CoroutineScope(Dispatchers.IO + reopenedJob)
+                try {
+                    val reopenedDataStore = PreferenceDataStoreFactory.create(
+                        scope = reopenedScope,
+                        produceFile = { file },
+                    )
+                    // Reopen both the DataStore and repository from the same
+                    // private file. This is the safe in-process analogue of a
+                    // process relaunch; it never touches the app's default
+                    // settings file.
+                    val reopened = SettingsRepository(reopenedDataStore)
+                    assertEquals(AppLanguage.ENGLISH, reopened.settings.first().language)
+                } finally {
+                    reopenedJob.cancelAndJoin()
+                }
+            } finally {
+                file.delete()
+            }
         }
     }
 

@@ -232,9 +232,15 @@ fun ScanRoute(
                     onClick = {
                         showEndSessionDialog = false
                         callbackGate.invalidate()
-                        currentCameraHost?.stop()
-                        viewModel.onCameraStopped()
-                        viewModel.confirmEndSession()
+                        // Do not end the logical session until CameraX's
+                        // unbind and any in-flight ML Kit frame have drained.
+                        // This is the Android equivalent of waiting for
+                        // AVCaptureSession.stopRunning().
+                        stopCameraBeforeSessionEnd(
+                            cameraHost = currentCameraHost,
+                            onCameraStopped = viewModel::onCameraStopped,
+                            onSessionEnded = viewModel::confirmEndSession,
+                        )
                     },
                 ) {
                     Text(stringResource(R.string.end_session_confirm))
