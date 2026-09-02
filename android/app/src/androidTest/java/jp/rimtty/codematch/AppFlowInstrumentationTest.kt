@@ -135,7 +135,7 @@ class AppFlowInstrumentationTest {
 
         emitBluetooth(
             ScanPayload.qr(
-                value = qrPayload,
+                value = firstBoxQrPayload,
                 source = InputSource.BLUETOOTH,
                 timestampMillis = 2_000L,
             ),
@@ -146,14 +146,14 @@ class AppFlowInstrumentationTest {
         // callbacks are one second apart.
         emitBluetooth(
             ScanPayload.code128(
-                value = barcodePayload,
+                value = sharedBoxBarcodePayload,
                 source = InputSource.BLUETOOTH,
                 timestampMillis = 3_000L,
             ),
         )
         emitBluetooth(
             ScanPayload.code128(
-                value = barcodePayload,
+                value = sharedBoxBarcodePayload,
                 source = InputSource.BLUETOOTH,
                 timestampMillis = 4_000L,
             ),
@@ -182,27 +182,26 @@ class AppFlowInstrumentationTest {
         onNodeWithText("不一致").assertIsDisplayed()
         assertSessionCount(1)
 
-        // A second manual next keeps the same session and allows a duplicate
-        // box to be recorded. This covers the persisted count rather than
-        // only the transient result card.
+        // A second box has a different full QR even though the part number and
+        // Code 128 are shared, so it must be recorded as another box.
         onNodeWithTag("scan_manual_next").performClick()
         emitBluetooth(
             ScanPayload.qr(
-                value = qrPayload,
+                value = secondBoxQrPayload,
                 source = InputSource.BLUETOOTH,
                 timestampMillis = 7_000L,
             ),
         )
         emitBluetooth(
             ScanPayload.code128(
-                value = barcodePayload,
+                value = sharedBoxBarcodePayload,
                 source = InputSource.BLUETOOTH,
                 timestampMillis = 8_000L,
             ),
         )
         emitBluetooth(
             ScanPayload.code128(
-                value = barcodePayload,
+                value = sharedBoxBarcodePayload,
                 source = InputSource.BLUETOOTH,
                 timestampMillis = 9_000L,
             ),
@@ -223,13 +222,13 @@ class AppFlowInstrumentationTest {
      * Mirrors the iOS match -> duplicate -> reset/reread -> mismatch flow
      * through the app-owned ViewModel, Room repository, and debug Fake.
      *
-     * The first two comparisons use the same normalized part number and must
-     * become two persisted boxes. The final comparison is deliberately a
-     * mismatch after a QR reread and must leave both the count and history
-     * unchanged before the session is ended.
+     * The first two comparisons use different box QR values with one shared
+     * part number and Code 128, and must become two persisted boxes. Re-reading
+     * the first QR is a duplicate. The final mismatch after a QR reread must
+     * leave both the count and history unchanged before the session is ended.
      */
     @Test
-    fun fakeScannerMatchDuplicateRereadAndMismatchPreserveCountAndHistory() {
+    fun fakeScannerDifferentBoxesDuplicateRereadAndMismatchPreserveCountAndHistory() {
         connectFakeScannerThroughSettings()
         openDestination(R.string.destination_scan)
         onNodeWithTag("scan_start_session").performClick()
@@ -238,14 +237,14 @@ class AppFlowInstrumentationTest {
         // First successful comparison records box 1.
         emitBluetooth(
             ScanPayload.qr(
-                value = qrPayload,
+                value = firstBoxQrPayload,
                 source = InputSource.BLUETOOTH,
                 timestampMillis = 1_000L,
             ),
         )
         emitBluetooth(
             ScanPayload.code128(
-                value = barcodePayload,
+                value = sharedBoxBarcodePayload,
                 source = InputSource.BLUETOOTH,
                 timestampMillis = 2_000L,
             ),
@@ -255,20 +254,20 @@ class AppFlowInstrumentationTest {
         assertSessionCount(1)
         awaitActiveEntryCount(1)
 
-        // Manual next is the reset equivalent. The same part is a second box,
-        // not a replacement of the first history entry.
+        // Manual next is the reset equivalent. A different box QR carrying
+        // the same part and Code 128 is a second persisted box.
         onNodeWithTag("scan_manual_next").performClick()
         waitForText("QRコードを読み取ってください")
         emitBluetooth(
             ScanPayload.qr(
-                value = qrPayload,
+                value = secondBoxQrPayload,
                 source = InputSource.BLUETOOTH,
                 timestampMillis = 3_000L,
             ),
         )
         emitBluetooth(
             ScanPayload.code128(
-                value = barcodePayload,
+                value = sharedBoxBarcodePayload,
                 source = InputSource.BLUETOOTH,
                 timestampMillis = 4_000L,
             ),
@@ -278,15 +277,38 @@ class AppFlowInstrumentationTest {
         assertSessionCount(2)
         awaitActiveEntryCount(2)
 
-        // Start a third comparison, then explicitly reread the QR. The
+        // Re-reading the first box with the same shared Code 128 is a
+        // duplicate. It remains visible but creates no third history row.
+        onNodeWithTag("scan_manual_next").performClick()
+        waitForText("QRコードを読み取ってください")
+        emitBluetooth(
+            ScanPayload.qr(
+                value = firstBoxQrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 5_000L,
+            ),
+        )
+        emitBluetooth(
+            ScanPayload.code128(
+                value = sharedBoxBarcodePayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 6_000L,
+            ),
+        )
+        waitForTag("scan_result_card")
+        onNodeWithText("すでに照合済みです").assertIsDisplayed()
+        assertSessionCount(2)
+        awaitActiveEntryCount(2)
+
+        // Start a fourth comparison, then explicitly reread the QR. The
         // reread preserves the two successful boxes and returns to QR input.
         onNodeWithTag("scan_manual_next").performClick()
         waitForText("QRコードを読み取ってください")
         emitBluetooth(
             ScanPayload.qr(
-                value = qrPayload,
+                value = firstBoxQrPayload,
                 source = InputSource.BLUETOOTH,
-                timestampMillis = 5_000L,
+                timestampMillis = 7_000L,
             ),
         )
         waitForText("Code 128を読み取ってください")
@@ -298,17 +320,17 @@ class AppFlowInstrumentationTest {
         // mismatch is visible but is never persisted or counted as a box.
         emitBluetooth(
             ScanPayload.qr(
-                value = qrPayload,
+                value = firstBoxQrPayload,
                 source = InputSource.BLUETOOTH,
-                timestampMillis = 6_000L,
+                timestampMillis = 8_000L,
             ),
         )
         waitForText("Code 128を読み取ってください")
         emitBluetooth(
             ScanPayload.code128(
-                value = mismatchBarcodePayload,
+                value = barcodePayload,
                 source = InputSource.BLUETOOTH,
-                timestampMillis = 7_000L,
+                timestampMillis = 9_000L,
             ),
         )
         waitForTag("scan_result_card")
@@ -317,8 +339,8 @@ class AppFlowInstrumentationTest {
         awaitActiveEntryCount(2)
         assertActiveEntries(
             expectedCodes = listOf(
-                "BCJH-52-81GG",
-                "BCJH-52-81GG",
+                "BCJH-55-81GG",
+                "BCJH-55-81GG",
             ),
         )
 
@@ -748,6 +770,11 @@ class AppFlowInstrumentationTest {
     }
 
     private companion object {
+        const val firstBoxQrPayload =
+            "DAAL134150BCJH5581GG020000120000001200A      000000BAB15LAB07   0*"
+        const val secondBoxQrPayload =
+            "DAAL134140BCJH5581GG020000120000001200A      000000BAB15LAB07   0*"
+        const val sharedBoxBarcodePayload = "BCJH-55-81GG@1KVQ0C"
         const val qrPayload =
             "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
         const val barcodePayload = "BCJH-52-81GG@1N5X0C"
