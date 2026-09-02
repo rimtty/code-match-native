@@ -433,6 +433,66 @@ class CameraScannerAsyncTest {
     }
 
     @Test
+    fun `close completion and a late unbind wait for an in-flight ML Kit task`() {
+        val future = ManualProviderFuture()
+        val provider = RecordingCameraProvider()
+        val pendingResult = TaskCompletionSource<List<Barcode>>()
+        val barcodeScanner = FakeBarcodeScanner()
+        var attachedPreview: PreviewView? = null
+        val analyzer = MlKitImageAnalyzer(
+            previewViewProvider = { attachedPreview },
+            guideProvider = { CameraGuide.forFormat(ScanFormat.QR) },
+            onPayload = {},
+            onError = {},
+            mainExecutor = directExecutor,
+            scannerFactory = { barcodeScanner },
+            processFrame = { _, _, _ -> PendingBarcodeAnalysis(pendingResult.task) },
+        )
+        val dependencies = CameraScannerDependencies(
+            providerFutureFactory = { future },
+            scannerFactory = { barcodeScanner },
+            mainExecutorFactory = { directExecutor },
+            analysisExecutorFactory = { Executors.newSingleThreadExecutor() },
+            analyzerFactory = { _, _, _, _, _, _ -> analyzer },
+        )
+        val scanner = CameraScanner(
+            application,
+            dependencies,
+            onPayload = {},
+            onStateChanged = {},
+            onError = {},
+        )
+        val owner = StartedLifecycleOwner()
+        val preview = previewView()
+        attachedPreview = preview
+
+        scanner.bind(owner, preview, expectedFormat = ScanFormat.QR)
+        future.complete(provider)
+        assertEquals(CameraCaptureState.RUNNING, scanner.captureState)
+
+        val image = EmptyImageProxy()
+        analyzer.analyze(image)
+        var closeCompleted = false
+        scanner.close { closeCompleted = true }
+        var lateUnbindCompleted = false
+        scanner.unbind { lateUnbindCompleted = true }
+
+        assertTrue(!image.isClosed)
+        assertTrue(!closeCompleted)
+        assertTrue(!lateUnbindCompleted)
+        assertEquals(0, barcodeScanner.closeCount)
+
+        pendingResult.setResult(emptyList())
+
+        assertTrue(image.isClosed)
+        assertTrue(closeCompleted)
+        assertTrue(lateUnbindCompleted)
+        assertEquals(1, barcodeScanner.closeCount)
+        assertEquals(CameraCaptureState.STOPPED, scanner.captureState)
+        scanner.close()
+    }
+
+    @Test
     fun `preview dismantle invalidates an in-flight ML Kit failure callback`() {
         val future = ManualProviderFuture()
         val provider = RecordingCameraProvider()
