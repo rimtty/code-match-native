@@ -86,7 +86,7 @@ class HistoryPdfExporterInstrumentationTest {
             assertTrue(file.name.endsWith(".pdf"))
             assertArrayEquals(
                 PDF_HEADER,
-                file.inputStream().use { it.readNBytes(PDF_HEADER.size) },
+                file.readBytes().copyOf(PDF_HEADER.size),
             )
         } finally {
             file.delete()
