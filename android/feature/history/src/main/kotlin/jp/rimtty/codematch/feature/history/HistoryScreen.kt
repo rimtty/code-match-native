@@ -3,7 +3,7 @@ package jp.rimtty.codematch.feature.history
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -53,8 +54,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import jp.rimtty.codematch.core.export.HistoryExportTextFormatter
 import jp.rimtty.codematch.core.matching.CodeMatcher
 import jp.rimtty.codematch.core.matching.KanbanQrRecord
 import jp.rimtty.codematch.core.matching.TagBarcodeRecord
@@ -96,13 +97,15 @@ fun HistoryScreen(
     onDeleteSession: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    HistorySessionList(
-        sessions = sessions,
-        language = language,
-        onSessionSelected = onSessionSelected,
-        onDeleteSession = onDeleteSession,
-        modifier = modifier,
-    )
+    HistoryLocalized(language) {
+        HistorySessionList(
+            sessions = sessions,
+            language = language,
+            onSessionSelected = onSessionSelected,
+            onDeleteSession = onDeleteSession,
+            modifier = modifier,
+        )
+    }
 }
 
 /**
@@ -128,45 +131,52 @@ fun HistoryContent(
     onSharePdf: (MatchSession) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val sortedSessions = remember(sessions) { sortSessions(sessions) }
-    val selectedSession = sortedSessions.firstOrNull { it.id == selectedSessionId }
-    val list: @Composable (Modifier) -> Unit = { listModifier ->
-        HistorySessionList(
-            sessions = sortedSessions,
-            language = language,
-            onSessionSelected = onSessionSelected,
-            onDeleteSession = onDeleteSession,
-            modifier = listModifier,
-        )
-    }
-    val detail: @Composable (Modifier) -> Unit = { detailModifier ->
-        HistorySessionDetail(
-            session = selectedSession,
-            selectedGroupCode = selectedGroupCode,
-            selectedEntryId = selectedEntryId,
-            language = language,
-            onRenameSession = onRenameSession,
-            onGroupSelected = onGroupSelected,
-            onEntrySelected = onEntrySelected,
-            onSavePdf = onSavePdf,
-            onSharePdf = onSharePdf,
-            modifier = detailModifier,
-        )
-    }
+    HistoryLocalized(language) {
+        val sortedSessions = remember(sessions) { sortSessions(sessions) }
+        val selectedSession = sortedSessions.firstOrNull { it.id == selectedSessionId }
+        val list: @Composable (Modifier) -> Unit = { listModifier ->
+            HistorySessionList(
+                sessions = sortedSessions,
+                language = language,
+                onSessionSelected = onSessionSelected,
+                onDeleteSession = onDeleteSession,
+                modifier = listModifier,
+            )
+        }
+        val detail: @Composable (Modifier) -> Unit = { detailModifier ->
+            HistorySessionDetail(
+                session = selectedSession,
+                selectedGroupCode = selectedGroupCode,
+                selectedEntryId = selectedEntryId,
+                language = language,
+                onRenameSession = onRenameSession,
+                onGroupSelected = onGroupSelected,
+                onEntrySelected = onEntrySelected,
+                onSavePdf = onSavePdf,
+                onSharePdf = onSharePdf,
+                modifier = detailModifier,
+            )
+        }
 
-    Box(modifier.fillMaxSize().testTag(HistoryTestTags.CONTENT)) {
-        if (layoutMode == HistoryLayoutMode.EXPANDED) {
-            Row(Modifier.fillMaxSize()) {
-                list(Modifier.width(344.dp))
-                VerticalDivider(modifier = Modifier.fillMaxHeight().width(1.dp))
-                detail(Modifier.weight(1f))
-            }
-        } else if (selectedSession == null) {
-            list(Modifier.fillMaxSize())
-        } else {
-            Column(Modifier.fillMaxSize()) {
-                BackButton(language = language, onBack = onBack)
-                detail(Modifier.weight(1f))
+        BoxWithConstraints(modifier.fillMaxSize().testTag(HistoryTestTags.CONTENT)) {
+            if (layoutMode == HistoryLayoutMode.EXPANDED) {
+                // The app normally selects EXPANDED only for a wide window, but
+                // multi-window resizing can temporarily leave this destination
+                // with narrower constraints. Keep both panes visible rather than
+                // allowing the fixed list width to push detail completely offscreen.
+                val listPaneWidth = minOf(344.dp, maxWidth * 0.42f)
+                Row(Modifier.fillMaxSize()) {
+                    list(Modifier.width(listPaneWidth))
+                    VerticalDivider(modifier = Modifier.fillMaxHeight().width(1.dp))
+                    detail(Modifier.weight(1f))
+                }
+            } else if (selectedSession == null) {
+                list(Modifier.fillMaxSize())
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    BackButton(onBack = onBack)
+                    detail(Modifier.weight(1f))
+                }
             }
         }
     }
@@ -180,7 +190,7 @@ private fun HistorySessionList(
     onDeleteSession: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val labels = HistoryUiText.labels(language)
+    val labels = HistoryUiResources.labels()
     Column(
         modifier = modifier
             .testTag(HistoryTestTags.SCREEN)
@@ -244,8 +254,8 @@ private fun SessionRow(
     onClick: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val labels = HistoryUiText.labels(language)
-    val summary = HistoryUiText.sessionAccessibilitySummary(session, language)
+    val labels = HistoryUiResources.labels()
+    val summary = HistoryUiResources.sessionAccessibilitySummary(session, language)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -279,11 +289,10 @@ private fun SessionRow(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        text = session.matchedCount.toString(),
+                        text = HistoryUiResources.boxCount(session.matchedCount, language),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
-                    Text(text = labels.box, style = MaterialTheme.typography.labelSmall)
                 }
             }
             Column(
@@ -295,8 +304,6 @@ private fun SessionRow(
                         text = session.displayName,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 Text(
@@ -309,7 +316,7 @@ private fun SessionRow(
                 )
                 Text(
                     text = if (session.isActive) labels.sessionInProgress
-                    else HistoryUiText.durationText(session, language),
+                    else HistoryUiResources.durationText(session, language),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (session.isActive) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -339,46 +346,47 @@ fun HistorySessionDetail(
     onSharePdf: (MatchSession) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val labels = HistoryUiText.labels(language)
-    if (session == null) {
-        EmptyDetailState(labels, modifier.testTag(HistoryTestTags.SESSION_DETAIL))
-        return
-    }
-
-    val selectedEntry = session.entries.firstOrNull { it.id == selectedEntryId }
-    val selectedGroup = session.groupedEntries.firstOrNull { it.code == selectedGroupCode }
-    when {
-        selectedEntry != null -> {
-            val number = selectedGroup?.entries?.indexOfFirst { it.id == selectedEntry.id }
-                ?.takeIf { it >= 0 }
-                ?.plus(1)
-                ?: session.entries.indexOfFirst { it.id == selectedEntry.id }.plus(1)
-            HistoryEntryDetail(
-                entry = selectedEntry,
-                boxNumber = number,
-                language = language,
-                modifier = modifier,
-            )
+    HistoryLocalized(language) {
+        val labels = HistoryUiResources.labels()
+        if (session == null) {
+            EmptyDetailState(labels, modifier.testTag(HistoryTestTags.SESSION_DETAIL))
+        } else {
+            val selectedEntry = session.entries.firstOrNull { it.id == selectedEntryId }
+            val selectedGroup = session.groupedEntries.firstOrNull { it.code == selectedGroupCode }
+            when {
+                selectedEntry != null -> {
+                    val number = selectedGroup?.entries?.indexOfFirst { it.id == selectedEntry.id }
+                        ?.takeIf { it >= 0 }
+                        ?.plus(1)
+                        ?: session.entries.indexOfFirst { it.id == selectedEntry.id }.plus(1)
+                    HistoryEntryDetail(
+                        entry = selectedEntry,
+                        boxNumber = number,
+                        language = language,
+                        modifier = modifier,
+                    )
+                }
+                selectedGroup != null -> {
+                    HistoryGroupDetail(
+                        group = selectedGroup,
+                        groupNumber = session.groupedEntries.indexOf(selectedGroup) + 1,
+                        language = language,
+                        onEntrySelected = onEntrySelected,
+                        modifier = modifier,
+                    )
+                }
+                else -> SessionOverview(
+                    session = session,
+                    labels = labels,
+                    language = language,
+                    onRenameSession = onRenameSession,
+                    onGroupSelected = onGroupSelected,
+                    onSavePdf = onSavePdf,
+                    onSharePdf = onSharePdf,
+                    modifier = modifier,
+                )
+            }
         }
-        selectedGroup != null -> {
-            HistoryGroupDetail(
-                group = selectedGroup,
-                groupNumber = session.groupedEntries.indexOf(selectedGroup) + 1,
-                language = language,
-                onEntrySelected = onEntrySelected,
-                modifier = modifier,
-            )
-        }
-        else -> SessionOverview(
-            session = session,
-            labels = labels,
-            language = language,
-            onRenameSession = onRenameSession,
-            onGroupSelected = onGroupSelected,
-            onSavePdf = onSavePdf,
-            onSharePdf = onSharePdf,
-            modifier = modifier,
-        )
     }
 }
 
@@ -434,12 +442,11 @@ private fun SessionOverview(
                 }
                 SummaryRow(
                     labels.inspectionBoxes,
-                    if (language == AppLanguage.JAPANESE) "${session.matchedCount}${labels.box}"
-                    else "${session.matchedCount} ${labels.box}",
+                    HistoryUiResources.boxCount(session.matchedCount, language),
                 )
                 SummaryRow(
                     labels.partCount,
-                    session.groupedEntries.size.toString(),
+                    HistoryExportTextFormatter.integer(session.groupedEntries.size, language),
                 )
             }
         }
@@ -496,7 +503,13 @@ private fun GroupRow(
     language: AppLanguage,
     onClick: () -> Unit,
 ) {
-    val labels = HistoryUiText.labels(language)
+    val labels = HistoryUiResources.labels()
+    val groupAccessibilitySummary = HistoryUiResources.groupAccessibilitySummary(
+        number = number,
+        code = group.code,
+        count = group.boxCount,
+        language = language,
+    )
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -504,22 +517,26 @@ private fun GroupRow(
             .heightIn(min = 64.dp)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) {
-                contentDescription = "#${number} ${group.code}, ${group.boxCount} ${labels.box}"
+                contentDescription = groupAccessibilitySummary
                 role = Role.Button
             }
             .testTag(HistoryTestTags.GROUP_ROW),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("#$number", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text(
+                    HistoryUiResources.groupNumber(number),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
                 Spacer(Modifier.weight(1f))
                 Text(
-                    text = if (group.boxCount > 1) {
-                        "${labels.matchedAt}: ${HistoryUiText.time(group.firstMatchedAt, language)} – " +
-                            HistoryUiText.time(group.lastMatchedAt, language)
-                    } else {
-                        "${labels.matchedAt}: ${HistoryUiText.time(group.firstMatchedAt, language)}"
-                    },
+                    text = HistoryUiResources.matchedAt(
+                        firstMillis = group.firstMatchedAt,
+                        lastMillis = group.lastMatchedAt,
+                        hasRange = group.boxCount > 1,
+                        language = language,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -535,8 +552,7 @@ private fun GroupRow(
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    text = if (language == AppLanguage.JAPANESE) "${group.boxCount}${labels.box}"
-                    else "${group.boxCount} ${labels.box}",
+                    text = HistoryUiResources.boxCount(group.boxCount, language),
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
                 )
@@ -554,63 +570,72 @@ fun HistoryGroupDetail(
     onEntrySelected: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val labels = HistoryUiText.labels(language)
-    LazyColumn(
-        modifier = modifier.fillMaxSize().testTag(HistoryTestTags.GROUP_DETAIL),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
-    ) {
-        item {
-            SectionCard {
-                SummaryRow(labels.number, "#$groupNumber")
-                SummaryRow(labels.inspectionBoxes, boxCountText(group.boxCount, labels, language))
-                SummaryRow(labels.firstMatch, HistoryUiText.dateTime(group.firstMatchedAt, language))
-                if (group.boxCount > 1) {
-                    SummaryRow(labels.lastMatch, HistoryUiText.dateTime(group.lastMatchedAt, language))
+    HistoryLocalized(language) {
+        val labels = HistoryUiResources.labels()
+        LazyColumn(
+            modifier = modifier.fillMaxSize().testTag(HistoryTestTags.GROUP_DETAIL),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
+        ) {
+            item {
+                SectionCard {
+                    SummaryRow(labels.number, HistoryUiResources.groupNumber(groupNumber))
+                    SummaryRow(labels.inspectionBoxes, HistoryUiResources.boxCount(group.boxCount, language))
+                    SummaryRow(labels.firstMatch, HistoryUiText.dateTime(group.firstMatchedAt, language))
+                    if (group.boxCount > 1) {
+                        SummaryRow(labels.lastMatch, HistoryUiText.dateTime(group.lastMatchedAt, language))
+                    }
                 }
             }
-        }
-        item {
-            Text(
-                text = labels.itemNumber,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-            )
-            SelectionContainerText(group.code, Modifier.padding(horizontal = 20.dp))
-        }
-        item {
-            Text(
-                text = labels.boxRecords,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-            )
-        }
-        itemsIndexed(group.entries, key = { _, entry -> entry.id }) { index, entry ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 3.dp)
-                    .heightIn(min = 52.dp)
-                    .clickable(role = Role.Button) { onEntrySelected(entry.id) }
-                    .testTag(HistoryTestTags.BOX_ROW),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            item {
+                Text(
+                    text = labels.itemNumber,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                )
+                SelectionContainerText(group.code, Modifier.padding(horizontal = 20.dp))
+            }
+            item {
+                Text(
+                    text = labels.boxRecords,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                )
+            }
+            itemsIndexed(group.entries, key = { _, entry -> entry.id }) { index, entry ->
+                val boxDescription = HistoryUiResources.entryBoxNumber(index + 1)
+                val accessibilitySeparator = stringResource(R.string.history_accessibility_separator)
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 3.dp)
+                        .heightIn(min = 52.dp)
+                        .clickable(role = Role.Button) { onEntrySelected(entry.id) }
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = boxDescription +
+                                accessibilitySeparator +
+                                HistoryUiText.time(entry.matchedAt, language)
+                            role = Role.Button
+                        }
+                        .testTag(HistoryTestTags.BOX_ROW),
                 ) {
-                    Text(
-                        text = if (language == AppLanguage.JAPANESE) "${index + 1}${labels.box}目"
-                        else "${labels.box} ${index + 1}",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        text = HistoryUiText.time(entry.matchedAt, language),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = HistoryUiResources.boxIndex(index + 1),
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            text = HistoryUiText.time(entry.matchedAt, language),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
@@ -625,72 +650,77 @@ fun HistoryEntryDetail(
     language: AppLanguage = AppLanguage.JAPANESE,
     modifier: Modifier = Modifier,
 ) {
-    val labels = HistoryUiText.labels(language)
-    val qr = entry.qrPayload?.let(KanbanQrRecord::parse)
-    val barcode = entry.barcodePayload?.let(TagBarcodeRecord::parse)
-    LazyColumn(
-        modifier = modifier.fillMaxSize().testTag(HistoryTestTags.ENTRY_DETAIL),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
-    ) {
-        item {
-            SectionCard {
-                SummaryRow(
-                    labels.box,
-                    if (language == AppLanguage.JAPANESE) "#${boxNumber}${labels.box}目"
-                    else "#${boxNumber}",
-                )
-                SummaryRow(labels.matchedAt, HistoryUiText.dateTime(entry.matchedAt, language))
-            }
-        }
-        item {
-            Text(
-                text = labels.itemNumber,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-            )
-            SelectionContainerText(entry.code, Modifier.padding(horizontal = 20.dp))
-        }
-        if (qr != null) {
+    HistoryLocalized(language) {
+        val labels = HistoryUiResources.labels()
+        val qr = entry.qrPayload?.let(KanbanQrRecord::parse)
+        val barcode = entry.barcodePayload?.let(TagBarcodeRecord::parse)
+        LazyColumn(
+            modifier = modifier.fillMaxSize().testTag(HistoryTestTags.ENTRY_DETAIL),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
+        ) {
             item {
-                SectionCard(title = labels.qrParsed) {
-                    SummaryRow(labels.cardNumber, qr.cardNumber)
+                SectionCard {
                     SummaryRow(
-                        labels.itemNumber,
-                        CodeMatcher.formatPartNumber(qr.partNumber) +
-                            (qr.partSuffix?.let { " (${labels.suffix} $it)" } ?: ""),
+                        labels.box,
+                        HistoryUiResources.entryBoxNumber(boxNumber),
                     )
-                    SummaryRow(labels.deliveryQuantity, HistoryUiText.quantity(qr.deliveryQuantity, language))
-                    SummaryRow(labels.instructedQuantity, HistoryUiText.quantity(qr.instructedQuantity, language))
-                    SummaryRow(labels.factory, qr.factoryCode ?: "-")
-                    SummaryRow(labels.warehouse, qr.warehouseCode ?: "-")
-                    SummaryRow(labels.supplyPoint, qr.supplyPointCode ?: "-")
+                    SummaryRow(labels.matchedAt, HistoryUiText.dateTime(entry.matchedAt, language))
                 }
             }
-        }
-        if (barcode != null) {
             item {
-                SectionCard(title = labels.barcodeParsed) {
-                    SummaryRow(labels.partNumber, barcode.partNumber)
-                    SummaryRow(labels.managementCode, barcode.managementCode ?: "-")
+                Text(
+                    text = labels.itemNumber,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                )
+                SelectionContainerText(entry.code, Modifier.padding(horizontal = 20.dp))
+            }
+            if (qr != null) {
+                item {
+                    SectionCard(title = labels.qrParsed) {
+                        SummaryRow(labels.cardNumber, qr.cardNumber)
+                        SummaryRow(
+                            labels.itemNumber,
+                            qr.partSuffix?.let {
+                                HistoryUiResources.partWithSuffix(
+                                    CodeMatcher.formatPartNumber(qr.partNumber),
+                                    it,
+                                )
+                            } ?: CodeMatcher.formatPartNumber(qr.partNumber),
+                        )
+                        SummaryRow(labels.deliveryQuantity, HistoryUiText.quantity(qr.deliveryQuantity, language))
+                        SummaryRow(labels.instructedQuantity, HistoryUiText.quantity(qr.instructedQuantity, language))
+                        SummaryRow(labels.factory, qr.factoryCode ?: HistoryUiResources.notAvailable())
+                        SummaryRow(labels.warehouse, qr.warehouseCode ?: HistoryUiResources.notAvailable())
+                        SummaryRow(labels.supplyPoint, qr.supplyPointCode ?: HistoryUiResources.notAvailable())
+                    }
                 }
             }
-        }
-        item {
-            PayloadSection(
-                title = labels.fullQr,
-                payload = entry.qrPayload,
-                fallback = labels.noRecord,
-                testTag = "historyQrPayload",
-            )
-        }
-        item {
-            PayloadSection(
-                title = labels.fullBarcode,
-                payload = entry.barcodePayload,
-                fallback = labels.noRecord,
-                testTag = "historyBarcodePayload",
-            )
+            if (barcode != null) {
+                item {
+                    SectionCard(title = labels.barcodeParsed) {
+                        SummaryRow(labels.partNumber, barcode.partNumber)
+                        SummaryRow(labels.managementCode, barcode.managementCode ?: HistoryUiResources.notAvailable())
+                    }
+                }
+            }
+            item {
+                PayloadSection(
+                    title = labels.fullQr,
+                    payload = entry.qrPayload,
+                    fallback = labels.noRecord,
+                    testTag = "historyQrPayload",
+                )
+            }
+            item {
+                PayloadSection(
+                    title = labels.fullBarcode,
+                    payload = entry.barcodePayload,
+                    fallback = labels.noRecord,
+                    testTag = "historyBarcodePayload",
+                )
+            }
         }
     }
 }
@@ -729,11 +759,19 @@ private fun SectionCard(title: String? = null, content: @Composable ColumnScope.
 @Composable
 private fun SummaryRow(label: String, value: String, valueColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface) {
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        verticalAlignment = Alignment.Top,
     ) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.42f))
-        Text(value, color = valueColor, modifier = Modifier.weight(0.58f))
+        Text(
+            label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(0.42f).padding(vertical = 6.dp),
+        )
+        Text(
+            value,
+            color = valueColor,
+            modifier = Modifier.weight(0.58f).padding(vertical = 6.dp),
+        )
     }
 }
 
@@ -775,8 +813,8 @@ private fun EmptyDetailState(labels: HistoryUiLabels, modifier: Modifier = Modif
 }
 
 @Composable
-private fun BackButton(language: AppLanguage, onBack: () -> Unit) {
-    val labels = HistoryUiText.labels(language)
+private fun BackButton(onBack: () -> Unit) {
+    val labels = HistoryUiResources.labels()
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
             Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = labels.back)
@@ -787,6 +825,3 @@ private fun BackButton(language: AppLanguage, onBack: () -> Unit) {
 
 private fun sortSessions(sessions: List<MatchSession>): List<MatchSession> =
     sessions.sortedWith(compareByDescending<MatchSession> { it.startedAt }.thenByDescending { it.id })
-
-private fun boxCountText(count: Int, labels: HistoryUiLabels, language: AppLanguage): String =
-    if (language == AppLanguage.JAPANESE) "$count${labels.box}" else "$count ${labels.box}"

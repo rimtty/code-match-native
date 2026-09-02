@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="history_title">Match history</string>
+    <string name="history_empty_title">No history yet</string>
+    <string name="history_empty_description">Start a match on the scan tab to save matched codes by session.</string>
+    <string name="history_delete">Delete</string>
+    <string name="history_session_in_progress">Session in progress</string>
+    <string name="history_session_ended">Finished</string>
+    <string name="history_session_name">Session name</string>
+    <string name="history_start">Start</string>
+    <string name="history_end">End</string>
+    <string name="history_status">Status</string>
+    <string name="history_inspection_boxes">Boxes</string>
+    <string name="history_part_count">Part numbers</string>
+    <string name="history_name_placeholder">Name (optional)</string>
+    <string name="history_save_pdf">Save PDF</string>
+    <string name="history_share_pdf">Share</string>
+    <string name="history_matched_codes">Matched codes</string>
+    <string name="history_no_matches_title">No matches in this session</string>
+    <string name="history_no_matches_description">No matched codes have been recorded in this session.</string>
+    <string name="history_details_not_found">History not found</string>
+    <string name="history_number">Number</string>
+    <string name="history_first_match">First match</string>
+    <string name="history_last_match">Last match</string>
+    <string name="history_box_records">Box scan records</string>
+    <string name="history_item_number">Item number</string>
+    <string name="history_qr_parsed">Delivery information (QR)</string>
+    <string name="history_barcode_parsed">Product tag information (barcode)</string>
+    <string name="history_full_qr">QR code full text</string>
+    <string name="history_full_barcode">Code 128 full text</string>
+    <string name="history_no_record">No record (matched in older app version)</string>
+    <string name="history_back">Back</string>
+    <string name="history_box">Box</string>
+    <string name="history_matched_at">Matched</string>
+    <string name="history_part_number">Part number</string>
+    <string name="history_card_number">Card number</string>
+    <string name="history_suffix">Suffix</string>
+    <string name="history_delivery_quantity">Delivery quantity</string>
+    <string name="history_instructed_quantity">Instructed quantity</string>
+    <string name="history_factory">Factory</string>
+    <string name="history_warehouse">Receiving warehouse</string>
+    <string name="history_supply_point">Supply point</string>
+    <string name="history_management_code">Management code</string>
+    <string name="history_not_available">-</string>
+
+    <string name="history_accessibility_separator">, </string>
+    <string name="history_finished_duration">Finished · about %1$s min</string>
+    <plurals name="history_box_count">
+        <item quantity="one">%1$s box</item>
+        <item quantity="other">%1$s boxes</item>
+    </plurals>
+    <string name="history_group_accessibility">#%1$d %2$s, %3$s</string>
+    <string name="history_matched_at_single">%1$s: %2$s</string>
+    <string name="history_matched_at_range">%1$s: %2$s – %3$s</string>
+    <string name="history_box_index">Box %1$d</string>
+    <string name="history_entry_box_number">#%1$d</string>
+    <string name="history_group_number">#%1$d</string>
+    <string name="history_part_with_suffix">%1$s (%2$s %3$s)</string>
+</resources>

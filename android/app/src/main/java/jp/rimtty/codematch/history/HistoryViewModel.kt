@@ -17,6 +17,8 @@ import kotlinx.coroutines.launch
 data class HistoryAppState(
     val sessions: List<MatchSession> = emptyList(),
     val language: AppLanguage = AppLanguage.JAPANESE,
+    /** False only for the short stateIn window before Room emits its first value. */
+    val loaded: Boolean = false,
 )
 
 @HiltViewModel
@@ -28,7 +30,11 @@ class HistoryViewModel @Inject constructor(
         historyRepository.sessions,
         settingsRepository.settings,
     ) { sessions, settings ->
-        HistoryAppState(sessions = sessions, language = settings.language)
+        HistoryAppState(
+            sessions = sessions,
+            language = settings.language,
+            loaded = true,
+        )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),

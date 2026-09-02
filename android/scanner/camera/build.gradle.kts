@@ -16,9 +16,22 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    sourceSets {
+        // Exercise the bundled decoder with the canonical shared fixtures.
+        // Keep the source in shared/ so the Android test APK does not carry a
+        // second copy of any image.
+        getByName("androidTest") {
+            assets.srcDir(rootProject.layout.projectDirectory.dir("../shared/test-fixtures"))
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = false
+    }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
     }
 }
 
@@ -44,6 +57,8 @@ dependencies {
     implementation(libs.androidx.compose.ui)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
 }

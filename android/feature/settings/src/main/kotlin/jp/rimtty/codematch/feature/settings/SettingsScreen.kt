@@ -1,7 +1,13 @@
 package jp.rimtty.codematch.feature.settings
 
+import android.content.res.Configuration
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,11 +22,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bluetooth
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Link
@@ -47,8 +56,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -60,7 +73,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
 import jp.rimtty.codematch.core.model.FailureSound
@@ -70,7 +92,9 @@ import jp.rimtty.codematch.scanner.api.ConnectionState
 import jp.rimtty.codematch.scanner.api.DiagnosticCategory
 import jp.rimtty.codematch.scanner.api.DiagnosticEvent
 import jp.rimtty.codematch.scanner.api.ScannerDevice
+import kotlin.math.floor
 import kotlin.math.roundToInt
+import java.util.Locale
 
 /**
  * Stateless settings destination. The caller owns persistence, scanner
@@ -84,33 +108,35 @@ fun SettingsScreen(
     onAction: (SettingsUiAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val screenDescription = stringResource(R.string.settings_accessibility_description)
-    Scaffold(
-        modifier = modifier
-            .fillMaxSize()
-            .semantics {
-                this.contentDescription = screenDescription
-                this.testTagsAsResourceId = true
-            }
-            .testTag(SettingsTestTags.SCREEN),
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.settings_title),
-                        modifier = Modifier.semantics {
-                            stateDescription = screenDescription
-                        },
-                    )
-                },
+    SettingsLocalized(state.language) {
+        val screenDescription = stringResource(R.string.settings_accessibility_description)
+        Scaffold(
+            modifier = modifier
+                .fillMaxSize()
+                .semantics {
+                    this.contentDescription = screenDescription
+                    this.testTagsAsResourceId = true
+                }
+                .testTag(SettingsTestTags.SCREEN),
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = stringResource(R.string.settings_title),
+                            modifier = Modifier.semantics {
+                                stateDescription = screenDescription
+                            },
+                        )
+                    },
+                )
+            },
+        ) { innerPadding ->
+            SettingsContent(
+                state = state,
+                onAction = onAction,
+                contentPadding = innerPadding,
             )
-        },
-    ) { innerPadding ->
-        SettingsContent(
-            state = state,
-            onAction = onAction,
-            contentPadding = innerPadding,
-        )
+        }
     }
 }
 
@@ -220,6 +246,11 @@ private fun SettingsContent(
 
 @Composable
 private fun ScannerSetupGuide(onClose: () -> Unit) {
+    val setupCodes = BluetoothScannerSetupCode.entries
+    var currentStep by rememberSaveable { mutableStateOf(0) }
+    var enlargedCode by remember { mutableStateOf<BluetoothScannerSetupCode?>(null) }
+    val currentCode = setupCodes[currentStep]
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -256,33 +287,106 @@ private fun ScannerSetupGuide(onClose: () -> Unit) {
                     Text(stringResource(R.string.settings_setup_guide_close))
                 }
             }
-            SetupStep(
-                number = 1,
-                title = stringResource(R.string.settings_setup_step_1_title),
-                description = stringResource(R.string.settings_setup_step_1_description),
-                modifier = Modifier.testTag(SettingsTestTags.SETUP_GUIDE_STEP_1),
+            Text(
+                text = stringResource(
+                    R.string.settings_setup_progress,
+                    currentStep + 1,
+                    setupCodes.size,
+                ),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.semantics { heading() },
             )
-            SetupStep(
-                number = 2,
-                title = stringResource(R.string.settings_setup_step_2_title),
-                description = stringResource(R.string.settings_setup_step_2_description),
-                modifier = Modifier.testTag(SettingsTestTags.SETUP_GUIDE_STEP_2),
+            SetupCodeStep(
+                code = currentCode,
+                number = currentStep + 1,
+                title = setupCodeTitle(currentCode),
+                description = stringResource(setupCodeDescription(currentCode)),
+                guidance = stringResource(setupCodeGuidance(currentCode)),
+                onEnlarge = { enlargedCode = currentCode },
+                modifier = Modifier.testTag(
+                    when (currentStep) {
+                        0 -> SettingsTestTags.SETUP_GUIDE_STEP_1
+                        1 -> SettingsTestTags.SETUP_GUIDE_STEP_2
+                        else -> SettingsTestTags.SETUP_GUIDE_STEP_3
+                    },
+                ),
             )
-            SetupStep(
-                number = 3,
-                title = stringResource(R.string.settings_setup_step_3_title),
-                description = stringResource(R.string.settings_setup_step_3_description),
-                modifier = Modifier.testTag(SettingsTestTags.SETUP_GUIDE_STEP_3),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (currentStep > 0) {
+                    OutlinedButton(
+                        onClick = {
+                            enlargedCode = null
+                            currentStep -= 1
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag(SettingsTestTags.SETUP_PREVIOUS),
+                    ) {
+                        Text(stringResource(R.string.settings_setup_previous))
+                    }
+                }
+                Button(
+                    onClick = {
+                        enlargedCode = null
+                        if (currentStep == setupCodes.lastIndex) {
+                            onClose()
+                        } else {
+                            currentStep += 1
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .testTag(SettingsTestTags.SETUP_NEXT),
+                ) {
+                    Text(
+                        stringResource(
+                            if (currentStep == setupCodes.lastIndex) {
+                                R.string.settings_setup_finish
+                            } else {
+                                R.string.settings_setup_next
+                            },
+                        ),
+                    )
+                }
+            }
         }
+    }
+
+    enlargedCode?.let { code ->
+        FullscreenScannerSetupBarcode(
+            code = code,
+            title = setupCodeTitle(code),
+            onDismiss = { enlargedCode = null },
+        )
     }
 }
 
+private fun setupCodeDescription(code: BluetoothScannerSetupCode): Int = when (code) {
+    BluetoothScannerSetupCode.ENTER_SETUP -> R.string.settings_setup_step_1_description
+    BluetoothScannerSetupCode.GATT_MODE -> R.string.settings_setup_step_2_description
+    BluetoothScannerSetupCode.SAVE_AND_EXIT -> R.string.settings_setup_step_3_description
+}
+
+private fun setupCodeGuidance(code: BluetoothScannerSetupCode): Int = when (code) {
+    BluetoothScannerSetupCode.ENTER_SETUP -> R.string.settings_setup_step_1_guidance
+    BluetoothScannerSetupCode.GATT_MODE -> R.string.settings_setup_step_2_guidance
+    BluetoothScannerSetupCode.SAVE_AND_EXIT -> R.string.settings_setup_step_3_guidance
+}
+
 @Composable
-private fun SetupStep(
+private fun SetupCodeStep(
+    code: BluetoothScannerSetupCode,
     number: Int,
     title: String,
     description: String,
+    guidance: String,
+    onEnlarge: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val stepDescription = stringResource(
@@ -291,36 +395,320 @@ private fun SetupStep(
         title,
         description,
     )
-    Row(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .semantics(mergeDescendants = true) {
-                contentDescription = stepDescription
-            },
-        verticalAlignment = Alignment.Top,
+            .semantics { contentDescription = stepDescription },
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Surface(
-            modifier = Modifier.size(32.dp),
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(number.toString(), fontWeight = FontWeight.Bold)
+            Surface(
+                modifier = Modifier.size(32.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(number.toString(), fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(title, fontWeight = FontWeight.Bold)
+                Text(
+                    description,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
         }
-        Spacer(Modifier.width(12.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, fontWeight = FontWeight.Bold)
+        Text(
+            text = stringResource(R.string.settings_setup_scan_instruction),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Code128SetupBarcode(
+            code = code,
+            title = title,
+        )
+        OutlinedButton(
+            onClick = onEnlarge,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .testTag(SettingsTestTags.setupEnlarge(code)),
+        ) {
+            Icon(Icons.Outlined.Fullscreen, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.settings_setup_enlarge))
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    MaterialTheme.colorScheme.surface,
+                    MaterialTheme.shapes.small,
+                )
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
             Text(
-                description,
+                text = stringResource(R.string.settings_setup_scanner_display_label),
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = code.scannerDisplayText,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = code.scannerDisplayText },
+            )
+        }
+        Text(
+            text = guidance,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),
+                    MaterialTheme.shapes.small,
+                )
+                .padding(12.dp),
+        )
+        Text(
+            text = stringResource(R.string.settings_setup_after_scan),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/**
+ * Renders the same Code 128 vector as iOS without a bitmap or barcode SDK.
+ * The outer white surface is intentionally opaque so the quiet zone stays
+ * white on every Material theme and device contrast setting.
+ */
+@Composable
+fun Code128SetupBarcode(
+    code: BluetoothScannerSetupCode,
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    val barcode = remember(code) { Code128Encoder.encode(code) }
+    val accessibilityLabel = stringResource(
+        R.string.settings_setup_barcode_accessibility,
+        title,
+    )
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(12.dp),
+            )
+            .semantics {
+                contentDescription = accessibilityLabel
+            }
+            .testTag(SettingsTestTags.SETUP_BARCODE),
+        shape = RoundedCornerShape(12.dp),
+        color = Color.White,
+        contentColor = Color.Black,
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            // Match the iOS x4/y8 transform while keeping the image within a
+            // reasonable height on tablets and landscape displays.
+            val targetWidth = minOf(
+                maxWidth,
+                220.dp * barcode.iOSRenderAspectRatio,
+            )
+            val targetHeight = targetWidth / barcode.iOSRenderAspectRatio
+            Code128BarcodeCanvas(
+                barcode = barcode,
+                modifier = Modifier
+                    .size(targetWidth, targetHeight)
+                    .testTag(SettingsTestTags.setupBarcode(code)),
             )
         }
     }
 }
+
+@Composable
+private fun Code128BarcodeCanvas(
+    barcode: Code128Barcode,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier = modifier) {
+        drawRect(Color.White)
+        // Canvas coordinates are physical pixels. Keeping each horizontal
+        // module an integer number of pixels makes every vertical bar edge
+        // pixel-aligned, even when the dp-sized container is not divisible by
+        // the Code 128 vector width.
+        val availableModuleWidth = size.width / barcode.widthModules
+        val moduleWidth = if (availableModuleWidth >= 1f) {
+            floor(availableModuleWidth)
+        } else {
+            // A very narrow split-screen may have fewer physical pixels than
+            // modules. Fit rather than clip; normal/fullscreen layouts retain
+            // integer-aligned bars for scanner acquisition.
+            availableModuleWidth
+        }
+        val renderedWidth = moduleWidth * barcode.widthModules
+        val left = ((size.width - renderedWidth) / 2f).roundToInt().toFloat()
+        val moduleHeight = size.height / barcode.heightModules
+        val top = barcode.quietZoneModules * moduleHeight
+        val barHeight = barcode.barHeightModules * moduleHeight
+
+        var blackRunStart = -1
+        barcode.modules.forEachIndexed { index, isBlack ->
+            if (isBlack && blackRunStart < 0) {
+                blackRunStart = index
+            } else if (!isBlack && blackRunStart >= 0) {
+                drawBlackRun(
+                    start = blackRunStart,
+                    endExclusive = index,
+                    left = left,
+                    moduleWidth = moduleWidth,
+                    top = top,
+                    barHeight = barHeight,
+                )
+                blackRunStart = -1
+            }
+        }
+        if (blackRunStart >= 0) {
+            drawBlackRun(
+                start = blackRunStart,
+                endExclusive = barcode.modules.size,
+                left = left,
+                moduleWidth = moduleWidth,
+                top = top,
+                barHeight = barHeight,
+            )
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBlackRun(
+    start: Int,
+    endExclusive: Int,
+    left: Float,
+    moduleWidth: Float,
+    top: Float,
+    barHeight: Float,
+) {
+    drawRect(
+        color = Color.Black,
+        topLeft = Offset(left + start * moduleWidth, top),
+        size = Size((endExclusive - start) * moduleWidth, barHeight),
+    )
+}
+
+@Composable
+private fun FullscreenScannerSetupBarcode(
+    code: BluetoothScannerSetupCode,
+    title: String,
+    onDismiss: () -> Unit,
+) {
+    val barcode = remember(code) { Code128Encoder.encode(code) }
+    val accessibilityLabel = stringResource(
+        R.string.settings_setup_barcode_accessibility,
+        title,
+    )
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = Color.White,
+        ) {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val widthLimit = (maxWidth - 32.dp).coerceAtLeast(1.dp)
+                val heightLimit = (maxHeight - 120.dp).coerceAtLeast(1.dp)
+                val targetWidth = minOf(
+                    widthLimit,
+                    heightLimit * barcode.iOSRenderAspectRatio,
+                )
+                val targetHeight = targetWidth / barcode.iOSRenderAspectRatio
+                Code128BarcodeCanvas(
+                    barcode = barcode,
+                    modifier = Modifier
+                        .size(targetWidth, targetHeight)
+                        .align(Alignment.Center)
+                        .semantics {
+                            contentDescription = accessibilityLabel
+                        }
+                        .testTag(SettingsTestTags.setupFullscreenBarcode(code)),
+                )
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black,
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_setup_fullscreen_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.DarkGray,
+                    )
+                }
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .heightIn(min = 48.dp)
+                        .testTag(SettingsTestTags.SETUP_FULLSCREEN_CLOSE),
+                ) {
+                    Icon(Icons.Outlined.Close, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text(stringResource(R.string.settings_setup_fullscreen_close))
+                }
+                Text(
+                    text = stringResource(R.string.settings_setup_fullscreen_hint),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 24.dp)
+                        .semantics { contentDescription = accessibilityLabel },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF1B5E20),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun setupCodeTitle(code: BluetoothScannerSetupCode): String = stringResource(
+    when (code) {
+        BluetoothScannerSetupCode.ENTER_SETUP -> R.string.settings_setup_step_1_title
+        BluetoothScannerSetupCode.GATT_MODE -> R.string.settings_setup_step_2_title
+        BluetoothScannerSetupCode.SAVE_AND_EXIT -> R.string.settings_setup_step_3_title
+    },
+)
 
 @Composable
 private fun CameraOnlyCard() {
@@ -685,7 +1073,9 @@ private fun AutoAdvanceCard(
                     onCheckedChange = {
                         onAction(SettingsUiAction.SetAutoAdvanceEnabled(it))
                     },
-                    modifier = Modifier.testTag(SettingsTestTags.AUTO_ADVANCE_SWITCH),
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag(SettingsTestTags.AUTO_ADVANCE_SWITCH),
                 )
             }
             Text(
@@ -1009,5 +1399,23 @@ private fun diagnosticCategoryText(category: DiagnosticCategory): String = strin
         DiagnosticCategory.ERROR -> R.string.settings_diagnostic_error
     },
 )
+
+/** Resolve settings resources from the language carried by immutable UI state. */
+@Composable
+private fun SettingsLocalized(language: AppLanguage, content: @Composable () -> Unit) {
+    val baseContext = LocalContext.current
+    val baseConfiguration = LocalConfiguration.current
+    val localizedContext = remember(baseContext, baseConfiguration, language) {
+        val configuration = Configuration(baseConfiguration).apply {
+            setLocale(Locale.forLanguageTag(language.code))
+        }
+        baseContext.createConfigurationContext(configuration)
+    }
+    CompositionLocalProvider(
+        LocalContext provides localizedContext,
+        LocalConfiguration provides localizedContext.resources.configuration,
+        content = content,
+    )
+}
 
 private const val MAX_DIAGNOSTIC_EVENTS = 20

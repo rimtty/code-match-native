@@ -51,6 +51,11 @@ jobs:
       - name: Install Android SDK 37.0
         run: sdkmanager --install 'platforms;android-37.0' 'build-tools;37.0.0'
 
+      - name: Install release verification tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ripgrep libxml2-utils
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
@@ -61,6 +66,9 @@ jobs:
 
       - name: Assemble, lint, and run JVM tests
         run: ./gradlew assembleDebug lintDebug testDebugUnitTest --stacktrace
+
+      - name: Verify release hardening source contract
+        run: bash scripts/test-release-hardening.sh
 
   android-emulator-test:
     name: Android emulator tests
@@ -145,24 +153,23 @@ jobs:
       - name: Install Android SDK 37.0
         run: sdkmanager --install 'platforms;android-37.0' 'build-tools;37.0.0'
 
+      - name: Install release verification tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ripgrep libxml2-utils
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Assemble release
-        run: ./gradlew assembleRelease --stacktrace
+      - name: Assemble release APK and app bundle
+        run: ./gradlew assembleRelease bundleRelease --stacktrace
 
-      - name: Verify release manifest and dependency graph
+      - name: Verify release hardening and dependency graph
         shell: bash
         run: |
-          ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > release-dependencies.txt
-          if grep -Fq ":scanner:fake" release-dependencies.txt; then
-            echo "Fake scanner leaked into the release dependency graph" >&2
-            exit 1
-          fi
-
-          merged_manifest="$(find app/build/intermediates -type f -path '*merged_manifest/release*AndroidManifest.xml' -print -quit)"
-          manifest_path="${merged_manifest:-app/src/main/AndroidManifest.xml}"
-          if grep -Eq 'android\.permission\.INTERNET|android:debuggable[[:space:]]*=[[:space:]]*"true"|scanner[:/.]fake' "$manifest_path"; then
-            echo "Release manifest contains an unexpected network, debug, or fake-scanner entry: $manifest_path" >&2
-            exit 1
-          fi
+          dependency_report="$RUNNER_TEMP/codematch-release-dependencies.txt"
+          ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > "$dependency_report"
+          bash scripts/verify-release-hardening.sh \
+            --apk app/build/outputs/apk/release/app-release-unsigned.apk \
+            --aab app/build/outputs/bundle/release/app-release.aab \
+            --dependency-report "$dependency_report"

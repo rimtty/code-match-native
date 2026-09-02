@@ -38,6 +38,7 @@
     <string name="scan_camera_qr_guide">正方形の枠内にQRコードを合わせてください</string>
     <string name="scan_camera_code128_guide">横長の枠内にCode 128を合わせてください</string>
     <string name="scan_camera_tap_to_focus">画面をタップするとそこへフォーカスします</string>
+    <string name="scan_camera_focus_action">中央へフォーカス</string>
     <string name="scan_camera_stage_description">%1$s。%2$s。</string>
     <string name="scan_bluetooth_stage">Bluetoothスキャナ</string>
     <string name="scan_bluetooth_waiting">接続済みスキャナから読み取ります</string>

@@ -98,6 +98,9 @@ object HistoryPdfExporter {
         zoneId: ZoneId = ZoneId.systemDefault(),
     ): String = HistoryExportTextFormatter.fileName(session, language, zoneId)
 
+    /** Name of the only cache directory used for a shareable history report. */
+    const val CACHE_DIRECTORY: String = "codematch-pdf"
+
     /**
      * Write one generated report below app-private cache storage.
      *
@@ -110,8 +113,14 @@ object HistoryPdfExporter {
         language: AppLanguage = AppLanguage.JAPANESE,
         zoneId: ZoneId = ZoneId.systemDefault(),
     ): File {
-        val directory = File(context.cacheDir, CACHE_DIRECTORY).apply { mkdirs() }
+        val directory = File(context.cacheDir, CACHE_DIRECTORY)
+        check(directory.isDirectory || directory.mkdirs()) {
+            "History PDF cache directory could not be created"
+        }
         val output = File(directory, fileName(session, language, zoneId))
+        check(output.canonicalFile.parentFile == directory.canonicalFile) {
+            "History PDF filename escaped its private cache directory"
+        }
         output.outputStream().use { stream ->
             stream.write(generate(session, language, zoneId))
         }
@@ -173,7 +182,6 @@ object HistoryPdfExporter {
         strokeWidth = 0.7f
     }
 
-    private const val CACHE_DIRECTORY = "codematch-pdf"
     private const val LINE_HEIGHT_MULTIPLIER = 1.35f
     private const val DIVIDER_HEIGHT = 10f
     private const val DIVIDER_OFFSET = 4f

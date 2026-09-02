@@ -38,6 +38,12 @@ object SettingsTestTags {
     const val SETUP_GUIDE_STEP_3 = "settings_setup_step_3"
     const val SETUP_GUIDE_CLOSE = "settings_setup_guide_close"
     const val SETUP_GUIDE_OPEN = "settings_setup_guide_open"
+    const val SETUP_BARCODE = "settings_setup_barcode"
+    const val SETUP_ENLARGE = "settings_setup_enlarge"
+    const val SETUP_FULLSCREEN_BARCODE = "settings_setup_fullscreen_barcode"
+    const val SETUP_FULLSCREEN_CLOSE = "settings_setup_fullscreen_close"
+    const val SETUP_PREVIOUS = "settings_setup_previous"
+    const val SETUP_NEXT = "settings_setup_next"
     const val SCANNER_SECTION = "settings_scanner_section"
     const val SCANNER_STATUS = "settings_scanner_status"
     const val SCANNER_CONFIGURATION_STATUS = "settings_scanner_configuration_status"
@@ -62,6 +68,15 @@ object SettingsTestTags {
     const val FAILURE_PREVIEW = "settings_failure_preview"
     const val LANGUAGE = "settings_language"
     const val LANGUAGE_CHOICE = "settings_language_choice"
+
+    fun setupBarcode(code: BluetoothScannerSetupCode): String =
+        "${SETUP_BARCODE}_${code.accessibilityId}"
+
+    fun setupEnlarge(code: BluetoothScannerSetupCode): String =
+        "${SETUP_ENLARGE}_${code.accessibilityId}"
+
+    fun setupFullscreenBarcode(code: BluetoothScannerSetupCode): String =
+        "${SETUP_FULLSCREEN_BARCODE}_${code.accessibilityId}"
 }
 
 /**

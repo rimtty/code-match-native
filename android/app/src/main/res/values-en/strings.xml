@@ -25,6 +25,9 @@
     <string name="history_headline">Comparison history</string>
     <string name="history_empty_title">No history yet</string>
     <string name="history_empty_description">Matching comparison results will appear here grouped by session.</string>
+    <string name="history_pdf_save_error">Could not save the PDF.</string>
+    <string name="history_pdf_share_error">Could not share the PDF.</string>
+    <string name="history_pdf_retry">Retry</string>
 
     <string name="settings_screen_description">App settings for automatic next comparison and language</string>
     <string name="settings_headline">Settings</string>

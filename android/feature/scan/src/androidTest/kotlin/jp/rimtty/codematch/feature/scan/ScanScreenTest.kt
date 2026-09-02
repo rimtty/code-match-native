@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.runtime.mutableStateOf
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.scanner.api.InputSource
 import org.junit.Assert.assertEquals
@@ -133,5 +135,24 @@ class ScanScreenTest {
         composeRule.runOnIdle {
             assertTrue(hiddenActions.contains(ScanUiAction.DemoMatch))
         }
+    }
+
+    @Test
+    fun languageOverrideRendersEnglishAndRecomposesInJapanese() {
+        val language = mutableStateOf(AppLanguage.ENGLISH)
+        composeRule.setContent {
+            ScanScreen(
+                state = ScanUiState(),
+                onAction = {},
+                language = language.value,
+            )
+        }
+
+        composeRule.onNodeWithText("Start a comparison").assertIsDisplayed()
+
+        composeRule.runOnIdle { language.value = AppLanguage.JAPANESE }
+
+        composeRule.onNodeWithText("照合を開始").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Start a comparison").assertCountEquals(0)
     }
 }

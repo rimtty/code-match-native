@@ -29,6 +29,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -158,6 +159,7 @@ fun CameraStage(
     var focusPoint by remember { mutableStateOf<CameraFocusPoint?>(null) }
 
     val focusDescription = stringResource(R.string.scan_camera_tap_to_focus)
+    val focusActionDescription = stringResource(R.string.scan_camera_focus_action)
     val guideDescription = stringResource(
         if (format == ScanFormat.QR) {
             R.string.scan_camera_qr_guide
@@ -188,7 +190,22 @@ fun CameraStage(
                 shape = RoundedCornerShape(20.dp),
             )
             .onSizeChanged { stageSize = it }
-            .semantics { contentDescription = stageDescription }
+            .semantics {
+                contentDescription = stageDescription
+                // The visual preview is a pointer surface, so a TalkBack or
+                // keyboard user needs an equivalent action. Center focus is a
+                // deterministic fallback when no screen coordinate exists.
+                onClick(label = focusActionDescription) {
+                    if (running) {
+                        val center = CameraFocusPoint(.5f, .5f)
+                        focusPoint = center
+                        latestOnFocus(center)
+                        true
+                    } else {
+                        false
+                    }
+                }
+            }
             .testTag("scan_camera_stage"),
         contentAlignment = Alignment.Center,
     ) {

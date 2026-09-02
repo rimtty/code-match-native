@@ -1,6 +1,7 @@
 package jp.rimtty.codematch.feature.scan
 
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
+import jp.rimtty.codematch.core.model.ScanSessionCheckpoint
 import jp.rimtty.codematch.scanner.api.ConfigurationState
 import jp.rimtty.codematch.scanner.api.ConnectionState
 import jp.rimtty.codematch.scanner.api.ExternalScanner
@@ -25,22 +26,28 @@ class ScanSessionCoordinator(
     autoAdvanceDelay: AutoAdvanceDelay = AutoAdvanceDelay.THREE_SECONDS,
     existingMatchedCount: Int = 0,
     private val cameraStabilizer: ScanStabilizer = ScanStabilizer(),
+    restoredCheckpoint: ScanSessionCheckpoint? = null,
 ) : ExternalScannerListener {
     private val cameraAcceptanceLock = ScanAcceptanceLock()
     private var applyingScannerFormat = false
+    private val restoredState: ScanSessionState? = restoredCheckpoint?.toScanSessionState(
+        autoAdvanceEnabled = autoAdvanceEnabled,
+        autoAdvanceDelay = autoAdvanceDelay,
+    )
+    private val hasRestoredState: Boolean = restoredState != null
 
-    var state: ScanSessionState = ScanReducer.initial(
+    var state: ScanSessionState = restoredState ?: ScanReducer.initial(
         autoAdvanceEnabled = autoAdvanceEnabled,
         autoAdvanceDelay = autoAdvanceDelay,
         existingMatchedCount = existingMatchedCount,
     )
         private set
 
-    var inputSource: InputSource = InputSource.CAMERA
+    var inputSource: InputSource = state.inputSource
         private set
 
     /** True after an explicit camera selection until the user selects Bluetooth. */
-    var cameraWasSelectedByUser: Boolean = false
+    var cameraWasSelectedByUser: Boolean = restoredCheckpoint?.cameraWasSelectedByUser ?: false
         private set
 
     /** Prevents a synchronous scanner callback from restarting input in the background. */
@@ -53,6 +60,8 @@ class ScanSessionCoordinator(
     var onStateChanged: ((ScanSessionState) -> Unit)? = null
     var onEffects: ((List<ScanEffect>) -> Unit)? = null
     var onInputSourceChanged: ((InputSource) -> Unit)? = null
+    /** Invoked only when a lost/unready Bluetooth link forces camera fallback. */
+    var onBluetoothFallback: (() -> Unit)? = null
 
     init {
         scanner.listener = this
@@ -62,6 +71,26 @@ class ScanSessionCoordinator(
     }
 
     fun startSession(): ScanReduction {
+        if (hasRestoredState && state.phase != ScanPhase.IDLE) {
+            // A restored result/waiting step is already a live session. Do not
+            // feed StartSession through the reducer: that would erase the
+            // accepted QR/barcode or re-trigger the countdown. If the saved
+            // Bluetooth source is no longer available, retain the logical step
+            // and fall back to camera input.
+            if (inputSource == InputSource.BLUETOOTH && !scanner.isReadyForScanning) {
+                setInputSource(InputSource.CAMERA)
+            }
+            val reduction = ScanReduction(
+                state = state,
+                effects = listOf(ScanEffect.ExpectFormat(state.expectedFormat)),
+            )
+            lastEffects = reduction.effects
+            applyEffects(reduction.effects)
+            onStateChanged?.invoke(state)
+            onEffects?.invoke(reduction.effects)
+            return reduction
+        }
+
         if (scanner.isReadyForScanning && !cameraWasSelectedByUser) {
             setInputSource(InputSource.BLUETOOTH)
         }
@@ -236,6 +265,7 @@ class ScanSessionCoordinator(
         if (inputSource != InputSource.BLUETOOTH) return
         setInputSource(InputSource.CAMERA)
         applyExpectedFormat(null)
+        onBluetoothFallback?.invoke()
     }
 
     private fun applyEffects(effects: List<ScanEffect>) {
@@ -270,8 +300,8 @@ class ScanSessionCoordinator(
     private fun setInputSource(source: InputSource) {
         if (inputSource == source) return
         inputSource = source
-        onInputSourceChanged?.invoke(source)
         state = state.copy(inputSource = source)
+        onInputSourceChanged?.invoke(source)
     }
 }
 

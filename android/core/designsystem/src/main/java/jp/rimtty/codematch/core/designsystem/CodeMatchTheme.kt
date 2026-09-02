@@ -14,11 +14,17 @@ object CodeMatchColors {
     val Green = Color(0xFF0E7C58)
     val Lime = Color(0xFFC8F36A)
     val Red = Color(0xFFD44636)
+    /** Dark semantic error role for text on the light app surface. */
+    val ErrorText = Color(0xFFB3261E)
     val Amber = Color(0xFFE09620)
     val Line = Color(0xFFD8DCD6)
 }
 
-private val LightColorScheme = lightColorScheme(
+// Keep the brand colors unchanged while choosing semantic foreground roles
+// that remain readable against the slightly saturated tertiary/error fills.
+// In particular, white is below WCAG AA on both Amber and Red at normal text
+// sizes, so the dark foreground is intentional rather than a brand-color edit.
+internal val CodeMatchLightColorScheme = lightColorScheme(
     primary = CodeMatchColors.Green,
     onPrimary = Color.White,
     primaryContainer = Color(0xFFD2F3E4),
@@ -28,14 +34,20 @@ private val LightColorScheme = lightColorScheme(
     secondaryContainer = Color(0xFFEAF8B8),
     onSecondaryContainer = CodeMatchColors.Ink,
     tertiary = CodeMatchColors.Amber,
-    onTertiary = Color.White,
-    error = CodeMatchColors.Red,
+    onTertiary = Color.Black,
+    // Red is retained as the brand token; the darker semantic role keeps
+    // error text readable on Paper while still allowing white on filled error
+    // controls.
+    error = CodeMatchColors.ErrorText,
     onError = Color.White,
     background = CodeMatchColors.Paper,
     onBackground = CodeMatchColors.Ink,
     surface = CodeMatchColors.Paper,
     onSurface = CodeMatchColors.Ink,
-    surfaceVariant = Color(0xFFE8EBE5),
+    // Keep Muted text above the 4.5:1 AA threshold when it is rendered in a
+    // surface-variant card (diagnostics and scanner status cards use this
+    // pairing directly).
+    surfaceVariant = Color(0xFFF0F2EE),
     onSurfaceVariant = CodeMatchColors.Muted,
     outline = CodeMatchColors.Muted,
     outlineVariant = CodeMatchColors.Line,
@@ -51,7 +63,7 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun CodeMatchTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = LightColorScheme,
+        colorScheme = CodeMatchLightColorScheme,
         typography = Typography(),
         content = content,
     )

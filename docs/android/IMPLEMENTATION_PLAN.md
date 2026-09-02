@@ -71,7 +71,7 @@ BLEを除いた中間成果物は開発・評価用として成立するが、Sw
 | エラー | カメラ/Bluetooth/保存の状態別案内 | 型付きUiState | 技術的な例外文字列を直接表示せず、回復操作を示す |
 | ライフサイクル | 背景化でカメラ停止、復帰で論理工程を維持 | Lifecycle-aware state | 背景・回転・プロセス再生成で二重解析や工程消失なし |
 | アクセシビリティ | ラベル、結合読み上げ、大きな操作面 | Compose semantics | TalkBack、48dp以上、フォント拡大、色以外の状態表現を確認 |
-| プライバシー | ネット送信なし、履歴をバックアップ対象外 | INTERNET権限なし、backup rules | 通信依存なし、画像を保存しない、DBをクラウドバックアップしない |
+| プライバシー | ネット送信なし、履歴をバックアップ対象外 | production BLE未接続段階はINTERNET/Nearby権限なし、backup rules | 通信依存なし、画像を保存しない、DBをクラウドバックアップしない。現行の境界は[`PRIVACY.md`](PRIVACY.md)を正本とする |
 | BLE | 検索・接続・再接続・診断・設定保存復元・カメラfallback | 抽象層とFakeを先行、実通信は最終フェーズ | 実機入手後の専用受け入れ基準をすべて満たすまで未完扱い |
 
 ## 4. Android技術方針
@@ -123,7 +123,7 @@ android/
 │   ├── api/                     # Camera/BLE共通の入力契約
 │   ├── camera/                  # CameraX + ML Kit
 │   ├── fake/                    # UI・CI・BLE先行開発用
-│   └── ble/                     # 実機入手後に追加するAndroid BLE実装
+│   └── ble/                     # SDK/UUID非依存の安全コアと将来のAndroid adapter境界
 ├── gradle/libs.versions.toml
 ├── settings.gradle.kts
 └── README.md
@@ -277,6 +277,12 @@ MatchResult
 - `failureSound`の初期値はPhase 0で確定する。Swift版は再生側が`alarm`、設定画面の未保存時表示が`buzzer`で一致していないため、Androidへ不整合を持ち込まずiOS側も同じ決定へ揃える
 - per-app language（日本語初期値）
 - 将来のBLE既知デバイスIDと安全復旧状態
+- BLE symbology recovery stateは`scanner:ble`の
+  `BleSymbologySnapshotStore`へ分離する。Preferences DataStoreのファイル名は
+  `codematch-ble-symbology.preferences_pb`（`files/datastore/`配下）とし、
+  backup/D2D除外ルールにもこのファイル名を明記する。保存するのはprofile
+  identity、device ID、captured time、全reported itemの`name`/`area`/`value`/
+  optional flag/extrasだけで、scan payloadやraw frameは保存しない。
 
 ### 7.3 PDFと共有
 
@@ -314,8 +320,9 @@ MatchResult
 - 切断時に現在工程を保ったままカメラへfallback
 - QR/Code 128の逆順拒否、重複callback抑止
 - Swift版のBLE関連UIシナリオ（接続照合、設定画面の検索・接続）をCompose testで再現
+- SDK/UUIDに依存しないcommand queue、完全snapshot、復元状態、payload decoderをJVM testで固定
 
-この段階では`scanner:ble` production実装は作らず、release buildでFakeを組み込まない。
+この段階では`scanner:ble`をreleaseアプリへ接続せず、Android BluetoothGatt / vendor SDK adapterも作らない。実通信形式を観測するまではiOS由来のUUIDや設定JSONをproduction前提にせず、release buildにもFakeを組み込まない。
 
 ### 9.2 実機入手後の調査ゲート
 
@@ -368,16 +375,22 @@ iOSで観測した`FF00`/`FF01`〜`FF05`やJSON形式は調査の手掛かりに
 
 ## 11. プライバシーとセキュリティ
 
-- Manifestに`INTERNET`権限を追加しない。
+現行のAndroid固有のデータ・権限境界、検査コマンド、候補SDKの採用保留理由は、それぞれ[`PRIVACY.md`](PRIVACY.md)と[`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)に整理する。以下の要件は、候補SDKを追加しても緩めない。
+
+- production BLE adapter未接続の現段階では、release manifestに`INTERNET`、`ACCESS_NETWORK_STATE`、BLE/Nearby系権限を追加しない。依存ライブラリが宣言しても、アプリ側のmanifest mergeで除外する。M4で実機adapterを接続する時は、必要時の`BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`だけを許可し、位置情報・広告・他のNearby権限は追加しない。
 - カメラframeと読み取り画像を保存しない。
 - 履歴、payload、BLE診断をanalytics/crash reportへ送らない。
 - Room DB、DataStore、BLE既知端末情報をAuto Backupとdevice-to-device transferから除外する。
+- BLE recovery DataStoreの実体は
+  `files/datastore/codematch-ble-symbology.preferences_pb`。このファイルを
+  `backup_rules.xml`と`data_extraction_rules.xml`のcloud/device-transfer双方で
+  除外する（汎用`datastore/`除外に依存せず、ファイル名も固定する）。
 - PDFはユーザーが保存・共有した時だけアプリ領域外へ出す。
 - FileProviderは専用cache subdirectoryだけを公開し、一時読み取り権限に限定する。
 - release buildでdebug/Fake scannerの入口を含めない。
-- 依存関係のSBOM/ライセンス確認とGradle dependency verificationをCIへ追加する。
+- `android/scripts/verify-release-hardening.sh`で、source XML、merged release manifest、APK/AABのpermission/debug/Fake/FileProvider、依存グラフ、production sourceのカメラ画像/frame保存や不意のpayload書き出し・analytics/crash参照を機械検査する。`test-release-hardening.sh`はartifact前の再利用可能なsource-only回帰テストとする。
 
-Gradle dependency verificationとSBOMはM1の必須ゲートには含めず、依存ライブラリが揃うrelease hardeningフェーズで固定・監査する。M1ではGradle Wrapper検証とrelease依存グラフ検査を先行する。
+Gradle dependency verificationとSBOM/ライセンス出力は、現行のVersion Catalog・Gradle Wrapper・CIキャッシュと署名済みartifactの供給元を固定できるまで導入しない。lockfileや巨大な生成物を追加せず、現段階ではWrapper validation、releaseRuntimeClasspathの保存検査、checkerのsource/APK/AAB検査を再現可能なゲートとして先行する。依存verification/SBOMは供給元・検証メタデータ・ライセンスの運用方針が決まった時点で別変更として追加する。
 
 ## 12. テスト戦略
 
@@ -405,6 +418,8 @@ Swift版の5本のUIテストを少なくとも次のシナリオへ対応させ
 
 追加で、セッション開始/終了、0件破棄、履歴詳細、名前変更、削除、PDF保存/共有Intent、カメラ権限拒否を試験する。
 
+現在のcheckoutでは、0件破棄、完了履歴の詳細・名前変更・削除を同じapp/DI/Room経路で検査し、履歴選択のActivity再生成・destination往復・compact system backも自動化した。PDFは長い履歴を実際に複数ページへ生成して全ページを`PdfRenderer`で確認し、`CreateDocument`、完全一致byte保存、専用FileProviderの共有Intent契約まで検査する。実際の保存先・共有先アプリでの受け入れは実機ゲートに残す。
+
 ### 12.3 画面とアクセシビリティ
 
 - Compact phone、foldable相当、tabletでCompose screenshotを保存
@@ -412,13 +427,15 @@ Swift版の5本のUIテストを少なくとも次のシナリオへ対応させ
 - TalkBack読み上げ順、重複読み上げ、操作名、状態
 - Accessibility ScannerとCompose semantics tree
 - screenshot差分はレイアウト退行の補助証拠とし、機能試験の代わりにはしない
+- 現行のCompose testではカメラ枠のsemantics focus action、主要タッチ領域、履歴のcompact/expanded両レイアウトを検査する。TalkBack、font scale、Switch Access、Accessibility Scannerの実端末結果は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)へ記録する。
 
 ### 12.4 実機
 
 - エミュレーターはCIの継続証拠とし、API 31（対応下限）とGitHub Linux x86_64で提供される最新runtime（現時点はAPI 36）の両方で主要フローを確認する。compile/target SDK 37はbuild jobで保証し、API 37 runtimeは提供済みのApple Silicon用imageをローカルで確認する。カメラ完了判定は実Android端末で行う。
-- 接続済みPixel 7（Android 16 / API 36）でCameraX/ML Kit、タップフォーカス、回転、背景復帰、音・触覚を確認する。
+- Pixel 7（Android 16 / API 36）または同等の実Android端末でCameraX/ML Kit、タップフォーカス、回転、背景復帰、音・触覚を確認し、実施端末と結果を記録する。未接続時は未実施とする。
 - 可能ならSamsung系を加え、カメラと省電力/OEM差を確認する。
 - BLE完了判定は対象scanner実機なしでは行わない。
+- 実機の手順、証跡テンプレート、未実施項目の扱いは[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)に従う。エミュレーター・CIの成功をカメラ実読取やBLE成功の証拠へ読み替えない。
 
 ## 13. CI計画
 
@@ -439,7 +456,9 @@ Swift版の5本のUIテストを少なくとも次のシナリオへ対応させ
    - Compose UI testとRoom migration test
 3. `android-release-build`
    - Fake scannerがrelease dependency graphへ入っていないこと
-   - `assembleRelease`または署名不要のrelease compile
+   - `assembleRelease`と`bundleRelease`
+   - `scripts/verify-release-hardening.sh`でrelease APK/AABと`releaseRuntimeClasspath`を検査し、現段階のネットワーク/Nearby権限、debug/Fake入口、広すぎるFileProvider、画像/frame/payload保存、analytics/crash依存を拒否（M4でproduction BLEを接続する場合は`--allow-production-ble-permissions`でSCAN/CONNECTのみ許可）
+   - `scripts/test-release-hardening.sh`でartifact前のsource-only規則（backup参照、FileProvider参照、allowBackup、Nearby権限）を回帰検査
 
 Gradle cache key、workflow concurrency、artifact名は`android-` prefixとし、`ios-ci.yml`と相互にcancelしない。
 
@@ -470,7 +489,7 @@ BLE以外は約31〜49人日、BLEはSDKとfirmwareの不確実性を除き約8�
 - Swift版のmatcher/parser 14テスト意図をKotlin testへ対応付ける
 - `core:matching`のproduction sourceに`android.*` / `androidx.*` importがなく、local JVM testで完走する
 
-ローカル検証済み: Kotlin unit test、debug/release build、Lint、API 37エミュレーターとPixel 7（API 36）のCompose UI test。API 31/36のhosted CI結果はPRで確認する。
+実装とテスト資産は存在する。Gradle、Lint、instrumentationの結果は実行時のログまたはPRへ紐付ける。API 31/36のhosted CI結果、Swift/Kotlin fixture parityの同一PR実行結果を確認するまでは、この記述だけでM1のCI完了とは扱わない。
 
 ### M2: UI parity on Fake
 
@@ -478,7 +497,7 @@ BLE以外は約31〜49人日、BLEはSDKとfirmwareの不確実性を除き約8�
 - 日英、音設定、auto-advance、PDF
 - Fake camera/BLEで状態遷移とCompose UI test
 
-ローカル検証済み: Kotlin/JVM test 68件、API 37エミュレーターとPixel 7（API 36）のinstrumentation/Compose test各27件、debug/release build、Lint、release依存グラフからのFake除外。エミュレーター実操作で日本語初回起動、per-app languageの日英切替、Fake一致、Room履歴保存、adaptive iconを確認し、Pixel 7でも初回日本語表示、launcher icon、プロセス再起動後の1箱履歴保持を確認した。PR #14とmerge後masterでAndroid API 31/36およびiOS CIがすべて成功済み。
+M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触覚、release Fake境界はこのcheckoutに含まれる。app E2Eでは0件破棄、履歴名称変更・詳細・削除、履歴選択のActivity再生成/画面往復/back stackを確認し、PDFは複数ページ実renderとSAF/FileProvider契約、一般化した失敗通知と再試行を自動検査する。scan checkpointはRoom schema v2で工程、受理済み値、結果、件数、入力元を保持し、MATCH記録と同一transactionで更新する。320dp/840dpとfont scale 1.3/2.0の主要操作到達、per-app language同期も自動化した。ローカル `origin/master` に見えるPR #14を含むM2 merge commitと、現在のM3/M4開発ブランチの結果を混同しない。OS process kill/relaunchの実操作、実DocumentProvider/共有先、TalkBack、Switch Access、複数OEMの人手確認は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)の未完了ゲートとして残る。
 
 ### M3: Camera production ready
 
@@ -486,15 +505,19 @@ BLE以外は約31〜49人日、BLEはSDKとfirmwareの不確実性を除き約8�
 - 権限、背景復帰、回転、focus、連続箱
 - BLE以外の完全パリティへ向けたcamera production gate
 
-実装済み: CameraX 1.6.2 Preview/ImageAnalysis、端末同梱ML Kit 17.3.0、QR/Code 128の工程別限定、`KEEP_ONLY_LATEST`とin-flight frame drop、表示枠と共通のROI、変換後四隅判定、elapsed realtime timestamp、AF/AE tap focus、権限状態、lifecycle停止、解析世代による停止後callback破棄。release APKから`INTERNET` / `ACCESS_NETWORK_STATE`権限が除外されることも確認済み。
+実装済み: CameraX 1.6.2 Preview/ImageAnalysis、端末同梱ML Kit 17.3.0、QR/Code 128の工程別限定、`KEEP_ONLY_LATEST`とin-flight frame drop、表示枠と共通のROI、変換後四隅判定、elapsed realtime timestamp、AF/AE tap focus、権限状態、lifecycle停止、解析世代による停止後callback破棄、処理中ML Kit taskをdrainしてから論理sessionを終了する境界、同一hostでのQR読み直し後rebind。release APKから`INTERNET` / `ACCESS_NETWORK_STATE`権限が除外されることも確認済み。AABを含む継続的な検査はrelease hardening checkerで行う。
 
-ローカル検証済み: 全JVM test、Lint、debug/release build、API 37エミュレーター全モジュール計31件のinstrumentation test、初回カメラ拒否、再要求、許可後のCameraX preview開始と背景復帰。Pixel 7（API 36）でも全モジュール計31件、CameraX preview開始、背景復帰、横画面再構成後のpreview再開を確認済み。M3完了ゲートとしてPixel 7でのQR → Code 128実読取、タップfocus、連続箱を残す。
+コード、CameraX/ML Kit境界、権限状態、ROI、lifecycle、semantics focus action、instrumentation testは存在する。実Android端末でのQR → Code 128実読取、タップfocus、連続箱、回転・背景復帰の受け入れ記録が揃うまでM3完了とは扱わない。実施時は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)へ端末情報と証跡を残す。
 
 ### M4: Full parity
 
 - 対象BLE scannerの接続、読み取り、完全設定復元
 - Pixel系/Samsung系で実機回帰
 - Swift版との機能対応表に未完了がない
+
+準備済み: SDK/UUID非依存のBLE safety core、1 command直列化、3秒timeout後のtransport reset必須化、QR+Code 128固定mode、全reported item snapshot、復元完了前Ready禁止、payload parser、750ms重複境界のJVM test。snapshotと既知端末identityはbackup/D2D除外済みの同一DataStoreでversion/profileを検証し、service再生成後もfresh inventory→完全復元が終わるまでReadyにしないAndroid testを持つ。設定画面の3つのCode 128は同梱ML Kitでexact decode済みだが、Android実通信adapter、実測設定profile、releaseアプリ接続、Nearby devices権限、対象scannerでの設定コード読取と受け入れ試験は未完了のため、M4完了とは扱わない。
+
+候補SDKのライセンス、ABI、target SDK、権限、rawログ、scan callbackの静的評価も未解決であり、[`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)に採用保留理由を記録する。対象scanner実機と正式な供給条件が確定するまで、BLE成功やfull parityを宣言しない。
 
 ## 16. Definition of Done
 
@@ -509,9 +532,12 @@ Androidポーティング全体は、次をすべて満たした時だけ完了�
 - 端末外通信、画像保存、不要権限がないことをManifestと通信観測で確認している。
 - Android CIと既存iOS CIが同一PRで成功する。
 - release buildにFake scanner、debug menu、診断用payloadが含まれない。
-- README、プライバシー説明、実機手順が現状と一致する。
+- `scripts/verify-release-hardening.sh`がrelease APK/AAB、merged manifest、依存グラフ、backup/D2D規則、専用cache FileProviderを通過する。
+- README、[`PRIVACY.md`](PRIVACY.md)、[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)、[`STATUS.md`](STATUS.md)が現状と一致する。
 
-## 17. 最初に作るissue
+## 17. 最初に作るissue（計画時の分割）
+
+現在の実装状況と未完了ゲートは[`STATUS.md`](STATUS.md)を正本とする。以下は計画をissueへ分割する際の一覧であり、未着手を意味しない。
 
 1. Android Gradle/Composeプロジェクトと独立CIを追加
 2. Material 3 CodeMatch design tokensと3 destination navigation

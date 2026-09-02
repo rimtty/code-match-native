@@ -5,9 +5,12 @@ set -euo pipefail
 test_tasks=(
   :app:connectedDebugAndroidTest
   :core:data:connectedDebugAndroidTest
+  :core:export:connectedDebugAndroidTest
   :feature:history:connectedDebugAndroidTest
   :feature:scan:connectedDebugAndroidTest
   :feature:settings:connectedDebugAndroidTest
+  :scanner:camera:connectedDebugAndroidTest
+  :scanner:ble:connectedDebugAndroidTest
 )
 
 for test_task in "${test_tasks[@]}"; do

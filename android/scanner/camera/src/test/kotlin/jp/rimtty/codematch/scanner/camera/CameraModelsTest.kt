@@ -57,6 +57,27 @@ class CameraModelsTest {
     }
 
     @Test
+    fun `roi rejects coordinates outside the preview instead of clamping them`() {
+        val guide = CameraGuide(0f, 0f, 1f, 1f)
+        val candidate = CameraQuad(
+            topLeft = CameraPoint(-1f, 200f),
+            topRight = CameraPoint(300f, 200f),
+            bottomRight = CameraPoint(300f, 400f),
+            bottomLeft = CameraPoint(-1f, 400f),
+        )
+
+        assertFalse(guide.accepts(candidate, width = 1_000f, height = 1_000f))
+    }
+
+    @Test
+    fun `roi accepts coordinates exactly on the normalized preview boundary`() {
+        val guide = CameraGuide(0f, 0f, 1f, 1f)
+        val candidate = CameraRect(0f, 0f, 1_000f, 1_000f)
+
+        assertTrue(guide.accepts(candidate, width = 1_000f, height = 1_000f))
+    }
+
+    @Test
     fun `default guides match the expected symbology`() {
         val qr = CameraGuide.forFormat(ScanFormat.QR)
         val code128 = CameraGuide.forFormat(ScanFormat.CODE_128)

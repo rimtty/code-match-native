@@ -25,6 +25,7 @@ import jp.rimtty.codematch.feature.scan.CameraPermissionState
 import jp.rimtty.codematch.feature.scan.CameraPreviewContent
 import jp.rimtty.codematch.feature.scan.ScanScreen
 import jp.rimtty.codematch.feature.scan.ScanUiAction
+import jp.rimtty.codematch.navigation.CodeMatchBackHandler
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
 
@@ -185,6 +186,20 @@ fun ScanRoute(
         if (!state.sessionActive) showEndSessionDialog = false
     }
 
+    CodeMatchBackHandler(
+        enabled = state.sessionActive || showEndSessionDialog,
+        onBack = {
+            if (showEndSessionDialog) {
+                showEndSessionDialog = false
+            } else if (state.sessionActive) {
+                // Back is a potentially destructive operation while a
+                // session is active, so use the same confirmation as the
+                // explicit End session action.
+                showEndSessionDialog = true
+            }
+        },
+    )
+
     val dispatch: (ScanUiAction) -> Unit = remember(viewModel) {
         { action ->
             if (action === ScanUiAction.EndSession) {
@@ -217,9 +232,15 @@ fun ScanRoute(
                     onClick = {
                         showEndSessionDialog = false
                         callbackGate.invalidate()
-                        currentCameraHost?.stop()
-                        viewModel.onCameraStopped()
-                        viewModel.confirmEndSession()
+                        // Do not end the logical session until CameraX's
+                        // unbind and any in-flight ML Kit frame have drained.
+                        // This is the Android equivalent of waiting for
+                        // AVCaptureSession.stopRunning().
+                        stopCameraBeforeSessionEnd(
+                            cameraHost = currentCameraHost,
+                            onCameraStopped = viewModel::onCameraStopped,
+                            onSessionEnded = viewModel::confirmEndSession,
+                        )
                     },
                 ) {
                     Text(stringResource(R.string.end_session_confirm))
