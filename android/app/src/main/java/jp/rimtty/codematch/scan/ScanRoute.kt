@@ -62,11 +62,16 @@ fun ScanRoute(
         viewModel.setDebugDemoEnabled(showDebugDemoTools)
     }
 
-    DisposableEffect(lifecycleOwner, viewModel) {
+    // Capture the host that belongs to this lifecycle observer. The host is
+    // recreated with a new Activity/context, while a ViewModel can survive a
+    // configuration change. Using only rememberUpdatedState here would let an
+    // old observer stop the replacement host during its disposal.
+    DisposableEffect(lifecycleOwner, viewModel, cameraHost) {
+        val hostForLifecycle = cameraHost
         val observer = LifecycleEventObserver { _, event ->
-                when (event) {
+            when (event) {
                 Lifecycle.Event.ON_START -> {
-                    currentCameraHost?.refreshPermissionState()?.let { permission ->
+                    hostForLifecycle?.refreshPermissionState()?.let { permission ->
                         viewModel.synchronizeCameraPermission(permission)
                     }
                     viewModel.onAction(ScanUiAction.Foregrounded)
@@ -76,7 +81,7 @@ fun ScanRoute(
                     // Stop the platform session immediately, then update the
                     // logical state. The ViewModel keeps the resume intent.
                     callbackGate.invalidate()
-                    currentCameraHost?.stop()
+                    hostForLifecycle?.stop()
                     boundCameraFormat = null
                     viewModel.onAction(ScanUiAction.Backgrounded)
                 }
@@ -89,17 +94,9 @@ fun ScanRoute(
             lifecycleOwner.lifecycle.removeObserver(observer)
             // Ensure a countdown/input callback cannot outlive this route.
             callbackGate.invalidate()
-            currentCameraHost?.stop()
+            hostForLifecycle?.stop()
             boundCameraFormat = null
             viewModel.onAction(ScanUiAction.Backgrounded)
-        }
-    }
-
-    DisposableEffect(cameraHost, callbackGate) {
-        onDispose {
-            callbackGate.invalidate()
-            cameraHost?.stop()
-            boundCameraFormat = null
         }
     }
 

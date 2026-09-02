@@ -12,6 +12,7 @@ import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
 import jp.rimtty.codematch.scanner.api.ScanPayload
 import jp.rimtty.codematch.scanner.api.ScannerDevice
+import jp.rimtty.codematch.scanner.api.ScannerIssue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -91,6 +92,48 @@ class ScanSessionCoordinatorTest {
         assertEquals(ScanPhase.WAITING_CODE_128, coordinator.state.phase)
         assertEquals(qrPayload, coordinator.state.qrPayload)
         assertEquals(1, fallbackRequests)
+    }
+
+    @Test
+    fun configurationFailureKeepsTypedIssueWhenBaselineRestoreMakesScannerReady() {
+        val scanner = TestScanner().apply { markReady() }
+        val coordinator = ScanSessionCoordinator(scanner)
+        var fallbackIssue = ScannerIssue.NONE
+        var fallbackRequests = 0
+        coordinator.onBluetoothFallbackIssue = { fallbackIssue = it }
+        coordinator.onBluetoothFallback = { fallbackRequests++ }
+        coordinator.startSession()
+        coordinator.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.BLUETOOTH))
+
+        scanner.markConfigurationFailed("scanner settings rejected")
+
+        assertEquals(ScannerIssue.CONFIGURATION_FAILED, fallbackIssue)
+        assertEquals(1, fallbackRequests)
+        assertEquals(InputSource.CAMERA, coordinator.inputSource)
+        assertEquals(ScanPhase.WAITING_CODE_128, coordinator.state.phase)
+        assertEquals(qrPayload, coordinator.state.qrPayload)
+        // The adapter baseline is ready again, but an unverified session must
+        // not be promoted back to Bluetooth until an explicit reconnect.
+        assertEquals(ConfigurationState.Ready, scanner.configurationState)
+    }
+
+    @Test
+    fun explicitAsynchronousReconnectAllowsLaterReadyPromotion() {
+        val scanner = TestScanner().apply { markReady() }
+        val coordinator = ScanSessionCoordinator(scanner)
+        coordinator.startSession()
+        coordinator.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.BLUETOOTH))
+        scanner.markConfigurationFailed("scanner settings rejected")
+        scanner.reconnectSynchronously = false
+
+        assertTrue(coordinator.reconnectKnownDevice())
+        assertEquals(InputSource.CAMERA, coordinator.inputSource)
+
+        scanner.markReady()
+
+        assertEquals(InputSource.BLUETOOTH, coordinator.inputSource)
+        assertEquals(ScanPhase.WAITING_CODE_128, coordinator.state.phase)
+        assertEquals(qrPayload, coordinator.state.qrPayload)
     }
 
     @Test
@@ -359,6 +402,7 @@ class ScanSessionCoordinatorTest {
         override var diagnosticEvents: List<jp.rimtty.codematch.scanner.api.DiagnosticEvent> = emptyList()
         override var expectedFormat: ScanFormat? = null
         override var listener: ExternalScannerListener? = null
+        var reconnectSynchronously: Boolean = true
 
         override fun startDiscovery(): Boolean = true
         override fun stopDiscovery(): Boolean = true
@@ -374,12 +418,15 @@ class ScanSessionCoordinatorTest {
         }
 
         override fun reconnectKnownDevice(): Boolean {
-            markReady()
+            if (reconnectSynchronously) markReady()
             return true
         }
 
         override fun setExpectedFormat(format: ScanFormat?): Boolean {
             expectedFormat = format
+            if (format == null && connectionState.connectedDevice != null) {
+                configurationState = ConfigurationState.Ready
+            }
             listener?.onConfigurationStateChanged(configurationState)
             return true
         }
@@ -396,6 +443,11 @@ class ScanSessionCoordinatorTest {
             configurationState = ConfigurationState.Unavailable
             listener?.onConfigurationStateChanged(configurationState)
             listener?.onConnectionStateChanged(connectionState)
+        }
+
+        fun markConfigurationFailed(reason: String) {
+            configurationState = ConfigurationState.Failed(reason)
+            listener?.onConfigurationStateChanged(configurationState)
         }
     }
 }

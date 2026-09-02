@@ -351,11 +351,14 @@ class CameraScanner private constructor(
     /** A start/bind request observed while the stop barrier was active. */
     private var rebindAfterUnbind = false
     private val unbindCompletions = ArrayList<() -> Unit>()
+    /** Callbacks waiting for terminal close to finish its stop/drain barrier. */
+    private val closeCompletions = ArrayList<() -> Unit>()
     private var viewPortRetryPending = false
     /** ViewPort used by the currently bound Preview/ImageAnalysis group. */
     private var boundViewPortSnapshot: ViewPortSnapshot? = null
     private var targetRotation: Int? = null
     private var isClosed = false
+    private var closeFinished = false
     private var _expectedFormat: ScanFormat? = null
     private var guide: CameraGuide = CameraGuide.forFormat(null)
     private var customGuide: CameraGuide? = null
@@ -493,7 +496,14 @@ class CameraScanner private constructor(
         detachHost: Boolean = false,
     ) {
         if (isClosed) {
-            dispatchOnMain(onComplete)
+            if (closeFinished) {
+                dispatchOnMain(onComplete)
+            } else {
+                // A caller can race terminal close after a route has started
+                // disposing. Keep its completion behind the same stop/drain
+                // boundary instead of reporting a premature stop.
+                closeCompletions += onComplete
+            }
             return
         }
         unbindCompletions += onComplete
@@ -600,22 +610,47 @@ class CameraScanner private constructor(
      */
     @MainThread
     override fun close() {
-        if (isClosed) return
+        close(onComplete = {})
+    }
+
+    /**
+     * Terminally close the scanner and invoke [onComplete] only after CameraX
+     * use cases are unbound and the in-flight ML Kit frame (if any) has
+     * released its image. The callback is useful to composition-owned hosts
+     * that must keep their adapter alive through Activity teardown.
+     */
+    @MainThread
+    fun close(onComplete: () -> Unit) {
+        if (closeFinished) {
+            dispatchOnMain(onComplete)
+            return
+        }
+        closeCompletions += onComplete
+        if (isClosed) {
+            // The first close request owns the drain. A repeated request only
+            // contributes a completion callback to that same boundary.
+            if (!unbindInProgress) finishCloseIfReady()
+            return
+        }
+
         isClosed = true
         bindGeneration += 1
         detachHostBindings()
-        if (!unbindInProgress) {
+        val startedUnbind = !unbindInProgress
+        if (startedUnbind) {
             unbindInProgress = true
             unbindUseCases()
-            analyzer.awaitIdle {
-                dispatchOnMain(::finishUnbind)
-            }
         }
         lifecycleOwner = null
         previewView = null
         targetRotation = null
         analyzer.close()
         analysisExecutor.shutdown()
+        if (startedUnbind) {
+            analyzer.awaitIdle {
+                dispatchOnMain(::finishUnbind)
+            }
+        }
     }
 
     private fun requestBind() {
@@ -838,7 +873,10 @@ class CameraScanner private constructor(
     }
 
     private fun finishUnbind() {
-        if (!unbindInProgress) return
+        if (!unbindInProgress) {
+            finishCloseIfReady()
+            return
+        }
         unbindInProgress = false
         if (_captureState == CameraCaptureState.RUNNING ||
             _captureState == CameraCaptureState.STARTING
@@ -854,6 +892,16 @@ class CameraScanner private constructor(
             rebindAfterUnbind = false
             requestBind()
         }
+
+        finishCloseIfReady()
+    }
+
+    private fun finishCloseIfReady() {
+        if (!isClosed || closeFinished || unbindInProgress) return
+        closeFinished = true
+        val completions = closeCompletions.toList()
+        closeCompletions.clear()
+        completions.forEach { it() }
     }
 
     private fun detachHostBindings() {

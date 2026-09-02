@@ -72,6 +72,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import jp.rimtty.codematch.core.matching.CodeMatcher
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchResult
+import jp.rimtty.codematch.scanner.api.ConfigurationState
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
 import jp.rimtty.codematch.scanner.api.ScannerIssue
@@ -362,6 +363,8 @@ private fun ScanSessionContent(
 
         ScanMessage(state)
 
+        BluetoothConfigurationStatus(state)
+
         if (state.bluetoothFallbackActive) {
             BluetoothFallbackCard(
                 issue = state.bluetoothIssue,
@@ -404,6 +407,33 @@ private fun ScanSessionContent(
             DebugDemoTools(onAction)
         }
     }
+}
+
+/**
+ * Shows only stable scanner configuration guidance. Adapter failure reasons
+ * stay in the typed state and are never rendered by this feature surface.
+ */
+@Composable
+private fun BluetoothConfigurationStatus(state: ScanUiState) {
+    if (state.inputSource != InputSource.BLUETOOTH) return
+
+    val messageRes = when (state.bluetoothConfigurationState) {
+        ConfigurationState.Unavailable -> return
+        ConfigurationState.Configuring -> R.string.scan_bluetooth_configuration_configuring
+        // Ready guidance belongs inside the waiting card, after the current
+        // QR/Code 128 instruction. Keeping it as a separate row above the
+        // card can push the primary instruction below a compact viewport.
+        ConfigurationState.Ready -> return
+        is ConfigurationState.Failed -> R.string.scan_bluetooth_configuration_failed
+    }
+    Text(
+        text = stringResource(messageRes),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("scan_bluetooth_configuration_status"),
+    )
 }
 
 @Composable
@@ -592,9 +622,9 @@ private fun BluetoothFallbackCard(
         ScannerIssue.UNSUPPORTED,
         -> R.string.scan_bluetooth_fallback_unavailable
         ScannerIssue.RESTORE_FAILED -> R.string.scan_bluetooth_fallback_restore_failed
+        ScannerIssue.CONFIGURATION_FAILED -> R.string.scan_bluetooth_fallback_configuration
         ScannerIssue.NONE,
         ScannerIssue.CONNECTION_FAILED,
-        ScannerIssue.CONFIGURATION_FAILED,
         -> R.string.scan_bluetooth_fallback_connection
     }
     Card(
@@ -705,6 +735,17 @@ private fun ScanWaitingCard(
                 },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (state.inputSource == InputSource.BLUETOOTH &&
+                state.bluetoothConfigurationState === ConfigurationState.Ready
+            ) {
+                Text(
+                    text = stringResource(R.string.scan_bluetooth_restriction_session),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.testTag("scan_bluetooth_configuration_status"),
+                )
+            }
             if (state.inputSource == InputSource.CAMERA) {
                 CameraStage(
                     format = expected,

@@ -272,6 +272,42 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun configurationStatusIsVisibleAndFailureReasonStaysHidden() {
+        val privateReason = "private adapter setting detail"
+        val state = mutableStateOf(
+            SettingsUiState(
+                connectionState = ConnectionState.Connected(
+                    ScannerDevice("scanner-1", "Scanner one"),
+                ),
+                configurationState = ConfigurationState.Configuring,
+            ),
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                SettingsScreen(state = state.value, onAction = {})
+            }
+        }
+
+        composeRule.onNodeWithTag(SettingsTestTags.SCANNER_CONFIGURATION_STATUS)
+            .performScrollTo()
+            .assertIsDisplayed()
+
+        composeRule.runOnIdle {
+            state.value = state.value.copy(
+                configurationState = ConfigurationState.Failed(privateReason),
+            )
+        }
+
+        composeRule.onNodeWithTag(SettingsTestTags.SCANNER_CONFIGURATION_STATUS)
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onAllNodesWithText(privateReason).assertCountEquals(0)
+        composeRule.onNodeWithTag(SettingsTestTags.SCANNER_ISSUE_MESSAGE)
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun diagnosticsNeverExposeDiagnosticMessageOrScanPayload() {
         val payload = "private-scan-payload-123"
         composeRule.setContent {

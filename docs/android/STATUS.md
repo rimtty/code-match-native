@@ -9,11 +9,17 @@
 | Domain / matching | 純Kotlin matcher/parser、shared fixture、JVM test、Swift unit 68本/UI 5本との意図対応表 | Swift/Kotlinの全ケースを同一CI実行で確認した記録 |
 | UI / navigation | Composeの照合・履歴・設定、3 destination、system/predictive back境界、保存可能なdestination/履歴選択、履歴のActivity再生成・destination往復・compact back stack自動test、320dp/840dp・font scale 1.3/2.0の主要操作到達test、debug Fake境界 | predictive gestureの視覚遷移、OS process kill/relaunchの実操作、TalkBack、Switch Access、複数OEMの人手確認 |
 | History / settings / PDF | Room/DataStore、日英リソース、0件破棄・名称変更・詳細・削除のapp E2E、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test、保存/共有失敗の一般化メッセージと再試行 | 実際の保存先・viewer・共有先アプリを含む実端末の業務受け入れ |
-| Camera | CameraX/ML Kit adapter、ROI、権限・lifecycle・focus、非同期provider/format切替/古いcallback破棄、処理中frameをdrainしてからsession終了する自動test | Pixel/SamsungでQR→Code 128実読取、連続箱、focus結果の完了記録 |
+| Camera | CameraX/ML Kit adapter、ROI、権限・lifecycle・focus、非同期provider/format切替/古いcallback破棄、処理中frameをdrainしてからsession終了・terminal closeする自動test | Pixel/SamsungでQR→Code 128実読取、連続箱、focus結果の完了記録 |
 | Privacy / release | Manifest、backup規則、FileProvider、source/APK/AAB checker、すべてのAndroid Gradle CI jobでのWrapper validation | 通信観測、ストア提出回答、署名済み配布物の運用承認 |
-| BLE | SDK/UUID非依存の安全コア、`ExternalScanner` facade、注入profile方式の汎用Android GATT transport、複数listener、Fake/Unavailable境界、snapshot/queue/lifecycle JVM test、backup除外DataStoreでのsnapshot/既知端末identity再オープンと復元前Ready禁止test | 実測protocol profile、release接続とNearby権限要求、対象scanner通信、実機の全symbology復元、Pixel/Samsung受け入れ |
+| BLE | SDK/UUID非依存の安全コア、`ExternalScanner` facade、注入profile方式の汎用Android GATT transport、複数listener、Fake/Unavailable境界、型付き設定失敗・camera fallback・明示再接続UI、snapshot/queue/lifecycle JVM test、backup除外DataStoreでのsnapshot/既知端末identity再オープンと復元前Ready禁止test | 実測protocol profile、release接続とNearby権限要求、対象scanner通信、実機の全symbology復元、Pixel/Samsung受け入れ |
 
 現在のrelease構成は `UnavailableExternalScanner` によるカメラ入力のみです。汎用GATT transportはscanner固有値を持たず、release DI・Manifestへ未接続です。候補Inateck SDKはライセンス、ABI/target SDK、権限、rawログ、scan callbackの評価が未解決で採用保留です（詳細は [`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)）。
+
+## パリティ分類の補足
+
+[`TEST_PARITY.md`](TEST_PARITY.md) の `N/A` は、Androidに未実装のまま残した行ではなく、現行Androidの共通仕様に含まれないことをソースと仕様のリンクで確認した行です。現在の対象は、iOS固有の画面収録防御（#6）、旧iOS UserDefaultsのCode128-only recovery移行（#38）、旧iOS diagnosticsからの既知端末migration（#42）です。Android版は独立Gradle projectとして導入され、現行のBLE復旧はversion/profile付きの新規snapshot・known-device envelopeを使うため、これら旧iOS状態を読む入口はありません（[`android/README.md`](../../android/README.md#L1)、[`BleSymbologySnapshotStore.kt`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleSymbologySnapshotStore.kt#L63)、[`BleKnownDeviceStore.kt`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceStore.kt#L90)）。
+
+これは実機・手動ゲートの免除ではありません。ROIのclamp（#5）はiOSとAndroidでpolicyが異なるため`P`のまま、active restriction（#27）は現行session mode文言だけを検査した`P`、camera lifetime（#58）はprocess破棄を含まない`P`です。OS設定画面・force-stop/relaunch（UI #4）、対象scannerのBLE通信・完全復元（#35、#37、#40）も未完了境界として残します。
 
 ## 再現可能なチェック
 
@@ -36,6 +42,7 @@ JDK/SDKがない環境ではGradle結果を推測せず、実行不能として�
 
 ## 2026-09-02〜03 統合検証記録
 
+- 2026-09-03のBLE設定表示・再接続とcamera terminal close統合後、全moduleのJVM test 252件、lint、debug/release APK、release AABが成功した。release source regressionとAPK/AAB/dependency hardeningも成功し、release構成にFake、Nearby権限、analytics/crash SDKがないことを再確認した。USB接続Pixel 7（Android 16 / API 36）では、通常のdebugアプリ保存領域を消去しないmodule testとして`feature:scan` 18件、`feature:settings` 15件、`scanner:camera` 3件の計36件を実行し、失敗・skip 0だった。これは設定中→Ready→QR案内、raw reason非表示、工程を保持したcamera fallback、明示的な非同期再接続、terminal closeの自動証拠であり、対象scanner通信や実カメラ撮影の証拠ではない。
 - 2026-09-03の追加hardening後、全moduleのJVM test 249件、lint、debug/release APK、release AABが成功した。release dependency/APK/AAB hardeningはFake、Nearby権限、analytics/crash SDKがない状態で成功し、すべてのAndroid CI jobでGradle起動前にWrapper validationを実行する構成にした。USB接続Pixel 7（Android 16 / API 36）では、通常のdebugアプリ保存領域を消去せず、`core:data` 21件、`feature:scan` 15件、`scanner:camera` 3件の計39件を実行し、失敗・skip 0だった。
 - `core:data`の追加testは、ランダムなテスト専用Room DBを各checkpoint段階で閉じて再オープンし、active session、WAITING QR、WAITING Code 128、RESULT、受理済み値、入力元、明示camera選択、箱数を復元する。全設定値と言語もテスト専用DataStore再オープン後に復元する。これらはストレージ復元の証拠であり、OS force-stop/process kill後のアプリ再起動を意味しない。
 - カメラの追加testは、PreviewView回転・サイズ変更時の再bind、権限callbackの取り違え防止、停止後の遅延focus結果破棄、停止中のタップ無効化、ROI中間Bitmapの例外時解放を検査する。これはCameraX/Composeの非同期境界の証拠であり、実カメラでの読取・focus成功の証拠ではない。

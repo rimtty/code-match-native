@@ -74,6 +74,8 @@ BLEを除いた中間成果物は開発・評価用として成立するが、Sw
 | プライバシー | ネット送信なし、履歴をバックアップ対象外 | production BLE未接続段階はINTERNET/Nearby権限なし、backup rules | 通信依存なし、画像を保存しない、DBをクラウドバックアップしない。現行の境界は[`PRIVACY.md`](PRIVACY.md)を正本とする |
 | BLE | 検索・接続・再接続・診断・設定保存復元・カメラfallback | 抽象層とFakeを先行、実通信は最終フェーズ | 実機入手後の専用受け入れ基準をすべて満たすまで未完扱い |
 
+Swiftテストには、iOS固有の画面収録防御（`TEST_PARITY.md` #6）と、旧iOS版のUserDefaults/診断データを新しい保存形式へ移す互換処理（同 #38、#42）も含まれる。これらはAndroidの現行共通仕様や新規保存形式への移植対象ではなく、根拠リンク付きの`N/A`としてパリティ完了条件から除外する。Androidの実カメラ、対象BLE、保存・共有先、アクセシビリティの手動ゲートは除外しない。
+
 ## 4. Android技術方針
 
 ### 4.1 基本構成
@@ -304,7 +306,7 @@ MatchResult
 - Code 128はSwift版と同じ「1.5秒以内に同一値2回」で確定する。
 - 背景化、入力元切替、セッション終了、画面破棄で確実にunbindし、二重Analyzerを作らない。
 - `CAMERA`権限は初めてカメラを開始した時に要求し、拒否・今後表示しない・カメラ非搭載を別状態にする。
-- 画面録画中の制限はiOS固有のため無条件には移植せず、Android側の実際のセキュリティ要件がある場合だけ別仕様として追加する。
+- 画面録画中の制限は、iOSの [`CameraScanner.swift`](../../ios/CodeMatch/Services/CameraScanner.swift#L209) とテスト [`CodeMatcherTests.swift`](../../ios/CodeMatchTests/CodeMatcherTests.swift#L85) にあるiOS固有の防御策である。共通 [`PRODUCT_SPEC.md`](../PRODUCT_SPEC.md#L3) にAndroid向け要件はなく、現行Androidのcamera状態・Manifestにも対応するcapture policyはないため、[`TEST_PARITY.md`](TEST_PARITY.md#L62) では`N/A`とする。Android側に別のセキュリティ要件が追加された時だけ、独立した仕様・テスト・実機ゲートとして再評価する。
 
 ## 9. BLEを後回しにする設計
 
@@ -325,6 +327,8 @@ MatchResult
 - `ExternalScanner` facade、複数listener、権限拒否・電源OFF・復元失敗・camera fallbackのFake/UI test
 
 この段階では`scanner:ble`をreleaseアプリへ接続せず、対象scanner固有profileやvendor SDKも組み込まない。実通信形式を観測するまではiOS由来のUUIDや設定JSONをproduction前提にせず、release buildにもFakeを組み込まない。
+
+Android版は独立Gradle projectとして新規に導入しており、旧iOS UserDefaultsを読む互換入口は持たない（[`android/README.md`](../../android/README.md#L1)、[`BleSymbologySnapshotStore.kt`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleSymbologySnapshotStore.kt#L63)、[`BleKnownDeviceStore.kt`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceStore.kt#L90)）。そのため、旧stuck buildのCode128-only recovery（`TEST_PARITY.md` #38）と旧diagnosticsからの既知端末migration（同 #42）はAndroidの未実装機能ではなく、iOSのproduct-history-only互換処理として`N/A`にする。新しいsnapshot/known-device保存、service再生成後の復元、対象scannerの実通信・完全復元ゲートは引き続き必要である。
 
 ### 9.2 実機入手後の調査ゲート
 
@@ -526,9 +530,9 @@ M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触�
 
 Androidポーティング全体は、次をすべて満たした時だけ完了とする。
 
-- パリティ表の全行に、テストまたは実機記録の証拠がある。
+- パリティ表の全適用行に、テストまたは実機記録の証拠がある。`N/A`行（現行は#6、#38、#42）は、対応不要の根拠リンクを持つ。
 - `matching-cases.json`をSwift/Kotlin双方が通過する。
-- 現行Swift単体テスト68本とUIテスト5本の意図がAndroid testへ対応付けられている。
+- 現行Swift単体テスト68本とUIテスト5本の意図がAndroid testへ対応付けられている。ただし、[`TEST_PARITY.md`](TEST_PARITY.md)で根拠を示したiOS固有・旧版互換の`N/A`（#6、#38、#42）はAndroid testの対象外とする。
 - 日本語・英語、compact/expanded、通常/大フォントで主要フローが完走する。
 - CameraXの照合を実Android端末で確認している。
 - BLEの9.4を対象scanner実機で確認している。

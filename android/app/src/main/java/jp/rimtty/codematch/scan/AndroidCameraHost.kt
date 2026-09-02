@@ -64,6 +64,9 @@ private class AndroidCameraHost(
     private var callbacks: CameraHostCallbacks? = null
     private var requestedPermission = false
     private var closed = false
+    private var closeInProgress = false
+    private var closeFinished = false
+    private val pendingStopCompletions = ArrayList<() -> Unit>()
     private val permissionRequestGate = CameraPermissionRequestGate()
 
     internal var permissionRequester: (() -> Unit)? = null
@@ -158,8 +161,15 @@ private class AndroidCameraHost(
 
     override fun stop(onComplete: () -> Unit) {
         permissionRequestGate.cancel()
-        if (closed) {
+        if (closeFinished) {
             onComplete()
+            return
+        }
+        if (closeInProgress) {
+            // Host disposal can race a route/lifecycle stop. Keep the route's
+            // completion behind the terminal scanner drain instead of
+            // reporting that a closed host stopped before CameraX finished.
+            pendingStopCompletions += onComplete
             return
         }
 
@@ -230,15 +240,22 @@ private class AndroidCameraHost(
     }
 
     override fun close() {
-        if (closed) return
+        if (closed || closeInProgress) return
+        closeInProgress = true
         closed = true
         permissionRequestGate.cancel()
         callbacks = null
-        // Compose disposal may race a pending stop. Keep the scanner alive
-        // through its own unbind/drain callback before closing ML Kit and its
-        // analysis executor.
+        // Compose disposal may race a pending stop. CameraScanner.close keeps
+        // the scanner alive through its unbind/drain callback before closing
+        // ML Kit and its analysis executor.
         runCatching { scanner.updateExpectedFormat(null) }
-        scanner.unbind { scanner.close() }
+        scanner.close {
+            closeInProgress = false
+            closeFinished = true
+            val completions = pendingStopCompletions.toList()
+            pendingStopCompletions.clear()
+            completions.forEach { it() }
+        }
     }
 
     private fun onCaptureStateChanged(state: CameraCaptureState) {

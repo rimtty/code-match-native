@@ -10,6 +10,8 @@ import jp.rimtty.codematch.scanner.api.ExternalScannerListener
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
 import jp.rimtty.codematch.scanner.api.ScanPayload
+import jp.rimtty.codematch.scanner.api.ScannerIssue
+import jp.rimtty.codematch.scanner.api.scannerIssueFor
 
 /**
  * Bridges scanner lifecycle callbacks to the pure [ScanReducer].
@@ -60,6 +62,13 @@ class ScanSessionCoordinator(
     var isBackgrounded: Boolean = false
         private set
 
+    /**
+     * Keeps a scanner with an unverified connected configuration from being
+     * promoted back to Bluetooth while fallback restores its baseline. A
+     * later explicit reconnect or Bluetooth selection clears this hold.
+     */
+    private var bluetoothFallbackBlocksPromotion = false
+
     var lastEffects: List<ScanEffect> = emptyList()
         private set
 
@@ -68,6 +77,10 @@ class ScanSessionCoordinator(
     var onInputSourceChanged: ((InputSource) -> Unit)? = null
     /** Invoked only when a lost/unready Bluetooth link forces camera fallback. */
     var onBluetoothFallback: (() -> Unit)? = null
+    /** Typed reason captured before fallback restores the scanner baseline. */
+    var onBluetoothFallbackIssue: ((ScannerIssue) -> Unit)? = null
+    /** Publishes scanner configuration transitions without exposing adapter details. */
+    var onScannerConfigurationStateChanged: ((ConfigurationState) -> Unit)? = null
 
     init {
         // Settings and Scan are separate destinations but observe the same
@@ -186,6 +199,7 @@ class ScanSessionCoordinator(
         return when (source) {
             InputSource.CAMERA -> {
                 cameraWasSelectedByUser = true
+                bluetoothFallbackBlocksPromotion = false
                 setInputSource(InputSource.CAMERA)
                 applyExpectedFormat(null)
                 true
@@ -198,6 +212,7 @@ class ScanSessionCoordinator(
                     applyExpectedFormat(null)
                     false
                 } else {
+                    bluetoothFallbackBlocksPromotion = false
                     setInputSource(InputSource.BLUETOOTH)
                     applyExpectedFormat()
                     true
@@ -215,10 +230,22 @@ class ScanSessionCoordinator(
      * success. The adapter still owns every protocol operation.
      */
     fun reconnectKnownDevice(): Boolean {
-        if (scanner.isConnected && !scanner.isReadyForScanning) {
+        if (scanner.isConnected &&
+            (!scanner.isReadyForScanning || bluetoothFallbackBlocksPromotion)
+        ) {
             scanner.disconnect()
         }
-        return scanner.reconnectKnownDevice()
+        val reconnected = scanner.reconnectKnownDevice()
+        if (reconnected) {
+            // Reconnect is normally asynchronous. An explicit user retry
+            // releases the configuration-failure hold now so the later Ready
+            // callback can promote the session back to Bluetooth.
+            bluetoothFallbackBlocksPromotion = false
+            if (scanner.isReadyForScanning) {
+                handleConnectionState(scanner.connectionState)
+            }
+        }
+        return reconnected
     }
 
     /** Dispatch a reducer event and apply scanner-related effects. */
@@ -255,6 +282,7 @@ class ScanSessionCoordinator(
     }
 
     override fun onConfigurationStateChanged(state: ConfigurationState) {
+        onScannerConfigurationStateChanged?.invoke(state)
         when (state) {
             ConfigurationState.Ready -> handleConnectionState(scanner.connectionState)
             is ConfigurationState.Failed -> fallbackToCameraIfBluetooth()
@@ -276,6 +304,7 @@ class ScanSessionCoordinator(
             if (state.phase != ScanPhase.IDLE &&
                 scanner.configurationState === ConfigurationState.Ready &&
                 !cameraWasSelectedByUser &&
+                !bluetoothFallbackBlocksPromotion &&
                 !isBackgrounded
             ) {
                 setInputSource(InputSource.BLUETOOTH)
@@ -289,6 +318,17 @@ class ScanSessionCoordinator(
 
     private fun fallbackToCameraIfBluetooth() {
         if (inputSource != InputSource.BLUETOOTH) return
+        val issue = scannerIssueFor(
+            scanner.connectionState,
+            scanner.configurationState,
+        ).takeIf { it != ScannerIssue.NONE } ?: ScannerIssue.CONNECTION_FAILED
+        if (issue == ScannerIssue.CONFIGURATION_FAILED || issue == ScannerIssue.RESTORE_FAILED) {
+            bluetoothFallbackBlocksPromotion = true
+        }
+        // setInputSource/applyExpectedFormat may synchronously clear a failed
+        // configuration on real or fake adapters. Publish the typed issue
+        // before that cleanup so the host cannot lose the failure category.
+        onBluetoothFallbackIssue?.invoke(issue)
         setInputSource(InputSource.CAMERA)
         applyExpectedFormat(null)
         onBluetoothFallback?.invoke()
