@@ -445,8 +445,9 @@ Swift版の5本のUIテストを少なくとも次のシナリオへ対応させ
 
 必須job:
 
+すべてのGradle実行jobは、Gradleを起動する前に同じ `Gradle wrapper validation` を通過させる。これにより、debug build、instrumentation、release artifactの各経路が未検証のWrapperを実行しない。
+
 1. `android-unit-lint`
-   - Gradle wrapper validation
    - `assembleDebug`
    - `lintDebug`
    - `testDebugUnitTest`
