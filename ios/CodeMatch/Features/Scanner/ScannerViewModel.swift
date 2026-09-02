@@ -506,10 +506,7 @@ final class ScannerViewModel: ObservableObject {
         let comparison = CodeMatcher.compare(qrPayload: qrValue, barcodePayload: barcodeValue)
         let result: MatchResult
         if comparison == .match,
-           historyStore.activeSessionContainsMatchedPayload(
-               qrPayload: qrValue,
-               barcodePayload: barcodeValue
-           ) {
+           historyStore.activeSessionContainsMatchedQRPayload(qrValue) {
             result = .duplicate
         } else {
             result = comparison
