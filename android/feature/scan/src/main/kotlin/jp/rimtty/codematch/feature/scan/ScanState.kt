@@ -94,6 +94,8 @@ data class ScanSessionState(
     val inputSource: InputSource = InputSource.CAMERA,
     /** Existing matches restored by the session repository before start. */
     val initialMatchedCount: Int = 0,
+    /** Normalized full QR identities already recorded in this session. */
+    val matchedQrPayloadIdentities: Set<String> = emptySet(),
 ) {
     val state: ScanState get() = scan
     val phase: ScanPhase get() = scan.phase

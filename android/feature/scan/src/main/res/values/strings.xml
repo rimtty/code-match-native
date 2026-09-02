@@ -65,6 +65,7 @@
     <string name="scan_result_barcode_part">Code 128の品番</string>
     <string name="scan_result_match_description">品目番号が一致しています。記録しました。</string>
     <string name="scan_result_mismatch_description">品目番号が一致しません。記録していません。</string>
+    <string name="scan_result_duplicate_description">このコードは照合件数に加えていません。次のコードを読み取ってください。</string>
     <string name="scan_invalid_session">セッションを開始してから読み取ってください。</string>
     <string name="scan_invalid_order">読み取り順序が違います。表示された形式を読み取ってください。</string>
     <string name="scan_invalid_empty">空の読み取り値は使用できません。</string>
@@ -74,6 +75,7 @@
     <string name="scan_demo_mismatch">不一致を表示</string>
     <string name="scan_status_complete_match">一致</string>
     <string name="scan_status_mismatch">不一致</string>
+    <string name="scan_status_duplicate">すでに照合済みです</string>
     <string name="scan_expected_format_qr">QRコード待ち</string>
     <string name="scan_expected_format_code128">Code 128待ち</string>
 </resources>

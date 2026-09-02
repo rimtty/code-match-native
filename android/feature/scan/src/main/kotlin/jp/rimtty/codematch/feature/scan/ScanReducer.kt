@@ -143,7 +143,16 @@ class ScanReducer(
         qrPayload: String,
         barcodePayload: String,
     ): ScanReduction {
-        val result = compare(qrPayload, barcodePayload)
+        val comparison = compare(qrPayload, barcodePayload)
+        val qrIdentity = CodeMatcher.payloadIdentity(qrPayload)
+        val result = if (comparison == MatchResult.MATCH &&
+            qrIdentity.isNotEmpty() &&
+            qrIdentity in current.matchedQrPayloadIdentities
+        ) {
+            MatchResult.DUPLICATE
+        } else {
+            comparison
+        }
         val previousCount = current.scan.matchedCount
         val matchNumber = if (result == MatchResult.MATCH) previousCount + 1 else previousCount
         val remaining = if (result == MatchResult.MATCH && current.autoAdvanceEnabled) {
@@ -159,6 +168,11 @@ class ScanReducer(
                 matchedCount = matchNumber,
             ),
             autoAdvanceSecondsRemaining = remaining,
+            matchedQrPayloadIdentities = if (result == MatchResult.MATCH) {
+                current.matchedQrPayloadIdentities + qrIdentity
+            } else {
+                current.matchedQrPayloadIdentities
+            },
         )
 
         val effects = buildList {
@@ -174,8 +188,8 @@ class ScanReducer(
                 )
                 if (remaining != null) add(ScanEffect.AutoAdvanceStarted(remaining))
             } else {
-                // A mismatch remains visible until a manual action. It is
-                // never persisted and never starts an auto-advance countdown.
+                // A mismatch or already-recorded box remains visible until a
+                // manual action. Neither is persisted or auto-advanced.
                 add(ScanEffect.AutoAdvanceCancelled)
             }
         }
@@ -366,10 +380,14 @@ class ScanReducer(
             autoAdvanceDelay: AutoAdvanceDelay = AutoAdvanceDelay.THREE_SECONDS,
             matchedCount: Int = 0,
             existingMatchedCount: Int? = null,
+            matchedQrPayloads: Collection<String> = emptyList(),
         ): ScanSessionState = ScanSessionState(
             autoAdvanceEnabled = autoAdvanceEnabled,
             autoAdvanceDelay = autoAdvanceDelay,
             initialMatchedCount = (existingMatchedCount ?: matchedCount).coerceAtLeast(0),
+            matchedQrPayloadIdentities = matchedQrPayloads
+                .map(CodeMatcher::payloadIdentity)
+                .filterTo(linkedSetOf()) { it.isNotEmpty() },
         )
 
         fun normalizeTransportTerminators(rawValue: String): String {

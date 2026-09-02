@@ -1,5 +1,6 @@
 package jp.rimtty.codematch.feature.scan
 
+import jp.rimtty.codematch.core.matching.CodeMatcher
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
 import jp.rimtty.codematch.core.model.ScanSessionCheckpoint
 import jp.rimtty.codematch.scanner.api.ConfigurationState
@@ -27,19 +28,24 @@ class ScanSessionCoordinator(
     existingMatchedCount: Int = 0,
     private val cameraStabilizer: ScanStabilizer = ScanStabilizer(),
     restoredCheckpoint: ScanSessionCheckpoint? = null,
+    matchedQrPayloads: Collection<String> = emptyList(),
 ) : ExternalScannerListener {
     private val cameraAcceptanceLock = ScanAcceptanceLock()
     private var applyingScannerFormat = false
+    private val matchedQrPayloadIdentities = matchedQrPayloads
+        .map(CodeMatcher::payloadIdentity)
+        .filterTo(linkedSetOf()) { it.isNotEmpty() }
     private val restoredState: ScanSessionState? = restoredCheckpoint?.toScanSessionState(
         autoAdvanceEnabled = autoAdvanceEnabled,
         autoAdvanceDelay = autoAdvanceDelay,
-    )
+    )?.copy(matchedQrPayloadIdentities = matchedQrPayloadIdentities)
     private val hasRestoredState: Boolean = restoredState != null
 
     var state: ScanSessionState = restoredState ?: ScanReducer.initial(
         autoAdvanceEnabled = autoAdvanceEnabled,
         autoAdvanceDelay = autoAdvanceDelay,
         existingMatchedCount = existingMatchedCount,
+        matchedQrPayloads = matchedQrPayloads,
     )
         private set
 

@@ -63,7 +63,7 @@ internal object ScanFeedbackEventMapper {
             listOf(ScanFeedbackEvent.INVALID_SCAN)
         effects.any { it is ScanEffect.RecordMatch } ->
             listOf(ScanFeedbackEvent.MATCH)
-        result == MatchResult.MISMATCH &&
+        (result == MatchResult.MISMATCH || result == MatchResult.DUPLICATE) &&
             effects.any { it === ScanEffect.ScanAccepted } ->
             listOf(ScanFeedbackEvent.MISMATCH)
         effects.any { it === ScanEffect.ScanAccepted } ->
@@ -340,6 +340,9 @@ class ScanViewModel @Inject constructor(
             autoAdvanceDelay = settings.autoAdvanceDelay,
             existingMatchedCount = active?.matchedCount ?: 0,
             restoredCheckpoint = checkpoint,
+            matchedQrPayloads = active?.entries
+                ?.mapNotNull { it.qrPayload }
+                .orEmpty(),
         )
         created.onStateChanged = { publishCoordinatorState() }
         created.onEffects = ::handleEffects

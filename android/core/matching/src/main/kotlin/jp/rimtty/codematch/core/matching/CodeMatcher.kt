@@ -28,6 +28,16 @@ object CodeMatcher {
             character in 'A'..'Z' || character in '0'..'9'
         }
 
+    /**
+     * Normalize a complete scanner payload for identity comparisons.
+     *
+     * Unlike [normalize], this deliberately preserves internal spaces and
+     * punctuation because those fields distinguish one box QR from another.
+     * Only surrounding whitespace and letter case are ignored, matching the
+     * iOS history contract.
+     */
+    fun payloadIdentity(raw: String): String = raw.trim().uppercase(Locale.ROOT)
+
     /** Extract the part number before the first `@` in a Code 128 payload. */
     fun partNumberFromBarcode(raw: String): String? {
         val head = raw.substringBefore('@')

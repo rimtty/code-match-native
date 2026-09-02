@@ -31,6 +31,7 @@ object AutoAdvanceSettings {
 enum class MatchResult {
     MATCH,
     MISMATCH,
+    DUPLICATE,
 }
 
 /** The input type expected by the current scan step. */
