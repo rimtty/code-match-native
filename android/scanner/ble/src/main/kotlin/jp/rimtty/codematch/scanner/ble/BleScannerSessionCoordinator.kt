@@ -48,6 +48,7 @@ class BleScannerSessionCoordinator(
     private var closed = false
     private var applicationActive = true
     private var pendingManualDisconnect = false
+    private var pendingReconnectAfterDisconnect = false
     private var observedConnectedDeviceId: String? = null
     private var observedConnectedLinkGeneration: Long? = null
     private var synchronizingConfiguration = false
@@ -136,6 +137,10 @@ class BleScannerSessionCoordinator(
 
     fun reconnectKnownDevice(): Boolean {
         if (closed) return false
+        if (pendingManualDisconnect) {
+            pendingReconnectAfterDisconnect = true
+            return true
+        }
         return connectionCoordinator.reconnectKnownDevice()
     }
 
@@ -286,6 +291,7 @@ class BleScannerSessionCoordinator(
         if (!pendingManualDisconnect) return
         if (connectionCoordinator.connectionState.connectedDevice == null) {
             pendingManualDisconnect = false
+            reconnectAfterPendingDisconnect()
             return
         }
         when (symbologySession.state) {
@@ -295,7 +301,16 @@ class BleScannerSessionCoordinator(
             else -> Unit
         }
         pendingManualDisconnect = false
-        connectionCoordinator.disconnect()
+        val disconnected = connectionCoordinator.disconnect()
+        if (disconnected || connectionCoordinator.connectionState.connectedDevice == null) {
+            reconnectAfterPendingDisconnect()
+        }
+    }
+
+    private fun reconnectAfterPendingDisconnect() {
+        if (!pendingReconnectAfterDisconnect) return
+        pendingReconnectAfterDisconnect = false
+        connectionCoordinator.reconnectKnownDevice()
     }
 
     private fun isConnectedToBoundDevice(): Boolean =

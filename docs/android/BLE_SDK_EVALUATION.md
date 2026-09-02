@@ -2,7 +2,7 @@
 
 ## 判定
 
-2026-09-02時点では、InateckのAndroid SDK候補をCode Matchへ採用しません。`scanner:ble` の安全コアだけを維持し、Android `BluetoothGatt` またはvendor SDKのproduction adapter、Nearby権限、release接続は保留します。このメモは公開SDKの静的評価であり、対象スキャナー実機の通信成功を示すものではありません。
+2026-09-02時点では、InateckのAndroid SDK候補をCode Matchへ採用しません。`scanner:ble` には安全コアと、UUID・endpoint・通知decoderを注入する汎用Android `BluetoothGatt` transportまで実装しました。対象scanner固有profile、vendor SDK、Nearby権限、release接続は保留します。このメモは公開SDKの静的評価であり、対象スキャナー実機の通信成功を示すものではありません。
 
 ## 確認した候補
 

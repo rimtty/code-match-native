@@ -227,6 +227,7 @@ private fun classifyUnavailable(reason: String): ScannerIssue {
             "powered off",
             "power off",
             "bluetooth off",
+            "bluetooth is off",
             "radio off",
             "電源オフ",
             "オフ",

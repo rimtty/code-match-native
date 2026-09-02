@@ -138,7 +138,7 @@ Swift UI 5本の直接対応とは別に、`NavigationTest`は履歴のsession�
 
 - AVFoundation の Preview 層 attach/detach、queued shutdown、metadata clamp、screen-capture policy は Android の別 API であり、上表の `—/P` を同等実装とは扱わない。
 - Android の camera adapter について、実端末での QR→Code 128 実読取、focus 成否、連続箱、回転、background/foreground、権限の実結果は [`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md) に記録する。Compose stage/ROI テストだけでは完了にならない。
-- Android BLE は現 checkout では対象 scanner へ接続する production adapter がなく、Fake と SDK/UUID 非依存 safety core のみである。全 symbology inventory の実読取・QR/Code 128 固定・完全復元・timeout・権限・Pixel/Samsung 通信は未完了。
+- Android BLE はSDK/UUID非依存 safety core、`ExternalScanner` facade、注入profile方式の汎用GATT transport、権限/電源OFF/復元失敗のFake/UI境界まで自動化した。対象scannerの実測profileとrelease接続はなく、全symbology inventoryの実読取・QR/Code 128固定・完全復元・Nearby権限・Pixel/Samsung通信は未完了。
 - iOS 固有の legacy Code128-only recoveryとdiagnosticsからの既知端末migrationにはAndroidの証拠がない。service再生成後の既知端末identity保持、fresh inventory、復元完了前Ready禁止は`BleKnownDeviceRecoveryTest` / `BleKnownDeviceStoreTest`で自動化したが、対象scanner実通信の証拠ではない。
 - Swift UI 5本のうち、Fake接続、一致→duplicate→読み直し→不一致、設定ガイド、実時間auto-advanceは同じdebug Fake/DI/repositoryを通すapp instrumentationへ昇格した。0件破棄、履歴名称変更・詳細・削除、履歴選択のActivity再生成/画面往復/system back、英語1/2 plural、DataStore/Room再オープン、PDF render/Intent契約も自動化済み。OSのprocess kill/relaunch、実DocumentProvider/共有先、TalkBack/Switch Access、実カメラ、対象BLE、Samsung受け入れは引き続き別ゲートである。
 
@@ -151,6 +151,6 @@ Swift UI 5本の直接対応とは別に、`NavigationTest`は履歴のsession�
 - Swift source の `func test` 数: unit 68、UI 5。fixture は JSON として schemaVersion 1、5 case、ID 重複なし。
 - Android の focused Gradle test は Android Studio の JDK と SDK を明示して実行し、次の2系統がともに `BUILD SUCCESSFUL` になった。`./gradlew :core:model:testDebugUnitTest :core:matching:testDebugUnitTest :feature:scan:testDebugUnitTest :scanner:ble:testDebugUnitTest :scanner:fake:testDebugUnitTest`、および `./gradlew :core:export:testDebugUnitTest :feature:history:testDebugUnitTest :feature:settings:testDebugUnitTest :app:testDebugUnitTest`。
 - `:scanner:camera:testDebugUnitTest` は非同期境界13テストを含め `BUILD SUCCESSFUL`、`:scanner:camera:lintDebug` も `BUILD SUCCESSFUL` になった。`BundledMlKitImageDecodeTest` 3件は共有QR/Code 128画像の実decodeと誤形式拒否に成功したが、実機 camera readを意味しない。
-- Android JVM testは全211件、Pixel 7/API 36のinstrumentationは80件が成功した。以前のAndroid 17/API 37.1・16KB emulator記録は63件であり、今回追加した17件はまだ同emulatorで再実行していない。
+- BLE事前実装後のAndroid JVM testは全242件が成功した。Pixel 7/API 36では今回変更した`feature:scan` 14件、`feature:settings` 14件、`scanner:ble` 8件を再実行して全36件が成功した。以前の全module instrumentation 80件とAndroid 17/API 37.1・16KB emulator 63件は別時点の記録であり、今回の差分全体はPRのAPI 31/36 CIで再確認する。
 - Android実装の証拠にiOS Simulatorは使用しない。iOS XCTestは、同一リポジトリの既存iOS版を壊していないことを確認するPR CIの回帰ゲートとしてのみ扱う。
 - 実行可能だった静的確認は source/test 数、fixture 構造、`git diff --check`。実機 camera/BLE の結果はこの表に含めていない。

@@ -1,13 +1,14 @@
 # BLE scanner core
 
-This module contains the SDK-neutral BLE boundary and deterministic protocol
-state used by the Android port. It deliberately does not contain an Android
-`BluetoothGatt` implementation or an Inateck dependency.
+This module contains the SDK-neutral BLE boundary, deterministic protocol
+state, and a generic Android `BluetoothGatt` transport used by the Android
+port. It deliberately does not contain an Inateck dependency or a scanner-
+specific protocol profile.
 
-The future platform adapter supplies discovery/connection callbacks, the
-settings characteristic endpoint, and GATT read/write operations through
-`BleTransport`. UUIDs and scanner command details are therefore discovered and
-validated by the adapter instead of being assumed here.
+`AndroidBleTransport` supplies discovery/connection callbacks and raw GATT
+read/write operations through `BleTransport`. UUIDs, endpoints, framing, and
+scanner commands are injected by a validated profile instead of being assumed
+here.
 
 `BleSymbologySession` receives a `BleSymbologyProfile` containing the endpoint
 and a `BleSymbologyCodec`. The transport always remains a raw `ByteArray`

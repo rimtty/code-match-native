@@ -91,6 +91,15 @@ class SettingsUiStateTest {
     }
 
     @Test
+    fun productionTransportPoweredOffReasonUsesTheDedicatedIssue() {
+        val state = SettingsUiState(
+            connectionState = ConnectionState.Unavailable("Bluetooth is off"),
+        )
+
+        assertEquals(ScannerIssue.POWERED_OFF, state.resolvedScannerIssue)
+    }
+
+    @Test
     fun restoreFailureTakesPriorityOverAStaleConnectionState() {
         val state = SettingsUiState(
             connectionState = ConnectionState.Connected(ScannerDevice("id", "Scanner")),
