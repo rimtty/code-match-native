@@ -25,6 +25,9 @@
     <string name="history_headline">照合履歴</string>
     <string name="history_empty_title">履歴はまだありません</string>
     <string name="history_empty_description">一致した照合結果がここにセッション単位で表示されます。</string>
+    <string name="history_pdf_save_error">PDFを保存できませんでした。</string>
+    <string name="history_pdf_share_error">PDFを共有できませんでした。</string>
+    <string name="history_pdf_retry">再試行</string>
 
     <string name="settings_screen_description">自動次工程と言語などのアプリ設定画面</string>
     <string name="settings_headline">設定</string>

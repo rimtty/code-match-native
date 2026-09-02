@@ -1,8 +1,10 @@
 package jp.rimtty.codematch.history
 
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
+import android.content.ActivityNotFoundException
 import androidx.test.core.app.ApplicationProvider
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -81,7 +83,7 @@ class HistoryPdfBridgeTest {
         val output = ByteArrayOutputStream()
         var openedUri: Uri? = null
 
-        val written = HistoryPdfBridge.writeDocument(
+        val result = HistoryPdfBridge.writeDocument(
             destination = destination,
             openOutputStream = { uri ->
                 openedUri = uri
@@ -90,21 +92,156 @@ class HistoryPdfBridgeTest {
             document = document,
         )
 
-        assertTrue(written)
+        assertTrue(result is HistoryPdfResult.Success)
         assertEquals(destination, openedUri)
         assertArrayEquals(bytes, output.toByteArray())
     }
 
     @Test
-    fun writeDocumentReturnsFalseWhenTheSelectedDestinationCannotBeOpened() {
+    fun writeDocumentReportsWhenTheSelectedDestinationCannotBeOpened() {
         val document = PendingHistoryPdf(byteArrayOf(1, 2, 3), "history.pdf")
 
-        assertFalse(
-            HistoryPdfBridge.writeDocument(
-                destination = Uri.parse("content://documents/missing.pdf"),
-                openOutputStream = { null },
-                document = document,
-            ),
+        val result = HistoryPdfBridge.writeDocument(
+            destination = Uri.parse("content://documents/missing.pdf"),
+            openOutputStream = { null },
+            document = document,
+        )
+
+        assertEquals(
+            HistoryPdfFailure.DESTINATION_OPEN_FAILED,
+            (result as HistoryPdfResult.Failure).reason,
+        )
+    }
+
+    @Test
+    fun generationFailureIsTypedWithoutExposingExceptionDetails() {
+        val result = HistoryPdfBridge.createDocument(
+            session = MatchSession(startedAt = 1L),
+            language = AppLanguage.ENGLISH,
+            zoneId = ZoneId.of("UTC"),
+            generate = { _, _, _ -> error("private payload/path must not escape") },
+            fileName = { _, _, _ -> "history.pdf" },
+        )
+
+        assertEquals(
+            HistoryPdfFailure.GENERATION_FAILED,
+            (result as HistoryPdfResult.Failure).reason,
+        )
+        assertFalse(result.toString().contains("private payload"))
+    }
+
+    @Test
+    fun documentPickerLaunchFailureIsTypedWithoutPropagatingException() {
+        val result = HistoryPdfBridge.launchDocumentPicker(
+            launch = { error("picker/path details") },
+            fileName = "history.pdf",
+        )
+
+        assertEquals(
+            HistoryPdfFailure.SAVE_PICKER_LAUNCH_FAILED,
+            (result as HistoryPdfResult.Failure).reason,
+        )
+        assertFalse(result.toString().contains("picker/path"))
+    }
+
+    @Test
+    fun writeDocumentSeparatesOpenAndWriteFailures() {
+        val document = PendingHistoryPdf(byteArrayOf(1, 2, 3), "history.pdf")
+        val destination = Uri.parse("content://documents/history.pdf")
+
+        val openFailure = HistoryPdfBridge.writeDocument(
+            destination = destination,
+            openOutputStream = { error("open path") },
+            document = document,
+        )
+        val writeFailure = HistoryPdfBridge.writeDocument(
+            destination = destination,
+            openOutputStream = { object : ByteArrayOutputStream() {
+                override fun write(bytes: ByteArray) = error("write path")
+            } },
+            document = document,
+        )
+
+        assertEquals(
+            HistoryPdfFailure.DESTINATION_OPEN_FAILED,
+            (openFailure as HistoryPdfResult.Failure).reason,
+        )
+        assertEquals(
+            HistoryPdfFailure.DESTINATION_WRITE_FAILED,
+            (writeFailure as HistoryPdfResult.Failure).reason,
+        )
+    }
+
+    @Test
+    fun cacheFailureIsTyped() {
+        val result = HistoryPdfBridge.writeShareCache(
+            context = context,
+            session = MatchSession(startedAt = 1L),
+            language = AppLanguage.JAPANESE,
+            zoneId = ZoneId.of("UTC"),
+            writeToCache = { _, _, _, _ -> error("cache path") },
+        )
+
+        assertEquals(
+            HistoryPdfFailure.CACHE_WRITE_FAILED,
+            (result as HistoryPdfResult.Failure).reason,
+        )
+    }
+
+    @Test
+    fun fileProviderAndShareLaunchFailuresAreTyped() {
+        val outsideFile = File(context.filesDir, "not-in-provider-roots.pdf").apply {
+            writeBytes(byteArrayOf(1))
+        }
+        try {
+            // Use an authority with no registered provider so this negative
+            // case cannot poison FileProvider's per-authority path cache for
+            // the valid cache-root test below.
+            val contextWithoutProvider = object : ContextWrapper(context) {
+                override fun getPackageName(): String = "jp.rimtty.codematch.no_provider"
+            }
+            val providerResult = HistoryPdfBridge.createShareChooser(contextWithoutProvider, outsideFile)
+            assertEquals(
+                HistoryPdfFailure.FILE_PROVIDER_FAILED,
+                (providerResult as HistoryPdfResult.Failure).reason,
+            )
+        } finally {
+            outsideFile.delete()
+        }
+
+        val failingContext = object : ContextWrapper(context) {
+            override fun startActivity(intent: Intent) {
+                throw ActivityNotFoundException()
+            }
+        }
+        val launchResult = HistoryPdfBridge.launchShare(
+            context = failingContext,
+            chooser = Intent(Intent.ACTION_CHOOSER),
+        )
+        assertEquals(
+            HistoryPdfFailure.SHARE_LAUNCH_FAILED,
+            (launchResult as HistoryPdfResult.Failure).reason,
+        )
+    }
+
+    @Test
+    fun pickerCancellationIsNotAnErrorAndSelectionRequiresPendingDocument() {
+        val pending = PendingHistoryPdf(byteArrayOf(1), "history.pdf")
+        assertTrue(
+            HistoryPdfBridge.resolveDocumentPickerResult(destination = null, pending = pending)
+                is HistoryPdfPickerResult.Cancelled,
+        )
+        assertTrue(
+            HistoryPdfBridge.resolveDocumentPickerResult(
+                destination = Uri.parse("content://documents/history.pdf"),
+                pending = pending,
+            ) is HistoryPdfPickerResult.Selected,
+        )
+        assertTrue(
+            HistoryPdfBridge.resolveDocumentPickerResult(
+                destination = Uri.parse("content://documents/history.pdf"),
+                pending = null,
+            ) is HistoryPdfPickerResult.MissingPendingDocument,
         )
     }
 
@@ -117,12 +254,14 @@ class HistoryPdfBridgeTest {
         }
 
         try {
-            val chooser = HistoryPdfBridge.createShareChooser(context, file)
+            val chooserResult = HistoryPdfBridge.createShareChooser(context, file)
+            assertTrue("result=$chooserResult", chooserResult is HistoryPdfResult.Success)
+            val chooser = (chooserResult as HistoryPdfResult.Success).value
             assertNotNull(chooser)
-            assertEquals(Intent.ACTION_CHOOSER, chooser?.action)
+            assertEquals(Intent.ACTION_CHOOSER, chooser.action)
 
             @Suppress("DEPRECATION")
-            val sendIntent = chooser?.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+            val sendIntent = chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
             assertNotNull(sendIntent)
             val actualSendIntent = requireNotNull(sendIntent)
             assertEquals(Intent.ACTION_SEND, actualSendIntent.action)
