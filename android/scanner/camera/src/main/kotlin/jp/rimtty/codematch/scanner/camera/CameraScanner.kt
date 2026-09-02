@@ -4,7 +4,11 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Matrix
+import android.graphics.Rect
 import android.os.SystemClock
+import android.util.Size
 import android.view.Surface
 import android.view.View
 import androidx.annotation.MainThread
@@ -17,10 +21,11 @@ import androidx.camera.core.Preview
 import androidx.camera.core.UseCase
 import androidx.camera.core.UseCaseGroup
 import androidx.camera.core.ViewPort
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.camera.view.transform.CoordinateTransform
-import androidx.camera.view.transform.ImageProxyTransformFactory
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
@@ -37,6 +42,9 @@ import jp.rimtty.codematch.scanner.api.ScanPayload
 import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.ceil
+import kotlin.math.floor
 
 /**
  * Platform seams used by [CameraScanner]. Production callers use the public
@@ -124,6 +132,97 @@ private fun createBarcodeScanner(format: ScanFormat): BarcodeScanner {
 
 private fun newCameraAnalysisExecutor(): ExecutorService = Executors.newSingleThreadExecutor {
     Thread(it, "CodeMatch-camera-analysis").apply { isDaemon = true }
+}
+
+/**
+ * Code 128 can encode substantially more one-dimensional modules than common
+ * retail formats. CameraX's 640x480 ImageAnalysis default can reduce a
+ * guide-sized production label below ML Kit's two-pixels-per-module guidance,
+ * even though the PreviewView still looks sharp.
+ *
+ * 1280x960 remains comfortably below two megapixels and keeps the 4:3 aspect
+ * ratio shared by the PreviewView ViewPort. The fallback prevents an
+ * unsupported size from making camera binding fail on a lower-capability
+ * device.
+ */
+internal val CODE_MATCH_ANALYSIS_RESOLUTION: Size = Size(1280, 960)
+
+private fun codeMatchAnalysisResolutionSelector(): ResolutionSelector =
+    ResolutionSelector.Builder()
+        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+        .setResolutionStrategy(
+            ResolutionStrategy(
+                CODE_MATCH_ANALYSIS_RESOLUTION,
+                ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+            ),
+        )
+        .build()
+
+/** Converts a normalized on-screen guide into the exact upright pixel ROI. */
+internal fun CameraGuide.toPixelCropRect(width: Int, height: Int): Rect {
+    require(width > 0 && height > 0) { "Image dimensions must be positive" }
+    val normalized = toRect(width.toFloat(), height.toFloat())
+    val left = floor(normalized.left).toInt().coerceIn(0, width - 1)
+    val top = floor(normalized.top).toInt().coerceIn(0, height - 1)
+    val right = ceil(normalized.right).toInt().coerceIn(left + 1, width)
+    val bottom = ceil(normalized.bottom).toInt().coerceIn(top + 1, height)
+    return Rect(left, top, right, bottom)
+}
+
+/**
+ * Produces the only pixels handed to ML Kit: the current white guide region.
+ * CameraX's ViewPort crop is applied first, then its rotation, so the guide's
+ * normalized coordinates match the portrait preview seen by the user.
+ */
+internal fun cropBitmapToGuide(
+    source: Bitmap,
+    sourceViewPort: Rect,
+    rotationDegrees: Int,
+    guide: CameraGuide,
+): Bitmap {
+    require(rotationDegrees == 0 || rotationDegrees == 90 ||
+        rotationDegrees == 180 || rotationDegrees == 270) {
+        "Rotation must be 0, 90, 180, or 270 degrees"
+    }
+    val sourceBounds = Rect(0, 0, source.width, source.height)
+    val boundedViewPort = Rect(sourceViewPort)
+    if (!boundedViewPort.intersect(sourceBounds) || boundedViewPort.isEmpty) {
+        boundedViewPort.set(sourceBounds)
+    }
+    val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+    val uprightViewPort = Bitmap.createBitmap(
+        source,
+        boundedViewPort.left,
+        boundedViewPort.top,
+        boundedViewPort.width(),
+        boundedViewPort.height(),
+        matrix,
+        false,
+    )
+    val guideRect = guide.toPixelCropRect(uprightViewPort.width, uprightViewPort.height)
+    val guideBitmap = Bitmap.createBitmap(
+        uprightViewPort,
+        guideRect.left,
+        guideRect.top,
+        guideRect.width(),
+        guideRect.height(),
+    )
+    if (uprightViewPort !== source && uprightViewPort !== guideBitmap) {
+        uprightViewPort.recycle()
+    }
+    return guideBitmap
+}
+
+/** Owns temporary ROI pixels until ML Kit finishes its asynchronous task. */
+internal class PendingBarcodeAnalysis(
+    val task: Task<List<Barcode>>,
+    private val release: () -> Unit = {},
+) : AutoCloseable {
+    private val released = AtomicBoolean(false)
+
+    override fun close() {
+        if (released.compareAndSet(false, true)) release()
+    }
 }
 
 private data class ViewPortSnapshot(
@@ -596,6 +695,7 @@ class CameraScanner private constructor(
                         preview = builtPreview
                         val builtAnalysis = ImageAnalysis.Builder()
                             .setTargetRotation(targetRotation)
+                            .setResolutionSelector(codeMatchAnalysisResolutionSelector())
                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                             .setImageQueueDepth(1)
                             .build()
@@ -802,20 +902,9 @@ internal class MlKitImageAnalyzer(
     private val onError: (CameraError) -> Unit,
     private val mainExecutor: java.util.concurrent.Executor,
     private val scannerFactory: (ScanFormat) -> BarcodeScanner = ::createBarcodeScanner,
-    private val processFrame: (BarcodeScanner, ImageProxy) -> Task<List<Barcode>> =
-        { scanner, imageProxy ->
-            val mediaImage = imageProxy.image
-                ?: throw IllegalArgumentException("ImageProxy has no media image")
-            scanner.process(
-                InputImage.fromMediaImage(
-                    mediaImage,
-                    imageProxy.imageInfo.rotationDegrees,
-                ),
-            )
-        },
+    private val processFrame: ((BarcodeScanner, ImageProxy, CameraGuide) -> PendingBarcodeAnalysis)? = null,
 ) : ImageAnalysis.Analyzer, AutoCloseable {
     private val gate = AnalysisFrameGate()
-    private val transformFactory = ImageProxyTransformFactory()
     private val lock = Any()
     private val retiredScanners = ArrayList<BarcodeScanner>()
 
@@ -929,11 +1018,16 @@ internal class MlKitImageAnalyzer(
             return
         }
 
+        var pendingAnalysis: PendingBarcodeAnalysis? = null
         try {
-            processFrame(localScanner, imageProxy)
+            val currentGuide = guideProvider()
+            val analysis = processFrame?.invoke(localScanner, imageProxy, currentGuide)
+                ?: processGuideRegion(localScanner, imageProxy, currentGuide)
+            pendingAnalysis = analysis
+            analysis.task
                 .addOnSuccessListener(mainExecutor) { barcodes ->
                     if (!closed && localGeneration == generation && localFormat == expectedFormat) {
-                        deliverFirstAcceptedBarcode(barcodes, imageProxy, localFormat)
+                        deliverFirstAcceptedBarcode(barcodes, localFormat)
                     }
                 }
                 .addOnFailureListener(mainExecutor) {
@@ -947,11 +1041,13 @@ internal class MlKitImageAnalyzer(
                     }
                 }
                 .addOnCompleteListener(mainExecutor) {
+                    analysis.close()
                     imageProxy.close()
                     gate.release()
                     closeRetiredIfIdle()
                 }
         } catch (_: Exception) {
+            pendingAnalysis?.close()
             imageProxy.close()
             gate.release()
             closeRetiredIfIdle()
@@ -992,73 +1088,13 @@ internal class MlKitImageAnalyzer(
 
     private fun deliverFirstAcceptedBarcode(
         barcodes: List<Barcode>,
-        imageProxy: ImageProxy,
         expected: ScanFormat,
     ) {
-        val preview = previewViewProvider() ?: return
-        val width = preview.width
-        val height = preview.height
-        if (width <= 0 || height <= 0) return
-
-        val targetTransform = preview.outputTransform ?: return
-        val sourceTransform = try {
-            // ML Kit's Barcode.boundingBox is expressed after the rotation
-            // supplied to InputImage, so ImageProxyTransformFactory's default
-            // rotation=false/crop=false coordinate space is intentional.
-            transformFactory.getOutputTransform(imageProxy)
-        } catch (_: Exception) {
-            return
-        }
-        val coordinateTransform = try {
-            CoordinateTransform(sourceTransform, targetTransform)
-        } catch (_: Exception) {
-            return
-        }
-        val currentGuide = guideProvider()
-
-        // ML Kit can return more than one candidate. The first candidate whose
-        // type, decoded value, and transformed bounds satisfy the guide wins.
+        // ML Kit receives only the white-guide bitmap, so a candidate cannot
+        // originate from another label elsewhere in the camera frame.
         for (barcode in barcodes) {
             if (barcode.format.toScanFormat() != expected) continue
             val rawValue = barcode.rawValue?.takeIf { it.isNotBlank() } ?: continue
-            val mappedCorners = barcode.cornerPoints
-                ?.takeIf { it.size >= 4 }
-                ?.let { points ->
-                    floatArrayOf(
-                        points[0].x.toFloat(), points[0].y.toFloat(),
-                        points[1].x.toFloat(), points[1].y.toFloat(),
-                        points[2].x.toFloat(), points[2].y.toFloat(),
-                        points[3].x.toFloat(), points[3].y.toFloat(),
-                    )
-                }
-                ?: barcode.boundingBox?.let { bounds ->
-                    floatArrayOf(
-                        bounds.left.toFloat(), bounds.top.toFloat(),
-                        bounds.right.toFloat(), bounds.top.toFloat(),
-                        bounds.right.toFloat(), bounds.bottom.toFloat(),
-                        bounds.left.toFloat(), bounds.bottom.toFloat(),
-                    )
-                }
-                ?: continue
-            try {
-                // Keep the four points rather than only mapRect's enclosing
-                // box. A rotated candidate must pass the guide at every
-                // transformed corner, including after a crop/rotation.
-                coordinateTransform.mapPoints(mappedCorners)
-            } catch (_: Exception) {
-                continue
-            }
-            if (mappedCorners.any { !it.isFinite() }) {
-                continue
-            }
-            val candidate = CameraQuad(
-                topLeft = CameraPoint(mappedCorners[0], mappedCorners[1]),
-                topRight = CameraPoint(mappedCorners[2], mappedCorners[3]),
-                bottomRight = CameraPoint(mappedCorners[4], mappedCorners[5]),
-                bottomLeft = CameraPoint(mappedCorners[6], mappedCorners[7]),
-            )
-            if (!currentGuide.accepts(candidate, width.toFloat(), height.toFloat())) continue
-
             // Only this sanitized, text-bearing event leaves the analyzer. It
             // is delivered on main and is never written to a log or file here.
             onPayload(
@@ -1070,6 +1106,40 @@ internal class MlKitImageAnalyzer(
                 ),
             )
             return
+        }
+    }
+
+    private fun processGuideRegion(
+        scanner: BarcodeScanner,
+        imageProxy: ImageProxy,
+        guide: CameraGuide,
+    ): PendingBarcodeAnalysis {
+        // A detached PreviewView must not continue accepting frames from an
+        // old screen, even if CameraX has not completed unbind yet.
+        if (previewViewProvider() == null) {
+            throw IllegalStateException("Camera preview is detached")
+        }
+        val sourceBitmap = imageProxy.toBitmap()
+        var guideBitmap: Bitmap? = null
+        try {
+            guideBitmap = cropBitmapToGuide(
+                source = sourceBitmap,
+                sourceViewPort = imageProxy.cropRect,
+                rotationDegrees = imageProxy.imageInfo.rotationDegrees,
+                guide = guide,
+            )
+            if (guideBitmap !== sourceBitmap) sourceBitmap.recycle()
+            val ownedBitmap = requireNotNull(guideBitmap)
+            val task = scanner.process(InputImage.fromBitmap(ownedBitmap, 0))
+            return PendingBarcodeAnalysis(task) {
+                if (!ownedBitmap.isRecycled) ownedBitmap.recycle()
+            }
+        } catch (error: Exception) {
+            if (guideBitmap != null && guideBitmap !== sourceBitmap && !guideBitmap.isRecycled) {
+                guideBitmap.recycle()
+            }
+            if (!sourceBitmap.isRecycled) sourceBitmap.recycle()
+            throw error
         }
     }
 

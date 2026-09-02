@@ -4,11 +4,13 @@ import android.Manifest
 import android.app.Activity
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.media.Image
 import android.view.Surface
 import androidx.camera.core.Camera
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageInfo
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.UseCase
@@ -57,6 +59,44 @@ class CameraScannerAsyncTest {
     }
 
     @Test
+    fun `guide crop excludes every pixel outside the white frame`() {
+        val source = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.RED)
+            for (y in 2 until 6) {
+                for (x in 2 until 6) setPixel(x, y, Color.GREEN)
+            }
+        }
+
+        val cropped = cropBitmapToGuide(
+            source = source,
+            sourceViewPort = Rect(0, 0, 8, 8),
+            rotationDegrees = 0,
+            guide = CameraGuide(.25f, .25f, .75f, .75f),
+        )
+
+        assertEquals(4, cropped.width)
+        assertEquals(4, cropped.height)
+        for (y in 0 until cropped.height) {
+            for (x in 0 until cropped.width) {
+                assertEquals(Color.GREEN, cropped.getPixel(x, y))
+            }
+        }
+        cropped.recycle()
+        source.recycle()
+    }
+
+    @Test
+    fun `portrait Code 128 analysis keeps only the short guide band`() {
+        val guide = CameraGuide(.10f, .38f, .90f, .62f)
+
+        val crop = guide.toPixelCropRect(width = 960, height = 1_280)
+
+        assertEquals(Rect(96, 486, 864, 794), crop)
+        assertEquals(768, crop.width())
+        assertEquals(308, crop.height())
+    }
+
+    @Test
     fun `a completed provider binds once when viewport is unchanged`() {
         val future = ManualProviderFuture()
         val provider = RecordingCameraProvider()
@@ -69,6 +109,13 @@ class CameraScannerAsyncTest {
 
         assertEquals(CameraCaptureState.RUNNING, scanner.captureState)
         assertEquals(1, provider.boundGroups.size)
+        val analysis = provider.boundGroups.single().useCases
+            .filterIsInstance<ImageAnalysis>()
+            .single()
+        assertEquals(
+            CODE_MATCH_ANALYSIS_RESOLUTION,
+            analysis.resolutionSelector?.resolutionStrategy?.boundSize,
+        )
         assertEquals(1, provider.unbindCalls)
         scanner.close()
     }
@@ -271,7 +318,7 @@ class CameraScannerAsyncTest {
             onError = {},
             mainExecutor = directExecutor,
             scannerFactory = { barcodeScanner },
-            processFrame = { _, _ -> pendingResult.task },
+            processFrame = { _, _, _ -> PendingBarcodeAnalysis(pendingResult.task) },
         )
         val dependencies = CameraScannerDependencies(
             providerFutureFactory = { future },
@@ -326,7 +373,7 @@ class CameraScannerAsyncTest {
             onError = { errors += it },
             mainExecutor = directExecutor,
             scannerFactory = { barcodeScanner },
-            processFrame = { _, _ -> pendingResult.task },
+            processFrame = { _, _, _ -> PendingBarcodeAnalysis(pendingResult.task) },
         )
         val dependencies = CameraScannerDependencies(
             providerFutureFactory = { future },
@@ -399,9 +446,11 @@ class CameraScannerAsyncTest {
             onError = {},
             mainExecutor = directExecutor,
             scannerFactory = { scanners.removeFirst() },
-            processFrame = { scanner, _ ->
-                if (scanner === firstScanner) pendingResult.task
-                else Tasks.forResult(emptyList())
+            processFrame = { scanner, _, _ ->
+                PendingBarcodeAnalysis(
+                    if (scanner === firstScanner) pendingResult.task
+                    else Tasks.forResult(emptyList()),
+                )
             },
         )
 
@@ -430,7 +479,7 @@ class CameraScannerAsyncTest {
             onError = { errors += it },
             mainExecutor = directExecutor,
             scannerFactory = { barcodeScanner },
-            processFrame = { _, _ -> pendingResult.task },
+            processFrame = { _, _, _ -> PendingBarcodeAnalysis(pendingResult.task) },
         )
 
         assertTrue(analyzer.updateExpectedFormat(ScanFormat.QR))
