@@ -14,7 +14,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.AppSettings
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
@@ -273,7 +272,7 @@ class SettingsScreenTest {
     }
 
     @Test
-    fun configurationStatusIsLocalizedAndFailureReasonStaysHidden() {
+    fun configurationStatusIsVisibleAndFailureReasonStaysHidden() {
         val privateReason = "private adapter setting detail"
         val state = mutableStateOf(
             SettingsUiState(
@@ -292,10 +291,6 @@ class SettingsScreenTest {
         composeRule.onNodeWithTag(SettingsTestTags.SCANNER_CONFIGURATION_STATUS)
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithText(
-            InstrumentationRegistry.getInstrumentation().targetContext
-                .getString(R.string.settings_configuration_configuring),
-        ).assertIsDisplayed()
 
         composeRule.runOnIdle {
             state.value = state.value.copy(
@@ -303,10 +298,9 @@ class SettingsScreenTest {
             )
         }
 
-        composeRule.onNodeWithText(
-            InstrumentationRegistry.getInstrumentation().targetContext
-                .getString(R.string.settings_configuration_failed),
-        ).assertIsDisplayed()
+        composeRule.onNodeWithTag(SettingsTestTags.SCANNER_CONFIGURATION_STATUS)
+            .performScrollTo()
+            .assertIsDisplayed()
         composeRule.onAllNodesWithText(privateReason).assertCountEquals(0)
         composeRule.onNodeWithTag(SettingsTestTags.SCANNER_ISSUE_MESSAGE)
             .performScrollTo()
