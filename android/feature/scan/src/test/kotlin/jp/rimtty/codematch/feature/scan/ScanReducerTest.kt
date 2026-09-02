@@ -16,6 +16,11 @@ class ScanReducerTest {
         "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private val barcodePayload = "BCJH-52-81GG@1N5X0C"
     private val mismatchBarcodePayload = "BCJH-55-81GG@1KVV0C"
+    private val firstBoxQr =
+        "DAAL134150BCJH5581GG020000120000001200A      000000BAB15LAB07   0*"
+    private val secondBoxQr =
+        "DAAL134140BCJH5581GG020000120000001200A      000000BAB15LAB07   0*"
+    private val sharedBoxBarcode = "BCJH-55-81GG@1KVQ0C"
 
     @Test
     fun startSessionMovesIdleToWaitingQr() {
@@ -81,6 +86,94 @@ class ScanReducerTest {
         assertEquals(0, result.state.matchedCount)
         assertTrue(result.effects.none { it is ScanEffect.RecordMatch })
         assertNull(result.state.autoAdvanceSecondsRemaining)
+    }
+
+    @Test
+    fun differentBoxQrsWithSameBarcodeAreBothRecorded() {
+        val reducer = ScanReducer()
+        var state = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+
+        state = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.qr(firstBoxQr)),
+        ).state
+        val first = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.code128(sharedBoxBarcode)),
+        )
+        assertEquals(MatchResult.MATCH, first.state.result)
+        assertEquals(1, first.state.matchedCount)
+        assertEquals(1, first.effects.filterIsInstance<ScanEffect.RecordMatch>().size)
+
+        state = reducer.reduce(first.state, ScanEvent.ManualNext).state
+        state = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.qr(secondBoxQr)),
+        ).state
+        val second = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.code128(sharedBoxBarcode)),
+        )
+
+        assertEquals(MatchResult.MATCH, second.state.result)
+        assertEquals(2, second.state.matchedCount)
+        assertEquals(2, second.effects.filterIsInstance<ScanEffect.RecordMatch>().single().matchNumber)
+    }
+
+    @Test
+    fun sameBoxQrCannotBeCountedTwiceInOneActiveSession() {
+        val reducer = ScanReducer()
+        var state = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+        state = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.qr(firstBoxQr)),
+        ).state
+        state = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.code128(sharedBoxBarcode)),
+        ).state
+        assertEquals(MatchResult.MATCH, state.result)
+
+        state = reducer.reduce(state, ScanEvent.ManualNext).state
+        state = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.qr(firstBoxQr)),
+        ).state
+        val duplicate = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.code128(sharedBoxBarcode)),
+        )
+
+        assertEquals(MatchResult.DUPLICATE, duplicate.state.result)
+        assertEquals(1, duplicate.state.matchedCount)
+        assertTrue(duplicate.effects.none { it is ScanEffect.RecordMatch })
+    }
+
+    @Test
+    fun restoredBoxQrIsDuplicateIgnoringCaseAndSurroundingWhitespace() {
+        val reducer = ScanReducer()
+        var state = reducer.reduce(
+            ScanReducer.initial(
+                autoAdvanceEnabled = true,
+                existingMatchedCount = 1,
+                matchedQrPayloads = listOf(firstBoxQr),
+            ),
+            ScanEvent.StartSession,
+        ).state
+        state = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.qr(" ${firstBoxQr.lowercase()}\n")),
+        ).state
+        val duplicate = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.code128(sharedBoxBarcode)),
+        )
+
+        assertEquals(MatchResult.DUPLICATE, duplicate.state.result)
+        assertEquals(1, duplicate.state.matchedCount)
+        assertTrue(duplicate.effects.none { it is ScanEffect.RecordMatch })
+        assertTrue(duplicate.effects.contains(ScanEffect.AutoAdvanceCancelled))
+        assertNull(duplicate.state.autoAdvanceSecondsRemaining)
     }
 
     @Test

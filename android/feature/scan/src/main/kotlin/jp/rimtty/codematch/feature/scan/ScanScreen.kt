@@ -715,6 +715,7 @@ private fun ScanResultCard(
 ) {
     val result = state.scan as? ScanState.Result ?: return
     val isMatch = result.result == MatchResult.MATCH
+    val isDuplicate = result.result == MatchResult.DUPLICATE
     val countdownSeconds = state.countdownSeconds
     val qrPart = CodeMatcher.partNumberFromQr(result.qrPayload)
         ?.let(CodeMatcher::formatPartNumber)
@@ -740,7 +741,11 @@ private fun ScanResultCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    if (isMatch) Icons.Outlined.CheckCircle else Icons.Outlined.WarningAmber,
+                    when {
+                        isMatch -> Icons.Outlined.CheckCircle
+                        isDuplicate -> Icons.Outlined.Refresh
+                        else -> Icons.Outlined.WarningAmber
+                    },
                     contentDescription = null,
                     tint = if (isMatch) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(36.dp),
@@ -751,6 +756,8 @@ private fun ScanResultCard(
                         stringResource(
                             if (isMatch) {
                                 R.string.scan_status_complete_match
+                            } else if (isDuplicate) {
+                                R.string.scan_status_duplicate
                             } else {
                                 R.string.scan_status_mismatch
                             },
@@ -762,6 +769,8 @@ private fun ScanResultCard(
                         stringResource(
                             if (isMatch) {
                                 R.string.scan_result_match_description
+                            } else if (isDuplicate) {
+                                R.string.scan_result_duplicate_description
                             } else {
                                 R.string.scan_result_mismatch_description
                             },

@@ -112,6 +112,34 @@ class ScanScreenTest {
     }
 
     @Test
+    fun duplicateResultExplainsThatBoxWasNotCountedAndDoesNotCountdown() {
+        val session = ScanSessionState(
+            scan = ScanState.Result(
+                qrPayload = qrPayload,
+                barcodePayload = barcodePayload,
+                result = MatchResult.DUPLICATE,
+                matchedCount = 1,
+            ),
+            autoAdvanceEnabled = true,
+        )
+        composeRule.setContent {
+            ScanScreen(
+                ScanUiState.fromSession(session, sessionActive = true),
+                onAction = {},
+            )
+        }
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(
+            context.getString(R.string.scan_status_duplicate),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.scan_result_duplicate_description),
+        ).assertIsDisplayed()
+        composeRule.onAllNodesWithTag("scan_countdown").assertCountEquals(0)
+    }
+
+    @Test
     fun debugDemoToolsRequireExplicitOptIn() {
         val hiddenActions = mutableListOf<ScanUiAction>()
         val debugState = ScanUiState(

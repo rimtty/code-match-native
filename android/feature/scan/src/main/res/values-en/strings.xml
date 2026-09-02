@@ -65,6 +65,7 @@
     <string name="scan_result_barcode_part">Code 128 part number</string>
     <string name="scan_result_match_description">The part numbers match. This box was recorded.</string>
     <string name="scan_result_mismatch_description">The part numbers do not match. Nothing was recorded.</string>
+    <string name="scan_result_duplicate_description">This code was not added to the match count. Scan the next code.</string>
     <string name="scan_invalid_session">Start a session before scanning.</string>
     <string name="scan_invalid_order">Wrong scan order. Scan the format shown on screen.</string>
     <string name="scan_invalid_empty">An empty scan cannot be used.</string>
@@ -74,6 +75,7 @@
     <string name="scan_demo_mismatch">Show mismatch</string>
     <string name="scan_status_complete_match">Match</string>
     <string name="scan_status_mismatch">Mismatch</string>
+    <string name="scan_status_duplicate">Already checked</string>
     <string name="scan_expected_format_qr">Waiting for QR</string>
     <string name="scan_expected_format_code128">Waiting for Code 128</string>
 </resources>

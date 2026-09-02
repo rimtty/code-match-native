@@ -52,6 +52,17 @@ class ScanFeedbackEventMapperTest {
     }
 
     @Test
+    fun duplicateBoxProducesFailureCueWithoutMatchCue() {
+        assertEquals(
+            listOf(ScanFeedbackEvent.MISMATCH),
+            ScanFeedbackEventMapper.map(
+                effects = listOf(ScanEffect.ScanAccepted, ScanEffect.AutoAdvanceCancelled),
+                result = MatchResult.DUPLICATE,
+            ),
+        )
+    }
+
+    @Test
     fun invalidInputProducesOnlyInvalidCue() {
         assertEquals(
             listOf(ScanFeedbackEvent.INVALID_SCAN),
