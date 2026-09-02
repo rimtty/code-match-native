@@ -11,6 +11,7 @@
 | 不一致・無効入力 | 照合状態とフィードバックにだけ使う | 履歴、診断、外部送信へ保存しない |
 | BLE診断 | 接続・設定の種別と連番だけを最大20件表示 | scan payloadを保存・表示・送信しない |
 | BLE復旧snapshot | 現在は安全コアの保存境界だけ。releaseアプリのBLE adapterには未接続 | Auto Backupとdevice-to-device transferから除外する |
+| BLE既知端末identity | 同じ除外DataStoreへversion/profile、device ID、表示名だけを保存。設定値・scan payload・raw frameは含めない | Auto Backupとdevice-to-device transferから除外する |
 | PDF | ユーザーが保存を選んだ時は選択先へ、共有を選んだ時は専用cacheからSharesheetへ渡す | 明示操作の時だけアプリ領域外へ出る |
 
 履歴のpayloadは「カメラ画像」ではありませんが、業務データとして扱います。端末内保存が不要な環境では、履歴の削除と端末管理ポリシーを利用してください。

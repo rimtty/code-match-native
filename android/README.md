@@ -52,8 +52,8 @@ Release検証は、まず`./gradlew :app:dependencies --configuration releaseRun
 生成したAPK/AABを検査します。ネットワーク／Nearby権限、debug/Fake入口、広すぎる
 `FileProvider`、カメラ画像/frameの保存や不意のpayload書き出し、analytics/crash SDKの依存を検出した時は失敗します。
 Room、Preferences DataStore、将来のBLE復旧／既知端末状態はcloud Auto Backupと
-device-to-device transferの両方から除外します。BLE snapshotのファイル名は
-`files/datastore/codematch-ble-symbology.preferences_pb`です。PDF共有で
+device-to-device transferの両方から除外します。BLE snapshotとversion/profile付き既知端末identityは
+`files/datastore/codematch-ble-symbology.preferences_pb`だけを使い、scan payloadや設定値を既知端末envelopeへ含めません。PDF共有で
 `FileProvider`が公開するのは専用の`cache/codematch-pdf/`だけです。
 
 checkerは依存ライブラリを追加せず、lockfile、SBOM、その他の生成物をリポジトリへ

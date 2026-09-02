@@ -497,7 +497,7 @@ BLE以外は約31〜49人日、BLEはSDKとfirmwareの不確実性を除き約8�
 - 日英、音設定、auto-advance、PDF
 - Fake camera/BLEで状態遷移とCompose UI test
 
-M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触覚、release Fake境界はこのcheckoutに含まれる。app E2Eでは0件破棄、履歴名称変更・詳細・削除、履歴選択のActivity再生成/画面往復/back stackを確認し、PDFは複数ページ実renderとSAF/FileProvider契約を自動検査する。ローカル `origin/master` に見えるPR #14を含むM2 merge commitと、現在のM3/M4開発ブランチの結果を混同しない。OS process kill、実DocumentProvider/共有先、TalkBack、font scale 2.0、複数OEMの人手確認は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)の未完了ゲートとして残る。
+M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触覚、release Fake境界はこのcheckoutに含まれる。app E2Eでは0件破棄、履歴名称変更・詳細・削除、履歴選択のActivity再生成/画面往復/back stackを確認し、PDFは複数ページ実renderとSAF/FileProvider契約、一般化した失敗通知と再試行を自動検査する。scan checkpointはRoom schema v2で工程、受理済み値、結果、件数、入力元を保持し、MATCH記録と同一transactionで更新する。320dp/840dpとfont scale 1.3/2.0の主要操作到達、per-app language同期も自動化した。ローカル `origin/master` に見えるPR #14を含むM2 merge commitと、現在のM3/M4開発ブランチの結果を混同しない。OS process kill/relaunchの実操作、実DocumentProvider/共有先、TalkBack、Switch Access、複数OEMの人手確認は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)の未完了ゲートとして残る。
 
 ### M3: Camera production ready
 
@@ -515,7 +515,7 @@ M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触�
 - Pixel系/Samsung系で実機回帰
 - Swift版との機能対応表に未完了がない
 
-準備済み: SDK/UUID非依存のBLE safety core、1 command直列化、3秒timeout後のtransport reset必須化、QR+Code 128固定mode、全reported item snapshot、復元完了前Ready禁止、payload parser、750ms重複境界のJVM test。設定画面の3つのCode 128は同梱ML Kitでexact decode済みだが、Android実通信adapter、設定profile、永続snapshotのアプリ接続、Nearby devices権限、対象scannerでの設定コード読取と受け入れ試験は未完了のため、M4完了とは扱わない。
+準備済み: SDK/UUID非依存のBLE safety core、1 command直列化、3秒timeout後のtransport reset必須化、QR+Code 128固定mode、全reported item snapshot、復元完了前Ready禁止、payload parser、750ms重複境界のJVM test。snapshotと既知端末identityはbackup/D2D除外済みの同一DataStoreでversion/profileを検証し、service再生成後もfresh inventory→完全復元が終わるまでReadyにしないAndroid testを持つ。設定画面の3つのCode 128は同梱ML Kitでexact decode済みだが、Android実通信adapter、実測設定profile、releaseアプリ接続、Nearby devices権限、対象scannerでの設定コード読取と受け入れ試験は未完了のため、M4完了とは扱わない。
 
 候補SDKのライセンス、ABI、target SDK、権限、rawログ、scan callbackの静的評価も未解決であり、[`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)に採用保留理由を記録する。対象scanner実機と正式な供給条件が確定するまで、BLE成功やfull parityを宣言しない。
 

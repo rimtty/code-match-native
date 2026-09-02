@@ -51,11 +51,11 @@
 
 | # | Swift の意図（テスト） | Android の証拠 | 判定 |
 |---:|---|---|:---:|
-| 1 | Preview 層が capture session を付け替え・detach できる（`CodeMatcherTests.swift:8`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::a completed provider binds once when viewport is unchanged` + `::pending provider future restarts with the latest QR to Code 128 format` + `::pending provider future retries after viewport changes`/`::pending provider future retries after display rotation changes`。CameraX use-case binding の証拠であり、AVCapture Preview session の detach 同等ではない | P |
-| 2 | Preview dismantle で session を外し復旧を無効化する（`CodeMatcherTests.swift:23`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::lifecycle stop invalidates a pending provider callback` は停止後の stale provider callback を無効化するが、Preview dismantle の session detach までは未検査 | P |
-| 3 | inactive 化で再利用 session を detach/rebind する（`CodeMatcherTests.swift:35`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::pending provider future retries after viewport changes` / `::pending provider future retries after display rotation changes` は表示条件変化時の CameraX rebind を検査。inactive の再利用 session そのものではない | P |
+| 1 | Preview 層が capture session を付け替え・detach できる（`CodeMatcherTests.swift:8`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::a completed provider binds once when viewport is unchanged` + `::pending provider future restarts with the latest QR to Code 128 format` + viewport/rotation変更時の再bind。AndroidではCameraX use-caseのunbind/rebindで同じ資源境界を固定する | D（CameraX境界） |
+| 2 | Preview dismantle で session を外し復旧を無効化する（`CodeMatcherTests.swift:23`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::preview dismantle unbind invalidates a pending provider callback` + `::preview dismantle invalidates an in-flight ML Kit failure callback`。dismantle後のprovider/解析callbackを世代で破棄する | D |
+| 3 | inactive 化で再利用 session を detach/rebind する（`CodeMatcherTests.swift:35`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::inactive stop then start rebinds the same host after teardown` + `::clearing the format stops then rebinds on the same attached host` | D |
 | 4 | queued teardown 完了まで scanner を保持する（`CodeMatcherTests.swift:50`、`CameraPreviewTests`） | `CameraScannerAsyncTest.kt::unbind completion waits for an in-flight ML Kit task to drain` + `CameraStopBoundaryTest.kt::sessionEndWaitsForDelayedHostStopCompletion` は処理中frame完了前に論理sessionを終了しないことを検査する | D |
-| 5 | metadata region を正規化座標へ clamp する（`CodeMatcherTests.swift:70`、`CameraPreviewTests`） | `CameraUiContractTest.kt::roiMatchesTheOverlayGeometryForEachFormat` は overlay ROI の形状のみ | P |
+| 5 | metadata region を正規化座標へ clamp する（`CodeMatcherTests.swift:70`、`CameraPreviewTests`） | `CameraModelsTest.kt::roi rejects coordinates outside the preview instead of clamping them` + `::roi accepts coordinates exactly on the normalized preview boundary`。Androidは範囲外をclampせず拒否する安全側policyで同じ正規化境界を保証 | D（Android reject policy） |
 | 6 | screen capture 中でも multitasking camera 対応時は開始し、非対応時だけ block（`CodeMatcherTests.swift:85`、`CameraPreviewTests`） | Android の permission 状態テストはあるが、この screen-capture policy は未実装・未検査 | — |
 | 7 | Code 128 から品番を抽出する（`:125`） | `CodeMatcherTest.kt::partNumberFromBarcodeUsesTextBeforeFirstAt` | D |
 | 8 | 標準 QR の固定位置と非標準入力の品番抽出（`:132`） | `CodeMatcherTest.kt::partNumberFromQrReadsTheStandardCardAndItemPositions` | D |
@@ -129,7 +129,7 @@ UI テストは複数の層・起動引数・永続ストレージを一度に�
 | 1 | Fake Bluetooth 接続、camera 切替、逆順拒否、QR→Code 128、一致・件数（`CodeMatchUITests.swift:55`） | `AppFlowInstrumentationTest.kt::fakeScannerConnectsCameraSwitchRejectsReverseOrderAndRecordsTwoMatches` は同じdebug Fake、app navigation、ViewModel、repositoryを通す | D（debug Fake） |
 | 2 | 設定ガイド3段、拡大表示、検索・接続・切断・既知端末 reconnect（`CodeMatchUITests.swift:103`） | `AppFlowInstrumentationTest.kt::settingsGuideAndFakeScannerReconnectAreConnectedThroughTheApp` + `Code128BarcodeTest` | D（debug Fake） |
 | 3 | 一致→duplicate→reset→不一致、件数、終了、history 掲載（`CodeMatchUITests.swift:148`） | `AppFlowInstrumentationTest.kt::fakeScannerMatchDuplicateRereadAndMismatchPreserveCountAndHistory` は同じdebug Fake、app navigation、ViewModel、Roomを通し、2箱だけの保存と不一致非保存を検査 | D（debug Fake） |
-| 4 | 音選択、音量、日英切替、再起動後 language 維持（`CodeMatchUITests.swift:202`） | `SettingsScreenTest.kt::scannerActionsAndSoundLanguageCallbacksAreEmitted`、`FeedbackContractTest.kt`、`AppFlowInstrumentationTest.kt::languageSelectionPersistsAcrossActivityRecreation`、`SettingsRepositoryTest.kt::languageSurvivesDataStoreReopen`。Activity再生成とDataStore再オープンは検査済みだが、OSによるforce-stop/relaunch UIは未検査 | P |
+| 4 | 音選択、音量、日英切替、再起動後 language 維持（`CodeMatchUITests.swift:202`） | `SettingsScreenTest.kt::scannerActionsAndSoundLanguageCallbacksAreEmitted`、`FeedbackContractTest.kt`、`AppFlowInstrumentationTest.kt::languageSelectionPersistsAcrossActivityRecreation`、`SettingsRepositoryTest.kt::languageSurvivesDataStoreReopen`、`AppLanguageSynchronizerTest` 6件。Activity再生成、DataStore再オープン、Android per-app languageとの双方向no-loop契約は検査済みだが、OS設定画面の実操作とforce-stop/relaunch UIは未検査 | P |
 | 5 | auto-advance ON、countdown 表示、次の QR へ遷移（`CodeMatchUITests.swift:265`） | `AppFlowInstrumentationTest.kt::enabledOneSecondAutoAdvanceMovesFromResultToNextQrInRealTime` は設定保存、実時間countdown、次QR工程を同じapp graphで検査 | D |
 
 Swift UI 5本の直接対応とは別に、`NavigationTest`は履歴のsession→group→box選択がActivity再生成とHistory→Settings→Scan→History往復後も復元されること、およびcompact system backがbox→group→session→listを順に戻ることを実app graphで検査する。`HistoryPdfBridgeTest`と`HistoryPdfExporterInstrumentationTest`は、A4複数ページPDFの実render、専用cache、SAF byte保存、共有Intent/FileProvider契約を検査するが、実DocumentProvider/共有先アプリの操作を代替しない。
@@ -139,7 +139,7 @@ Swift UI 5本の直接対応とは別に、`NavigationTest`は履歴のsession�
 - AVFoundation の Preview 層 attach/detach、queued shutdown、metadata clamp、screen-capture policy は Android の別 API であり、上表の `—/P` を同等実装とは扱わない。
 - Android の camera adapter について、実端末での QR→Code 128 実読取、focus 成否、連続箱、回転、background/foreground、権限の実結果は [`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md) に記録する。Compose stage/ROI テストだけでは完了にならない。
 - Android BLE は現 checkout では対象 scanner へ接続する production adapter がなく、Fake と SDK/UUID 非依存 safety core のみである。全 symbology inventory の実読取・QR/Code 128 固定・完全復元・timeout・権限・Pixel/Samsung 通信は未完了。
-- iOS 固有の legacy Code128-only recovery、diagnostics からの既知端末 migration、service 再起動後の既知端末保持には Android の証拠がない。
+- iOS 固有の legacy Code128-only recoveryとdiagnosticsからの既知端末migrationにはAndroidの証拠がない。service再生成後の既知端末identity保持、fresh inventory、復元完了前Ready禁止は`BleKnownDeviceRecoveryTest` / `BleKnownDeviceStoreTest`で自動化したが、対象scanner実通信の証拠ではない。
 - Swift UI 5本のうち、Fake接続、一致→duplicate→読み直し→不一致、設定ガイド、実時間auto-advanceは同じdebug Fake/DI/repositoryを通すapp instrumentationへ昇格した。0件破棄、履歴名称変更・詳細・削除、履歴選択のActivity再生成/画面往復/system back、英語1/2 plural、DataStore/Room再オープン、PDF render/Intent契約も自動化済み。OSのprocess kill/relaunch、実DocumentProvider/共有先、TalkBack/Switch Access、実カメラ、対象BLE、Samsung受け入れは引き続き別ゲートである。
 
 ## この監査で追加した純 JVM 証拠
@@ -150,7 +150,7 @@ Swift UI 5本の直接対応とは別に、`NavigationTest`は履歴のsession�
 
 - Swift source の `func test` 数: unit 68、UI 5。fixture は JSON として schemaVersion 1、5 case、ID 重複なし。
 - Android の focused Gradle test は Android Studio の JDK と SDK を明示して実行し、次の2系統がともに `BUILD SUCCESSFUL` になった。`./gradlew :core:model:testDebugUnitTest :core:matching:testDebugUnitTest :feature:scan:testDebugUnitTest :scanner:ble:testDebugUnitTest :scanner:fake:testDebugUnitTest`、および `./gradlew :core:export:testDebugUnitTest :feature:history:testDebugUnitTest :feature:settings:testDebugUnitTest :app:testDebugUnitTest`。
-- `:scanner:camera:testDebugUnitTest` は非同期境界9テストを含め `BUILD SUCCESSFUL`、`:scanner:camera:lintDebug` も `BUILD SUCCESSFUL` になった。`BundledMlKitImageDecodeTest` 3件は共有QR/Code 128画像の実decodeと誤形式拒否に成功したが、実機 camera readを意味しない。
-- Android JVM testは全172件、Pixel 7/API 36とAndroid 17/API 37.1・16KB emulatorのinstrumentationは各63件が成功した。後者2環境にはapp 13件と`core:export`の実PDF render 2件を含む。
+- `:scanner:camera:testDebugUnitTest` は非同期境界13テストを含め `BUILD SUCCESSFUL`、`:scanner:camera:lintDebug` も `BUILD SUCCESSFUL` になった。`BundledMlKitImageDecodeTest` 3件は共有QR/Code 128画像の実decodeと誤形式拒否に成功したが、実機 camera readを意味しない。
+- Android JVM testは全211件、Pixel 7/API 36のinstrumentationは80件が成功した。以前のAndroid 17/API 37.1・16KB emulator記録は63件であり、今回追加した17件はまだ同emulatorで再実行していない。
 - Android実装の証拠にiOS Simulatorは使用しない。iOS XCTestは、同一リポジトリの既存iOS版を壊していないことを確認するPR CIの回帰ゲートとしてのみ扱う。
 - 実行可能だった静的確認は source/test 数、fixture 構造、`git diff --check`。実機 camera/BLE の結果はこの表に含めていない。
