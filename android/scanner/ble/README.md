@@ -65,6 +65,12 @@ The core guarantees:
   coordinator may reconnect that identity without discovery, but it still
   cannot become ready until the normal fresh-inventory and restore handshake
   succeeds.
+- `SelectableBleExternalScanner` creates the settings/session owner only after
+  a discovered device is selected. A pending or active restriction cannot be
+  rebound to another device, while process recreation uses the same factory
+  path for the persisted known device. This closes the gap between fixed-ID
+  protocol tests and the production discovery/selection flow without choosing
+  a vendor profile.
 
 The unit tests run on the JVM and use no scanner hardware.
 
