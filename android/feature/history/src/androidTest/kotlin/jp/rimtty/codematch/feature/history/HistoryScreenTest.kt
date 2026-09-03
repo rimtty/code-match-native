@@ -117,31 +117,28 @@ class HistoryScreenTest {
 
     @Test
     fun expandedSessionListExposesSelectionStateToAccessibilityServices() {
+        val selectedSessionId = mutableStateOf<String?>("selected-session")
         val selected = MatchSession(
             id = "selected-session",
             startedAt = 2_000L,
             name = "Selected session",
         )
-        val other = MatchSession(
-            id = "other-session",
-            startedAt = 1_000L,
-            name = "Other session",
-        )
         composeRule.setContent {
             HistoryContent(
-                sessions = listOf(other, selected),
-                selectedSessionId = selected.id,
+                sessions = listOf(selected),
+                selectedSessionId = selectedSessionId.value,
                 layoutMode = HistoryLayoutMode.EXPANDED,
                 language = AppLanguage.ENGLISH,
             )
         }
 
-        composeRule.onAllNodesWithTag(HistoryTestTags.SESSION_ROW)
-            .get(0)
+        composeRule.onNodeWithTag(HistoryTestTags.SESSION_ROW)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Selected"))
-        composeRule.onAllNodesWithTag(HistoryTestTags.SESSION_ROW)
-            .get(1)
+
+        composeRule.runOnIdle { selectedSessionId.value = null }
+
+        composeRule.onNodeWithTag(HistoryTestTags.SESSION_ROW)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, false))
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Not selected"))
     }
