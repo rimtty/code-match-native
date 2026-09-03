@@ -26,7 +26,9 @@ class HistoryPdfDocumentProviderInstrumentationTest {
             .targetContext
             .contentResolver
         val bytes = "%PDF-document-provider-${UUID.randomUUID()}".toByteArray()
-        val destination = Uri.parse("content://$PROVIDER_AUTHORITY/history.pdf")
+        val providerAuthority = InstrumentationRegistry.getInstrumentation()
+            .context.packageName + ".history.documents"
+        val destination = Uri.parse("content://$providerAuthority/history.pdf")
         val document = PendingHistoryPdf(bytes = bytes, fileName = "history.pdf")
 
         val result = HistoryPdfBridge.writeDocument(
@@ -43,9 +45,5 @@ class HistoryPdfDocumentProviderInstrumentationTest {
         } finally {
             resolver.delete(destination, null, null)
         }
-    }
-
-    private companion object {
-        const val PROVIDER_AUTHORITY = "jp.rimtty.codematch.test.history.documents"
     }
 }

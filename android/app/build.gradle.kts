@@ -5,6 +5,13 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+// Host-driven force-stop tests must never share the installed product's data.
+// Both the application ID and test-only source are opt-in; ordinary debug,
+// scannerPoc, release, and their existing test suites remain unchanged.
+val processRecoveryTests = providers.gradleProperty("codematchProcessRecoveryTests")
+    .map { it.toBooleanStrict() }
+    .getOrElse(false)
+
 android {
     namespace = "jp.rimtty.codematch"
     compileSdk = 37
@@ -23,6 +30,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (processRecoveryTests) {
+                applicationIdSuffix = ".recoverytest"
+            }
+        }
         create("scannerPoc") {
             isDebuggable = false
             // Resolve library release variants so debug-only Compose tooling
@@ -68,6 +80,10 @@ android {
 
     testOptions {
         unitTests.isIncludeAndroidResources = true
+    }
+
+    if (processRecoveryTests) {
+        sourceSets.getByName("androidTest").kotlin.directories.add("src/processRecoveryAndroidTest/java")
     }
 }
 
