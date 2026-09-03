@@ -65,7 +65,10 @@ if printf '%s\n' "$manifest" | rg -q \
 fi
 
 entries="$(unzip -Z1 "$apk")"
-for required_native in lib/arm64-v8a/libjnidispatch.so lib/arm64-v8a/libscanner_cmd.so; do
+for required_native in \
+    lib/arm64-v8a/libjnidispatch.so \
+    lib/arm64-v8a/libscanner_cmd.so \
+    lib/arm64-v8a/libinateck_scanner_cmd.so; do
     printf '%s\n' "$entries" | rg -q -x "$required_native" || {
         echo "Inateck PoC verification failed: $required_native is missing" >&2
         exit 1

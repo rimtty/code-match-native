@@ -3,6 +3,7 @@ package jp.rimtty.codematch.scanner.inateck
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -152,7 +153,17 @@ class InateckExternalScanner private constructor(
         ): InateckExternalScanner {
             val applicationContext = context.applicationContext
             val gateway = AndroidInateckSdkGateway(applicationContext, handler)
-            val transport = InateckSdkTransport(gateway, nowMillis)
+            val transport = InateckSdkTransport(
+                gateway = gateway,
+                nowMillis = nowMillis,
+                scanDeliveryObserver = { kind ->
+                    Log.println(
+                        Log.INFO,
+                        "CodeMatchInateck",
+                        "scan-delivery=${kind.name.lowercase()}",
+                    )
+                },
+            )
             val snapshotStore = BleSymbologySnapshotStore(
                 applicationContext,
                 INATECK_ANDROID_SDK_PROFILE_IDENTITY,

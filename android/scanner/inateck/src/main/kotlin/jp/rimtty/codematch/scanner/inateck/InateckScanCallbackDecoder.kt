@@ -17,13 +17,22 @@ internal object InateckScanCallbackDecoder : BleScanCallbackDecoder {
         val first = candidate.firstOrNull { !it.isWhitespace() }
         val parsed = runCatching { JsonParser.parseString(candidate) }.getOrNull()
         if (parsed == null) {
-            return if (first == '{' || first == '[') null else candidate
+            return if (first == '{' || first == '[') null else candidate.asSupportedScan()
         }
         if (!parsed.isJsonObject) {
-            return if (first == '{' || first == '[') null else candidate
+            return if (first == '{' || first == '[') null else candidate.asSupportedScan()
         }
         val root = parsed.asJsonObject
         if (!root.has("source_code") && !root.has("notify_type")) return null
-        return BleScanPayloadDecoder.decode(candidate)
+        return BleScanPayloadDecoder.decode(candidate)?.asSupportedScan()
     }
+
+    /**
+     * BCST-36 emits a one-character control acknowledgement after a settings
+     * transaction has completed. The SDK can deliver it after its task has
+     * already become idle, so it shares FF01 with real scans. Neither of this
+     * app's accepted business formats can be a single character; discard that
+     * command residue before it reaches scan validation or feedback.
+     */
+    private fun String.asSupportedScan(): String? = takeUnless { it.length == 1 }
 }

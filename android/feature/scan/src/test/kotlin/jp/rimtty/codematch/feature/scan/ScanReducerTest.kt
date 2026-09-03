@@ -227,7 +227,34 @@ class ScanReducerTest {
             ),
         )
         assertEquals(waitingQr, invalidQr.state)
-        assertEquals(InvalidScanReason.INVALID_PAYLOAD, (invalidQr.effects.single() as ScanEffect.InvalidScan).reason)
+        assertEquals(
+            InvalidScanReason.INCOMPLETE_QR_PAYLOAD,
+            (invalidQr.effects.single() as ScanEffect.InvalidScan).reason,
+        )
+
+        val overlongQr = reducer.reduce(
+            waitingQr,
+            ScanEvent.PayloadReceived(
+                ScanPayload.qr(qrPayload + "X", InputSource.BLUETOOTH),
+            ),
+        )
+        assertEquals(waitingQr, overlongQr.state)
+        assertEquals(
+            InvalidScanReason.OVERLONG_QR_PAYLOAD,
+            (overlongQr.effects.single() as ScanEffect.InvalidScan).reason,
+        )
+
+        val invalidFieldsQr = reducer.reduce(
+            waitingQr,
+            ScanEvent.PayloadReceived(
+                ScanPayload.qr("X".repeat(66), InputSource.BLUETOOTH),
+            ),
+        )
+        assertEquals(waitingQr, invalidFieldsQr.state)
+        assertEquals(
+            InvalidScanReason.INVALID_PAYLOAD,
+            (invalidFieldsQr.effects.single() as ScanEffect.InvalidScan).reason,
+        )
 
         val waitingCode = reducer.reduce(
             waitingQr,

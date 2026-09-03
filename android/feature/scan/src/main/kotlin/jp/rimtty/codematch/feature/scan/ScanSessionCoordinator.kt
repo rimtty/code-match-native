@@ -104,7 +104,7 @@ class ScanSessionCoordinator(
             // accepted QR/barcode or re-trigger the countdown. If the saved
             // Bluetooth source is no longer available, retain the logical step
             // and fall back to camera input.
-            if (inputSource == InputSource.BLUETOOTH && !scanner.isReadyForScanning) {
+            if (inputSource == InputSource.BLUETOOTH && !scanner.isReadyToStartSession) {
                 setInputSource(InputSource.CAMERA)
             }
             val reduction = ScanReduction(
@@ -118,7 +118,7 @@ class ScanSessionCoordinator(
             return reduction
         }
 
-        if (scanner.isReadyForScanning && !cameraWasSelectedByUser) {
+        if (scanner.isReadyToStartSession && !cameraWasSelectedByUser) {
             setInputSource(InputSource.BLUETOOTH)
         }
         return dispatch(ScanEvent.StartSession)
@@ -207,7 +207,7 @@ class ScanSessionCoordinator(
 
             InputSource.BLUETOOTH -> {
                 cameraWasSelectedByUser = false
-                if (!scanner.isReadyForScanning) {
+                if (!scanner.isReadyToStartSession) {
                     setInputSource(InputSource.CAMERA)
                     applyExpectedFormat(null)
                     false

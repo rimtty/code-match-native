@@ -522,7 +522,7 @@ M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触�
 - Pixel系/Samsung系で実機回帰
 - Swift版との機能対応表に未完了がない
 
-準備済み: SDK非依存のBLE safety core、1 command直列化、timeout後のtransport reset、QR+Code 128固定mode、全reported item snapshot、復元完了前Ready禁止、payload parser、750ms重複境界。公式Inateck Android SDK 2.0.0は非配付`scannerPoc`だけへ接続し、SDKのarea/name/value inventoryを全件保存・書込・再読込照合する。SDK command応答とscan通知を共有するFF01は単一routerで分離し、分割scan frame、終端、最大長、idle flush、世代取消を検査する。PoCだけがNearby最小権限を持ち、minified artifactからvendorのLog/System.out呼び出しを除去する。通常releaseはカメラ専用のまま、SDK/native/Nearby権限を拒否する。対象scanner実機の接続・読取・完全復元・Pixel/Samsung受け入れは未完了なので、M4完了とは扱わない。
+準備済み: SDK非依存のBLE safety core、1 command直列化、timeout後のtransport reset、QR+Code 128固定mode、全reported item snapshot、復元完了前Ready禁止、payload parser、750ms重複境界。公式Inateck Android SDK 2.0.0は非配付`scannerPoc`だけへ接続し、SDKのarea/name/value inventoryを全件保存・書込・再読込照合する。SDK command応答とscan通知を共有するFF01は単一routerで分離し、公式native parserの分割再構成とBCST-36 type-1 checksum/header処理、最大長、世代取消を検査する。PoCだけがNearby最小権限を持ち、minified artifactからvendorのLog/System.out呼び出しを除去する。通常releaseはカメラ専用のまま、SDK/native/Nearby権限を拒否する。2026-09-04にPixel 7 / BCST-36で検索・接続・設定readback・QR→Code 128一致・背景復元まで成功したが、重複/不一致/連続箱、切断/再起動/強制終了/timeout、Samsung、配付条件が未完了なので、M4完了とは扱わない。
 
 SDK公開元には再配付ライセンスが明示されていないためbinaryをGitへ含めず、固定commitからchecksum検証付きでローカル取得する。`scannerPoc`はarm64のローカル実機評価専用で、配付やproduction採用はしない。詳細は[`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)に記録し、対象scanner実機と正式な供給条件が確定するまでBLE成功やfull parityを宣言しない。
 

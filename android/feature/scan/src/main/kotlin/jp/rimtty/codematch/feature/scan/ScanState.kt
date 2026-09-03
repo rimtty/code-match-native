@@ -154,6 +154,8 @@ enum class InvalidScanReason {
     SESSION_NOT_STARTED,
     WRONG_ORDER,
     EMPTY_PAYLOAD,
+    INCOMPLETE_QR_PAYLOAD,
+    OVERLONG_QR_PAYLOAD,
     INVALID_PAYLOAD,
 }
 
@@ -172,6 +174,8 @@ sealed interface ScanEffect {
     data class InvalidScan(
         val expectedFormat: ScanFormat?,
         val reason: InvalidScanReason,
+        /** Character count only; the scanned value never enters diagnostics. */
+        val observedLength: Int? = null,
     ) : ScanEffect
     data class AutoAdvanceStarted(val seconds: Int) : ScanEffect
     data class CountdownUpdated(val seconds: Int) : ScanEffect

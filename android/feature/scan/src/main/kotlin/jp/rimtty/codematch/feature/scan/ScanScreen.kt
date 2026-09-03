@@ -70,6 +70,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import jp.rimtty.codematch.core.matching.CodeMatcher
+import jp.rimtty.codematch.core.matching.KanbanQrRecord
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.scanner.api.ConfigurationState
@@ -1095,6 +1096,22 @@ private fun ScanMessage(state: ScanUiState) {
         InvalidScanReason.SESSION_NOT_STARTED -> stringResource(R.string.scan_invalid_session)
         InvalidScanReason.WRONG_ORDER -> stringResource(R.string.scan_invalid_order)
         InvalidScanReason.EMPTY_PAYLOAD -> stringResource(R.string.scan_invalid_empty)
+        InvalidScanReason.INCOMPLETE_QR_PAYLOAD ->
+            state.lastInvalidPayloadLength?.let { observedLength ->
+                stringResource(
+                    R.string.scan_invalid_qr_incomplete_length,
+                    observedLength,
+                    KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH,
+                )
+            } ?: stringResource(R.string.scan_invalid_qr_incomplete)
+        InvalidScanReason.OVERLONG_QR_PAYLOAD ->
+            state.lastInvalidPayloadLength?.let { observedLength ->
+                stringResource(
+                    R.string.scan_invalid_qr_overlong_length,
+                    observedLength,
+                    KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH,
+                )
+            } ?: stringResource(R.string.scan_invalid_qr_overlong)
         InvalidScanReason.INVALID_PAYLOAD -> stringResource(R.string.scan_invalid_payload)
         null -> null
     }

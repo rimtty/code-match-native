@@ -272,6 +272,30 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun connectingScannerShowsProgressUntilConnectionCompletes() {
+        val device = ScannerDevice("scanner-1", "Scanner one")
+        val state = mutableStateOf(
+            SettingsUiState(
+                devices = listOf(device),
+                selectedDeviceId = device.id,
+                connectionState = ConnectionState.Connecting(device),
+            ),
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                SettingsScreen(state = state.value, onAction = {})
+            }
+        }
+
+        composeRule.onNodeWithTag(SettingsTestTags.SCANNER_PROGRESS)
+            .performScrollTo()
+            .assertIsDisplayed()
+
+        state.value = state.value.copy(connectionState = ConnectionState.Connected(device))
+        composeRule.onAllNodesWithTag(SettingsTestTags.SCANNER_PROGRESS).assertCountEquals(0)
+    }
+
+    @Test
     fun configurationStatusIsVisibleAndFailureReasonStaysHidden() {
         val privateReason = "private adapter setting detail"
         val state = mutableStateOf(

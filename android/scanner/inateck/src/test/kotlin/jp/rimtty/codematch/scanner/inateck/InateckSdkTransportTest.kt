@@ -17,7 +17,12 @@ class InateckSdkTransportTest {
     @Test
     fun discoveryConnectSettingsAndScanMapThroughNarrowGateway() {
         val gateway = FakeGateway()
-        val transport = InateckSdkTransport(gateway, nowMillis = { 123L })
+        val deliveries = mutableListOf<InateckScanDeliveryKind>()
+        val transport = InateckSdkTransport(
+            gateway,
+            nowMillis = { 123L },
+            scanDeliveryObserver = deliveries::add,
+        )
         val events = mutableListOf<BleTransportEvent>()
         transport.listener = listener(events)
 
@@ -48,6 +53,32 @@ class InateckSdkTransportTest {
         assertEquals("visible-only-to-subscriber", scan.payload.value)
         assertEquals(ScanFormat.QR, scan.payload.format)
         assertEquals(123L, scan.payload.timestampMillis)
+        assertEquals(listOf(InateckScanDeliveryKind.DELIVERED), deliveries)
+    }
+
+    @Test
+    fun scanDeliveryObserverDistinguishesInvalidUtf8AndDecoderRejection() {
+        val gateway = FakeGateway()
+        val deliveries = mutableListOf<InateckScanDeliveryKind>()
+        val transport = InateckSdkTransport(
+            gateway = gateway,
+            scanDeliveryObserver = deliveries::add,
+        )
+        transport.listener = listener(mutableListOf())
+        val device = ScannerDevice("id-1", "scanner")
+        assertTrue(transport.connect(device))
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+
+        gateway.scanBytes?.invoke(byteArrayOf(0xc3.toByte(), 0x28))
+        gateway.scanBytes?.invoke("{\"status\":0}".encodeToByteArray())
+
+        assertEquals(
+            listOf(
+                InateckScanDeliveryKind.INVALID_UTF8,
+                InateckScanDeliveryKind.DECODER_REJECTED,
+            ),
+            deliveries,
+        )
     }
 
     @Test

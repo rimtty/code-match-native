@@ -28,6 +28,17 @@ interface ExternalScanner {
     val isReadyForScanning: Boolean
         get() = isConnected && configurationState.isReady
     /**
+     * Whether a connected scanner has a verified baseline and can begin a
+     * restricted scan session.
+     *
+     * A production adapter may keep [isReadyForScanning] false until its
+     * QR/Code 128 restriction has been written and read back. Keeping this
+     * pre-session capability separate avoids a circular dependency where the
+     * UI cannot select Bluetooth until after the session it needs to start.
+     */
+    val isReadyToStartSession: Boolean
+        get() = isConnected && configurationState.isReady
+    /**
      * Whether the host should expose external-scanner controls.
      *
      * The release placeholder overrides this to false.  A real adapter and

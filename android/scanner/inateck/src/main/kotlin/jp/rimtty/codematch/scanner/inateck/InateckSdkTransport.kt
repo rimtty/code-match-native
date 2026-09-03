@@ -28,6 +28,7 @@ internal class InateckSdkTransport(
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
     private val scanDecoder: BleScanCallbackDecoder =
         InateckScanCallbackDecoder,
+    private val scanDeliveryObserver: (InateckScanDeliveryKind) -> Unit = {},
 ) : BleTransport {
     private var discovering = false
     private var pendingDevice: ScannerDevice? = null
@@ -227,8 +228,14 @@ internal class InateckSdkTransport(
         link: Long,
         bytes: ByteArray,
     ) {
-        if (closed || request != connectionGeneration || activeDevice?.id != device.id) return
-        val callbackValue = strictUtf8(bytes) ?: return
+        if (closed || request != connectionGeneration || activeDevice?.id != device.id) {
+            scanDeliveryObserver(InateckScanDeliveryKind.STALE)
+            return
+        }
+        val callbackValue = strictUtf8(bytes) ?: run {
+            scanDeliveryObserver(InateckScanDeliveryKind.INVALID_UTF8)
+            return
+        }
         val event = BleTransportEvent.ScanReceived.fromRawCallback(
             callbackValue = callbackValue,
             source = InputSource.BLUETOOTH,
@@ -241,7 +248,11 @@ internal class InateckSdkTransport(
             requestGeneration = request,
             linkGeneration = link,
             decoder = scanDecoder,
-        ) ?: return
+        ) ?: run {
+            scanDeliveryObserver(InateckScanDeliveryKind.DECODER_REJECTED)
+            return
+        }
+        scanDeliveryObserver(InateckScanDeliveryKind.DELIVERED)
         listener?.onTransportEvent(event)
     }
 
@@ -269,4 +280,12 @@ internal class InateckSdkTransport(
         completion(Result.failure(IllegalStateException("Inateck scanner is not connected")))
         return false
     }
+}
+
+/** Payload-free stages used by the local PoC diagnostic trace. */
+internal enum class InateckScanDeliveryKind {
+    STALE,
+    INVALID_UTF8,
+    DECODER_REJECTED,
+    DELIVERED,
 }

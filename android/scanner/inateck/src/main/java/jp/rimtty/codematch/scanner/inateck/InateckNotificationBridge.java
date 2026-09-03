@@ -1,7 +1,11 @@
 package jp.rimtty.codematch.scanner.inateck;
 
+import android.bluetooth.BluetoothGatt;
+import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattService;
 import com.clj.fastble.BleManager;
 import com.clj.fastble.callback.BleNotifyCallback;
+import com.clj.fastble.callback.BleWriteCallback;
 import com.clj.fastble.exception.BleException;
 import com.inateck.scanner.ble.BleListManager;
 import com.inateck.scanner.ble.BleMessager;
@@ -21,6 +25,11 @@ final class InateckNotificationBridge {
         void onFailure();
         void onCommandTraffic();
         void onBytes(byte[] value);
+    }
+
+    interface WriteCallback {
+        void onSuccess();
+        void onFailure();
     }
 
     private InateckNotificationBridge() {}
@@ -69,6 +78,67 @@ final class InateckNotificationBridge {
                 device.getDevice$ble_release(),
                 BleMessager.serviceUUID,
                 BleMessager.notifyUUID);
+    }
+
+    /**
+     * Writes the official SDK-output command to FF04 using the characteristic's
+     * required write-without-response mode.
+     */
+    static void writeSdkOutputCommand(
+            BleScannerDevice device,
+            byte[] command,
+            WriteCallback callback) {
+        BluetoothGatt gatt = manager().getBluetoothGatt(device.getDevice$ble_release());
+        if (gatt == null) {
+            callback.onFailure();
+            return;
+        }
+        BluetoothGattService service = gatt.getService(
+                java.util.UUID.fromString(BleMessager.serviceUUID));
+        BluetoothGattCharacteristic characteristic = service == null
+                ? null
+                : service.getCharacteristic(java.util.UUID.fromString(BleMessager.writeUUID));
+        if (characteristic == null) {
+            callback.onFailure();
+            return;
+        }
+        int properties = characteristic.getProperties();
+        if ((properties & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) {
+            characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+        } else if ((properties & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0) {
+            // The Android 2.0.0 SDK itself writes settings to FF04 using the
+            // characteristic's default write type. Preserve compatibility
+            // with firmware that advertises only that property.
+            characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+        } else {
+            callback.onFailure();
+            return;
+        }
+        manager().write(
+                device.getDevice$ble_release(),
+                BleMessager.serviceUUID,
+                BleMessager.writeUUID,
+                command.clone(),
+                false,
+                new BleWriteCallback() {
+                    private boolean completed;
+
+                    @Override
+                    public void onWriteSuccess(int current, int total, byte[] justWrite) {
+                        if (!completed && current == total) {
+                            completed = true;
+                            callback.onSuccess();
+                        }
+                    }
+
+                    @Override
+                    public void onWriteFailure(BleException exception) {
+                        if (!completed) {
+                            completed = true;
+                            callback.onFailure();
+                        }
+                    }
+                });
     }
 
     private static BleManager manager() {

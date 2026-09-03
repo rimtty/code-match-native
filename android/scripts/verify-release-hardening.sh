@@ -817,7 +817,7 @@ verify_dex_does_not_contain_fake() {
     done <<< "$entries" > "$dex_file"
     if command -v strings >/dev/null 2>&1; then
         strings "$dex_file" > "$strings_file"
-        if rg -n -i 'jp/rimtty/codematch/scanner/fake|FakeExternalScanner|FAKE-BCST-47|jp/rimtty/codematch/scanner/inateck|com/inateck/scanner|com/clj/fastble|com/sun/jna|libscanner_cmd|libjnidispatch' "$strings_file"; then
+        if rg -n -i 'jp/rimtty/codematch/scanner/fake|FakeExternalScanner|FAKE-BCST-47|jp/rimtty/codematch/scanner/inateck|com/inateck/scanner|com/clj/fastble|com/sun/jna|libscanner_cmd|libinateck_scanner_cmd|libjnidispatch' "$strings_file"; then
             die "$label contains Fake or Inateck PoC scanner classes or identifiers"
         fi
         if rg -n -i 'com/google/firebase/analytics|com/google/firebase/crashlytics|com/google/android/gms/analytics|io/sentry|com/bugsnag|com/newrelic|com/datadog|com/mixpanel|com/amplitude|com/segment|com/posthog|com/countly' "$strings_file"; then
@@ -826,7 +826,7 @@ verify_dex_does_not_contain_fake() {
     else
         note "strings is unavailable; skipping binary Fake-class scan for $label"
     fi
-    if zip_entries "$archive" | rg -q -i 'libscanner_cmd[.]so|libjnidispatch[.]so'; then
+    if zip_entries "$archive" | rg -q -i 'libscanner_cmd[.]so|libinateck_scanner_cmd[.]so|libjnidispatch[.]so'; then
         die "$label contains Inateck PoC native libraries"
     fi
 }
