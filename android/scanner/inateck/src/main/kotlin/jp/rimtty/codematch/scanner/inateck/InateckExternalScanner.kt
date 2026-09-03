@@ -47,6 +47,9 @@ class InateckExternalScanner private constructor(
     private var closed = false
     private var resetAcknowledged = false
     private var reconnectScheduled = false
+    private val startupRecovery = InateckStartupRecovery {
+        if (closed) false else delegate.reconnectKnownDevice()
+    }
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -110,9 +113,15 @@ class InateckExternalScanner private constructor(
 
     override fun onStart(owner: LifecycleOwner) {
         delegate.setApplicationActive(true, nowMillis())
+        // A process recreation restores the known identity synchronously, but
+        // it must still explicitly start the connection. Retry on a later
+        // foreground if the first attempt was blocked by Bluetooth or
+        // runtime permission state.
+        startupRecovery.onForeground()
     }
 
     override fun onStop(owner: LifecycleOwner) {
+        startupRecovery.onBackground()
         delegate.setApplicationActive(false, nowMillis())
     }
 
