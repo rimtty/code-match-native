@@ -1,5 +1,8 @@
 package jp.rimtty.codematch
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
@@ -18,12 +21,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.booleanResource
 import androidx.compose.ui.res.stringResource
 import jp.rimtty.codematch.history.HistoryRoute
 import jp.rimtty.codematch.scan.ScanRoute
 import jp.rimtty.codematch.scan.rememberAndroidCameraHost
+import jp.rimtty.codematch.scanner.api.ScannerIssue
 import jp.rimtty.codematch.settings.SettingsRoute
 
 private enum class AppDestination(
@@ -53,6 +58,23 @@ fun CodeMatchApp() {
     // composed in the background.
     val saveableStateHolder = rememberSaveableStateHolder()
     val cameraHost = rememberAndroidCameraHost()
+    val context = LocalContext.current
+    val openBluetoothSettings: (ScannerIssue) -> Unit = { issue ->
+        runCatching {
+            val intent = if (issue == ScannerIssue.PERMISSION_DENIED) {
+                Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:${context.packageName}"),
+                )
+            } else {
+                Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+            }
+            context.startActivity(
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+        Unit
+    }
 
     NavigationSuiteScaffold(
         layoutType = NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(
@@ -82,9 +104,13 @@ fun CodeMatchApp() {
                     modifier = Modifier.fillMaxSize(),
                     showDebugDemoTools = booleanResource(R.bool.show_debug_demo_tools),
                     cameraHost = cameraHost,
+                    onOpenBluetoothSettings = openBluetoothSettings,
                 )
                 AppDestination.HISTORY -> HistoryRoute(Modifier.fillMaxSize())
-                AppDestination.SETTINGS -> SettingsRoute(Modifier.fillMaxSize())
+                AppDestination.SETTINGS -> SettingsRoute(
+                    modifier = Modifier.fillMaxSize(),
+                    onOpenBluetoothSettings = openBluetoothSettings,
+                )
             }
         }
     }

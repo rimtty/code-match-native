@@ -1,6 +1,6 @@
 # Code Match Android
 
-Android版Code Matchの独立Gradleプロジェクトです。iOS版と同じ照合契約を、Android標準の操作とJetpack Compose / Material 3で実装します。現在のreleaseはカメラ入力のみで、BLE安全コアは対象scanner実機とAndroid向けSDKの調査が終わるまで接続しません。
+Android版Code Matchの独立Gradleプロジェクトです。iOS版と同じ照合契約を、Android標準の操作とJetpack Compose / Material 3で実装します。通常のreleaseはカメラ入力のみです。公式Inateck Android SDKを使うBLE実装は、ローカル実機評価専用の`scannerPoc`へ隔離します。
 
 ## 開発環境
 
@@ -28,6 +28,7 @@ scanner/api/          # カメラ/BLEから独立したscanner契約
 scanner/camera/       # CameraX + bundled ML Kit（QR / Code 128）
 scanner/fake/         # 開発用Fakeの隔離先（debug専用）
 scanner/ble/          # SDK/UUID非依存のBLE安全コア（release未接続）
+scanner/inateck/      # 公式SDK adapter（scannerPoc専用、binaryはローカル取得）
 ```
 
 `core/model`と`core/matching`の本体ロジックはAndroid APIに依存しません。共通fixtureは`../shared/test-fixtures`をテストリソースとしてクラスパスへ追加し、テストからは`ClassLoader.getResourceAsStream`で読み込みます。アプリアイコンは通常・round・adaptive・monochromeを持ち、Android 13以降のper-app languageにも日本語と英語を公開します。
@@ -46,6 +47,13 @@ bash scripts/verify-release-hardening.sh \
   --apk app/build/outputs/apk/release/app-release-unsigned.apk \
   --aab app/build/outputs/bundle/release/app-release.aab \
   --dependency-report tmp/release-dependencies.txt
+```
+
+公式Inateck SDKを使う非配付PoCは、固定commitからbinaryを取得してchecksumを検証してから組み立てます。生成物はGit管理外です。
+
+```bash
+bash scripts/setup-inateck-sdk-poc.sh
+./gradlew :app:assembleScannerPoc
 ```
 
 Release検証は、まず`./gradlew :app:dependencies --configuration releaseRuntimeClasspath`で解決済み依存グラフを出力し、その後source規則と
@@ -67,10 +75,10 @@ GitHub ActionsではAPI 31と、Linux x86_64向けに提供される最新runtim
 
 ## 現在の検証境界
 
-実装と証跡の対応表は [Android版の現在地](../docs/android/STATUS.md) にまとめています。プライバシー・権限・backup・FileProviderの境界は [Android版プライバシー境界](../docs/android/PRIVACY.md) を正本とします。候補SDKのライセンス、ABI、target SDK、rawログ、scan callbackの評価は [Android BLE SDK評価メモ](../docs/android/BLE_SDK_EVALUATION.md) に記録しており、未解決のためvendor SDKと実機protocol profileを同梱しません。
+実装と証跡の対応表は [Android版の現在地](../docs/android/STATUS.md) にまとめています。プライバシー・権限・backup・FileProviderの境界は [Android版プライバシー境界](../docs/android/PRIVACY.md) を正本とします。公式SDKの固定version、ABI、権限、rawログ対策、scan callbackの評価は [Android BLE SDK評価メモ](../docs/android/BLE_SDK_EVALUATION.md) に記録しています。ライセンスが明示されていないためbinaryは同梱せず、配付もしません。
 
 ## Fake scannerの境界
 
 Fake scannerは`scanner/fake`へ置き、`app`からは`debugImplementation`だけで参照します。`releaseImplementation`や`implementation`では参照しないため、リリース依存グラフとAPKにFake入口を含めない構成です。CIの`android-release-build` jobがこの境界を確認します。
 
-`scanner/ble`には、command直列化、timeout後の停止、完全設定snapshot、復元前Ready禁止、payload正規化と重複抑制に加え、UUID・通知decoder・write typeを注入する汎用`BluetoothGatt` transportを置いています。対象scannerの実測profileとvendor SDKは、型番・firmware・Android向けSDK・実通信形式の調査が完了するまで追加しません。カメラは実行時`CAMERA`権限だけを要求し、端末同梱ML Kitを使います。依存ライブラリ由来の`INTERNET` / `ACCESS_NETWORK_STATE`宣言もmanifest mergeで除外し、release APK/AABをオフライン境界に保ちます。Fakeはdebugだけで、production BLE未接続の現段階ではNearby/Bluetooth権限を宣言しません。実機profileを接続する場合は、必要時の`BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`だけを許可し、checkerの`--allow-production-ble-permissions`モードを使います。
+`scanner/ble`には、command直列化、timeout後の停止、完全設定snapshot、復元前Ready禁止、payload正規化と重複抑制を置いています。`scanner/inateck`は公式2.0.0 SDKのscan/connect/getSettingInfo/setSettingInfoをこの安全コアへ接続し、FF01の設定応答と分割scan通知を単一ルーターで分離します。`scannerPoc`だけが`BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`を要求し、位置情報・広告・ネットワーク権限を除外します。minified PoCはSDKのLog/System.out呼び出しを除去します。releaseはSDK、native library、Nearby権限を含まないカメラ専用境界を維持します。実機の完全復元までBLE完成とは扱いません。

@@ -522,9 +522,9 @@ M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触�
 - Pixel系/Samsung系で実機回帰
 - Swift版との機能対応表に未完了がない
 
-準備済み: SDK/UUID非依存のBLE safety core、1 command直列化、3秒timeout後のtransport reset必須化、QR+Code 128固定mode、全reported item snapshot、復元完了前Ready禁止、payload parser、750ms重複境界のJVM test。検索結果から選択した端末ごとにsettings sessionを生成する動的facadeを持ち、制限中の別端末へのbindを拒否し、既知端末再接続も同じ生成経路を通す。snapshotと既知端末identityはbackup/D2D除外済みの同一DataStoreでversion/profileを検証し、service再生成後もfresh inventory→完全復元が終わるまでReadyにしないAndroid testを持つ。公式文書のSDK-level `status/info/name/flag/value`応答と`flag/value`書込にはstrict codecを用意し、Code 128=2008、QR=2022を識別するが、raw GATT形式とは見なさずrelease未接続にしている。設定画面の3つのCode 128は同梱ML Kitでexact decode済みだが、Android実通信adapter、実測設定profile、versionが一致するSDK契約、releaseアプリ接続、Nearby devices権限、対象scannerでの設定コード読取と受け入れ試験は未完了のため、M4完了とは扱わない。
+準備済み: SDK非依存のBLE safety core、1 command直列化、timeout後のtransport reset、QR+Code 128固定mode、全reported item snapshot、復元完了前Ready禁止、payload parser、750ms重複境界。公式Inateck Android SDK 2.0.0は非配付`scannerPoc`だけへ接続し、SDKのarea/name/value inventoryを全件保存・書込・再読込照合する。SDK command応答とscan通知を共有するFF01は単一routerで分離し、分割scan frame、終端、最大長、idle flush、世代取消を検査する。PoCだけがNearby最小権限を持ち、minified artifactからvendorのLog/System.out呼び出しを除去する。通常releaseはカメラ専用のまま、SDK/native/Nearby権限を拒否する。対象scanner実機の接続・読取・完全復元・Pixel/Samsung受け入れは未完了なので、M4完了とは扱わない。
 
-候補SDKのライセンス、ABI、target SDK、権限、rawログ、scan callbackの静的評価も未解決であり、[`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)に採用保留理由を記録する。対象scanner実機と正式な供給条件が確定するまで、BLE成功やfull parityを宣言しない。
+SDK公開元には再配付ライセンスが明示されていないためbinaryをGitへ含めず、固定commitからchecksum検証付きでローカル取得する。`scannerPoc`はarm64のローカル実機評価専用で、配付やproduction採用はしない。詳細は[`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)に記録し、対象scanner実機と正式な供給条件が確定するまでBLE成功やfull parityを宣言しない。
 
 ## 16. Definition of Done
 

@@ -2,7 +2,7 @@
 
 ## 判定
 
-2026-09-03時点では、InateckのAndroid SDK候補をCode Matchへ採用しません。`scanner:ble` には安全コアと、UUID・endpoint・通知decoderを注入する汎用Android `BluetoothGatt` transport、および公式文書のSDK-level `flag`/`value`形式を厳格に扱うcodecまで実装しました。対象scanner固有profile、vendor SDK、Nearby権限、release接続は保留します。このメモは公開SDKの静的評価であり、対象スキャナー実機の通信成功を示すものではありません。
+2026-09-03時点で、ユーザー指定により公式Inateck Android SDK 2.0.0を非配付PoCへ採用しました。`scanner:inateck`を`scannerPoc` build typeだけへ接続し、通常のdebugはFake、releaseはカメラ専用を維持します。この採用は実機評価を始める判断であり、対象スキャナーの通信成功やM4完了を示しません。
 
 ## 確認した候補
 
@@ -19,23 +19,23 @@
 
 上記のUUIDやAPIは候補SDKの静的情報です。iOSで観測した値をAndroid仕様として確定したり、ここにある定数をproductionへハードコードしたりしません。
 
-## 採用を保留する理由
+## PoC限定の採用条件
 
 ### ライセンスと供給元
 
-公開元に `licenseInfo` がなく、Licenceファイルも確認できません。再配布許諾、正式ライセンス、バイナリ供給元、固定checksumが確認できるまで、リポジトリやrelease artifactへ同梱しません。
+公開元に `licenseInfo` がなく、Licenceファイルも確認できません。SDK binaryはGitへcommitせず、公式commit `8ce0fd5d25d1`からローカル取得してSHA-256を検証します。PoC APKは配付せず、release artifactにも同梱しません。
 
 ### target SDKとABI
 
-例示プロジェクトはtarget SDK 33で、Code Matchのtarget SDK 37方針と一致しません。native libraryもarm64-v8aだけなので、対応端末の範囲、Play配布条件、他ABIを含める必要性を決めるまで採用できません。
+例示プロジェクトはtarget SDK 33、native libraryはarm64-v8aだけです。Code Match側はcompile/target 37、min 31のまま、PoC APKをarm64-v8a実機専用に限定します。Play配付や他ABI対応には使用しません。
 
 ### 権限とプライバシー
 
-例示Manifestの権限は、production BLE未接続段階の最小権限方針を超えています。さらに、候補JARの `BleMessager.connect` はnotify callbackのraw byte配列をログへ出力します。scan payloadや業務データをログ・診断へ残さないCode Matchの要件と両立しないため、ラッパーを追加するだけでは採用済みとは扱いません。
+PoC ManifestはAPI 31以降の`BLUETOOTH_SCAN`と`BLUETOOTH_CONNECT`だけを許可し、FastBle由来のlegacy Bluetooth、位置情報、advertise、network権限をmerge時に除去します。SDKのraw `android.util.Log`呼び出しは、非debuggable/minified PoCのR8規則で副作用なしとして除去し、FastBle loggingも初期化直後に停止します。
 
 ### scan通知の受け渡し
 
-公式サイトの[接続手順](https://docs.inateck.com/scanner-sdk-en/ble/desktop_connect/)は`set_code_callback`を記載しています。しかし、公開リポジトリ同梱のAndroid 2.0.0 JARを`javap -public`で確認しても、`BleMessager`、`BleScannerDevice`、`BleListManager`にその登録APIはありません。さらに`BleTaskManager.receiveData`は実行中taskがない場合に即時returnします。Web文書と配布Android artifactのversioned contractが一致しないため、対象scanner実機で接続・通知・payload decoder・重複抑止を一連で観測できるまで、scan入力のproduction経路として使用しません。
+公式サイトの[接続手順](https://docs.inateck.com/scanner-sdk-en/ble/desktop_connect/)にある`set_code_callback`は公開Android 2.0.0 JARにはありません。PoC adapterはSDK接続完了後のFF01 notifyを1本だけ所有し、SDK command実行中は`BleTaskManager.receiveData`へ、アイドル中は最大4096 bytesのscan frame assemblerへ振り分けます。CR/LF/NUL終端と短いidle flushを扱い、切断・command開始・overflowでは断片を破棄します。実機観測が終わるまでproduction経路にはしません。
 
 ### 公式flag/value形式の先行実装境界
 
@@ -45,13 +45,13 @@
 
 このJSONはGATTへ直接書くwire形式として公開されていません。そのためcodecはrelease DIや`AndroidBleTransport`へ接続せず、将来SDK-backed transportが実機応答との一致を確認した場合だけ明示選択します。実機未確認のままproduction adapter完成とは扱いません。
 
-## 次の調査ゲート
+## 残る実機ゲート
 
-1. Inateckから正式ライセンス、再配布条件、現行SDK、依存一覧、checksum、ABI、target SDK対応表を取得する。
-2. 対象scannerの型番・firmware・ペアリング要否を記録し、Android 12以降のPixel系とSamsung系で接続可否を確認する。
-3. ログを無効化または安全に除去できる供給形態を確認し、scan payloadがログ・診断・crash reportへ出ないことを監査する。
-4. Androidでservice/characteristic、設定取得・書込、scan通知、切断・再接続、timeout後のcommand直列化を観測する。
-5. 変更前の全symbologyを保存し、QR+Code 128固定mode後に終了・背景・切断・再接続で完全復元できることを確認する。
-6. 必要な場合だけ `BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT` を要求し、release hardening checker、依存グラフ、Manifest、通信観測を同じ変更で更新する。
+1. 対象scannerの型番・firmwareを記録し、Pixelで検索・接続・認証を確認する。
+2. SDKの`getSettingInfo`が返す全`area/name/value`を読み、QR/Code 128だけを有効にした後、exact readbackが一致することを確認する。
+3. QR→Code 128、分割通知、重複抑止、切断・既知端末再接続を確認する。
+4. 終了・背景・予期しない切断・再起動で変更前の全設定が復元され、完了前はReadyにならないことを確認する。
+5. payload、raw frame、設定値がLogcatや診断へ出ないことを値を表示せず監査する。
+6. Samsung系で同じ受け入れを実施する。配付へ進む場合は、その前に正式な再配布条件と対応ABIを確認する。
 
-これらが完了するまで、現在のreleaseはカメラ入力のみです。Fake scannerはdebug test専用で、実機BLEの受け入れ証拠はまだありません。
+これらが完了するまで、通常のreleaseはカメラ入力のみです。`scannerPoc`はローカル実機評価専用で、実機BLEの受け入れ証拠はまだありません。

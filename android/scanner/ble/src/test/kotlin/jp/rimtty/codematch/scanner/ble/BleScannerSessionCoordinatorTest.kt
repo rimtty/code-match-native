@@ -67,6 +67,14 @@ class BleScannerSessionCoordinatorTest {
         transport.emit(BleTransportEvent.ScanReceived(payload))
         assertEquals(listOf(payload), received)
 
+        assertTrue(bridge.setExpectedFormat(ScanFormat.CODE_128))
+        transport.emit(
+            BleTransportEvent.ScanReceived(
+                payload.copy(value = "code128-step", format = ScanFormat.QR),
+            ),
+        )
+        assertEquals(ScanFormat.CODE_128, received.last().format)
+
         // The BLE bridge drops a mislabeled callback rather than handing a
         // camera value to a production BLE consumer.
         transport.emit(
@@ -74,7 +82,7 @@ class BleScannerSessionCoordinatorTest {
                 payload.copy(value = "wrong-source", source = InputSource.CAMERA),
             ),
         )
-        assertEquals(listOf(payload), received)
+        assertEquals(2, received.size)
     }
 
     @Test

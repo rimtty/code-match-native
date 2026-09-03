@@ -25,3 +25,8 @@ android/**/build/
 android/captures/
 android/.externalNativeBuild/
 android/.cxx/
+
+# Inateck's public Android SDK repository has no redistribution license. Keep
+# the PoC binaries local and fetch exact, hash-verified copies when needed.
+android/scanner/inateck/libs/*.jar
+android/scanner/inateck/src/main/jniLibs/**/*.so

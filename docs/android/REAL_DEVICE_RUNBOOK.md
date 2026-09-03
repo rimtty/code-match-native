@@ -8,7 +8,7 @@
 - USBデバッグを有効にした実端末。カメラ付き端末を使う。
 - リポジトリの `shared/test-fixtures/images/` を端末とは別の表示端末または紙に表示する。実ラベルを使う場合は、値をログやスクリーンショットへ残さない。
 - `android/` は独立Gradleプロジェクト。JDK 21とAndroid SDK 37を用意する。
-- M4 BLE adapterをまだ接続していない版では、releaseはカメラ入力のみ。設定画面のBluetooth接続成功は受け入れ条件にしない。
+- 通常のreleaseはカメラ入力のみ。BLE実機確認には公式SDKを接続した非配付`scannerPoc`を使う。
 
 端末情報、OS/API、アプリversion、ビルドcommit、実施日時、テスト結果、未実施理由を記録します。失敗時のログにはpayload、カメラ画像、端末アカウント情報を含めないでください。
 
@@ -109,9 +109,16 @@ bash scripts/verify-release-hardening.sh \
 
 checker通過は静的・artifact証拠です。端末外通信がないことの最終確認や、ストア向け回答の更新は依存ライブラリ変更時にも再実施します。詳細は [`PRIVACY.md`](PRIVACY.md) を参照してください。
 
-## 5. BLE実機ゲート（M4、現在は保留）
+## 5. BLE実機ゲート（M4、scannerPoc）
 
-対象scanner、firmware、Android向けSDK、ライセンス、ABI、target SDK、実通信形式が確定するまで、次を実行しません。候補SDKの静的評価と保留理由は [`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md) に記録しています。
+公式SDK binaryを固定commitからローカル取得し、SHA-256を検証した`scannerPoc`だけをPixelへ入れます。SDK binaryとPoC APKは配付しません。通常のreleaseへBLEを追加しません。
+
+```sh
+cd android
+bash scripts/setup-inateck-sdk-poc.sh
+./gradlew :app:assembleScannerPoc
+adb install -r app/build/outputs/apk/scannerPoc/app-scannerPoc.apk
+```
 
 設定画面が生成する3つのCode 128は、自動instrumentationで同梱ML Kitから `/*EnterSet*/` → `/*BLE_GATT*/` → `/*ExitSave*/` の順にexact decodeできることを確認済みです。これは画像生成と復号の証拠であり、BCST-47が実際に読み取って設定を変更・保存した証拠ではありません。
 

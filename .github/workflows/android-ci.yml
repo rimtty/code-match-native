@@ -64,8 +64,14 @@ jobs:
           java -version
           ./gradlew --version
 
+      - name: Install pinned Inateck SDK for local PoC compilation
+        run: bash scripts/setup-inateck-sdk-poc.sh
+
       - name: Assemble, lint, and run JVM tests
-        run: ./gradlew assembleDebug lintDebug testDebugUnitTest --stacktrace
+        run: ./gradlew assembleDebug lintDebug testDebugUnitTest :app:assembleScannerPoc --stacktrace
+
+      - name: Verify Inateck SDK PoC isolation
+        run: bash scripts/verify-inateck-sdk-poc.sh
 
       - name: Verify release hardening source contract
         run: bash scripts/test-release-hardening.sh
@@ -168,7 +174,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Assemble release APK and app bundle
-        run: ./gradlew assembleRelease bundleRelease --stacktrace
+        # Qualify the app tasks so this camera-only job never tries to build
+        # the separately provisioned, non-distributed scanner PoC module.
+        run: ./gradlew :app:assembleRelease :app:bundleRelease --stacktrace
 
       - name: Verify release hardening and dependency graph
         shell: bash
