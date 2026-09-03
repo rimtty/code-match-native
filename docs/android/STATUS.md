@@ -42,6 +42,8 @@ JDK/SDKがない環境ではGradle結果を推測せず、実行不能として�
 
 ## 2026-09-02〜04 統合検証記録
 
+- 2026-09-04の接続境界の追加修正で、安全コアのrequest/link generationとSDK内部のcallback取消epochを分離した。これにより同一processの手動切断後や接続開始拒否後でも、正しい再接続成功を古い通知として拒否しない。pending中の切断、重複した接続完了、例外後の古いcallbackもJVM testで検査する。
+- 同じ追加修正では、同期false/例外となった切断要求も旧linkを保持したclose-onlyの有限再試行へ進める。利用不可通知だけではpending/active identityや手動切断意図を消さず、Readyへの復帰も切断完了とは扱わない。明示的な再試行は新しい有限回数の回復処理を開始し、同期callbackのbackoffは呼出元の論理時刻を使う。全moduleのJVM test 329件（`scanner:ble` 91、`scanner:inateck` 52を含む）、lint、debug/release APK、release AAB、非配付`scannerPoc` APK、release source/APK/AAB/dependency hardeningとPoC artifact検査が成功した。この追加検証では物理端末・scannerに接続していない。利用不可通知のtestは安全コアへのevent注入であり、公式SDK adapterの実Bluetooth OFF/権限変化を検証した証拠ではない。実scannerの手動/予期しない切断・再接続とlive linkの権限変化は引き続き実機ゲートに残す。
 - 2026-09-04の追加統合では、全moduleのJVM test 314件、lint、debug/release APK、release AAB、非配付`scannerPoc` APKが成功し、release source/APK/AAB/dependency hardeningとscanner PoC artifact検査も成功した。Android 17/API 37.1・16KB emulatorではapp 21、`core:data` 21、`core:export` 2、`feature:history` 9、`feature:scan` 19、`feature:settings` 16、`scanner:camera` 3、`scanner:ble` 8の計99件を実行し、失敗・skip 0だった。これは端末非依存境界の証拠であり、スリープ中のBCST-36や実カメラを起こしていない。
 - 2026-09-04の端末非依存追加検証で、一時的なBluetooth OFF/権限不許可後も既知端末の有限再接続予約を維持し、論理時刻に基づくbackoffと最大試行回数で停止することを確認した。さらに公式SDK adapterが切断失敗を型付きeventとして安全コアへ渡し、同期/非同期の切断失敗後も旧linkを保持したままcloseだけを有限再試行し、`Disconnected`確認前には新しいconnectを開始しないことを追加した。`scanner:ble` JVM test 82件、`scanner:inateck` JVM test 46件と両moduleのlintが成功した。実BCST-36の電源/権限復旧、GATT復元、異常切断は実機待ちである。
 - Android 17/API 37.1・16KB emulatorで、予測型「戻る」の無効時fallbackとgesture cancel時のno-op、および実`LocaleManager`を使う日本語/英語の双方向同期と再生成loop防止を計4件実行して成功した。言語testは製品DataStoreを使わず、変更前のpackage localeを`finally`で復元する。予測型「戻る」の視覚遷移とOS設定画面の実操作は人手ゲートに残す。

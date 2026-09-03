@@ -196,6 +196,17 @@ interface BleTransport {
     fun startDiscovery(): Boolean
     fun stopDiscovery(): Boolean
     fun connect(device: ScannerDevice): Boolean
+    /**
+     * Connect using coordinator-owned identities. Tagged adapters must echo
+     * these tokens in events rather than assume their private cancellation
+     * counter advances at the same rate as the coordinator's request counter.
+     * The default keeps untagged/legacy transports source compatible.
+     */
+    fun connect(
+        device: ScannerDevice,
+        requestGeneration: Long,
+        linkGeneration: Long,
+    ): Boolean = connect(device)
     fun disconnect(device: ScannerDevice): Boolean
 
     /**

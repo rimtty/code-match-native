@@ -661,12 +661,22 @@ class AndroidBleTransport private constructor(
     }
 
     override fun connect(device: ScannerDevice): Boolean = synchronized(lock) {
+        connect(device, requestGeneration + 1L, linkGeneration + 1L)
+    }
+
+    override fun connect(
+        device: ScannerDevice,
+        requestGeneration: Long,
+        linkGeneration: Long,
+    ): Boolean = synchronized(lock) {
         if (connection != null) return false
         if (mutableLifecycle != BleAdapterLifecycleState.FOREGROUND) return false
         if (readiness.failureReason(forConnection = true) != null) return false
 
-        val request = ++requestGeneration
-        val link = ++linkGeneration
+        this.requestGeneration = maxOf(this.requestGeneration, requestGeneration)
+        this.linkGeneration = maxOf(this.linkGeneration, linkGeneration)
+        val request = requestGeneration
+        val link = linkGeneration
         val context = ConnectionContext(device, request, link)
         connection = context
         val callback = ConnectionCallback(request, link)

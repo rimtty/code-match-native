@@ -40,6 +40,12 @@ PoC ManifestはAPI 31以降の`BLUETOOTH_SCAN`と`BLUETOOTH_CONNECT`だけを許
 
 BCST-36のscanはtype 1で返り、Android command libraryは通知再構成までで、公式iOS SDKにある最終notify-code APIを公開していません。adapterは公式iOS SDK commit `03aa36d0e204`と実機挙動に合わせ、末尾の加算checksumを検証し、先頭2 byteとchecksumを除いた本文だけをstrict UTF-8へ渡します。checksum不一致、短すぎるframe、invalid UTF-8、4096 byte超過はfail closedです。payload、raw frame、byte数は診断・Logcatへ出しません。
 
+### 接続要求と古いcallbackの境界
+
+安全コアが発行したrequest/link generationをtransportへ明示的に渡し、接続・切断・scan eventで同じ値を返します。SDK adapter内部のcallback取消用epochとは分離します。両者を同じcounterとしていた実装では、切断によるepoch更新後に再接続成功のrequest番号がずれ、正しい成功通知を安全コアが拒否する経路がありました。
+
+終端の切断・接続失敗では、pending/active identityとcallback epochを先に無効化してから通知します。接続完了callbackの重複、切断後の遅延成功、失敗した接続開始後の古いcallbackは受理しません。実coordinatorとSDK gatewayのFakeを組み合わせ、手動切断後の再接続、同期開始拒否後の再接続、pending切断、重複通知、明示generationの往復をJVM testで検査します。これはSDKとのソフトウェア境界の証拠であり、BCST-36の手動切断・再接続の実機ゲートを完了させるものではありません。
+
 ### 公式flag/value形式の先行実装境界
 
 公式の[General Configuration](https://docs.inateck.com/scanner-sdk-en/ble/desktop_setting/)は、成功応答を`status=0`と`info`配列（`name`、`flag`、`value`）、書込commandを数値の`flag`/`value`配列として定義しています。また[General Configuration List](https://docs.inateck.com/scanner-sdk-en/ble/desktop_setting_list/)はCode 128をflag 2008、QR Codeをflag 2022としています。
