@@ -7,11 +7,11 @@
 | 領域 | このcheckoutで確認できるもの | まだ完了扱いにしないもの |
 |---|---|---|
 | Domain / matching | 純Kotlin matcher/parser、shared fixture、JVM test、Swift unit 71本/UI 5本との意図対応表 | Swift/Kotlinの全ケースを同一CI実行で確認した記録 |
-| UI / navigation | Composeの照合・履歴・設定、3 destination、system/predictive back境界、保存可能なdestination/履歴選択、expanded履歴選択のselected/stateDescription semantics、動的な読取案内・結果のpolite live region、履歴のActivity再生成・destination往復・compact back stack自動test、320dp/840dp・font scale 1.3/2.0の主要操作到達test、debug Fake境界 | predictive gestureの視覚遷移、WAITING Code 128・RESULTを含むOS process kill/relaunchの実操作、TalkBack、Switch Access、複数OEMの人手確認 |
-| History / settings / PDF | Room/DataStore、日英リソース、0件破棄・名称変更・詳細・削除のapp E2E、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test、実ContentProvider write/read test、Pixel 7のDocumentsUIでの1件PDF保存と共有画面起動 | 外部viewerでの内容/複数ページ確認、実際の共有先アプリへの受け渡し、複数OEMの業務受け入れ |
+| UI / navigation | Composeの照合・履歴・設定、3 destination、system/predictive backの完了・無効・cancel境界、保存可能なdestination/履歴選択、expanded履歴選択のselected/stateDescription semantics、動的な読取案内・結果のpolite live region、履歴のActivity再生成・destination往復・compact back stack自動test、320dp/840dp・font scale 1.3/2.0の主要操作到達test、debug Fake境界 | predictive gestureの視覚遷移、WAITING Code 128・RESULTを含むOS process kill/relaunchの実操作、TalkBack、Switch Access、複数OEMの人手確認 |
+| History / settings / PDF | Room/DataStore、日英リソース、Android 13以降のper-app locale双方向同期/no-loop、0件破棄・名称変更・詳細・削除のapp E2E、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test、実ContentProvider write/read test、Pixel 7のDocumentsUIでの1件PDF保存と共有画面起動 | OS設定画面を使った言語変更、外部viewerでの内容/複数ページ確認、実際の共有先アプリへの受け渡し、複数OEMの業務受け入れ |
 | Camera | CameraX/ML Kit adapter、ROI、権限・lifecycle・focus、非同期provider/format切替/古いcallback破棄、処理中frameをdrainしてからsession終了・terminal closeする自動test、Pixel 7縦画面でガイド内に限定した実ラベルQR→Code 128一致 | Pixelで不一致・連続箱・focus・回転・背景復帰、Samsungで同じ実カメラ受け入れを完了した記録 |
-| Privacy / release | Manifest、backup規則、FileProvider、source/APK/AAB checker、すべてのAndroid Gradle CI jobでのWrapper validation | 通信観測、ストア提出回答、署名済み配布物の運用承認 |
-| BLE | SDK非依存の安全コア、公式Inateck Android SDK 2.0.0を使う`scannerPoc` adapter、公式native通知parser、area/name/value read/write/readback、Nearby最小権限、R8 vendor-log除去、Pixel 7 / BCST-36で検索・接続・QR→Code 128一致・背景復元・QR待機中のapp force-stop後自動再接続 | 同一箱重複・不一致・連続箱、手動/予期しない切断、scanner再起動、Code 128待機/結果表示中のforce-stop、timeout復旧、firmware revision、Samsung、SDK再配付条件を確認したproduction/release採用 |
+| Privacy / release | Manifest、backup規則、FileProvider、source/APK/AAB checker、通常・round・adaptive・monochromeアプリアイコン、すべてのAndroid Gradle CI jobでのWrapper validation | 通信観測、ストア提出回答、署名済み配布物の運用承認 |
+| BLE | SDK非依存の安全コア、公式Inateck Android SDK 2.0.0を使う`scannerPoc` adapter、公式native通知parser、area/name/value read/write/readback、切断失敗時の物理link保持・有限再試行・切断完了前の再接続禁止、Nearby最小権限、R8 vendor-log除去、Pixel 7 / BCST-36で検索・接続・QR→Code 128一致・背景復元・QR待機中のapp force-stop後自動再接続 | 同一箱重複・不一致・連続箱、手動/予期しない切断、scanner再起動、Bluetooth権限変化中のlive link、Code 128待機/結果表示中のforce-stop、timeout復旧、firmware revision、Samsung、SDK再配付条件を確認したproduction/release採用 |
 
 現在のrelease構成は `UnavailableExternalScanner` によるカメラ入力のみです。公式Inateck SDK adapterは、arm64実機向け・非配付・minifiedの`scannerPoc`だけに接続します。SDK binaryは固定commitからchecksum検証付きでローカル取得し、Gitやreleaseへ同梱しません（詳細は [`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)）。
 
@@ -42,9 +42,12 @@ JDK/SDKがない環境ではGradle結果を推測せず、実行不能として�
 
 ## 2026-09-02〜04 統合検証記録
 
-- 2026-09-04の端末非依存追加検証で、一時的なBluetooth OFF/権限不許可後も既知端末の有限再接続予約を維持し、論理時刻に基づくbackoffと最大試行回数で停止することを`scanner:ble` JVM test 77件で確認した。実BCST-36の電源/権限復旧、GATT復元、異常切断は実機待ちである。
+- 2026-09-04の追加統合では、全moduleのJVM test 314件、lint、debug/release APK、release AAB、非配付`scannerPoc` APKが成功し、release source/APK/AAB/dependency hardeningとscanner PoC artifact検査も成功した。Android 17/API 37.1・16KB emulatorではapp 21、`core:data` 21、`core:export` 2、`feature:history` 9、`feature:scan` 19、`feature:settings` 16、`scanner:camera` 3、`scanner:ble` 8の計99件を実行し、失敗・skip 0だった。これは端末非依存境界の証拠であり、スリープ中のBCST-36や実カメラを起こしていない。
+- 2026-09-04の端末非依存追加検証で、一時的なBluetooth OFF/権限不許可後も既知端末の有限再接続予約を維持し、論理時刻に基づくbackoffと最大試行回数で停止することを確認した。さらに公式SDK adapterが切断失敗を型付きeventとして安全コアへ渡し、同期/非同期の切断失敗後も旧linkを保持したままcloseだけを有限再試行し、`Disconnected`確認前には新しいconnectを開始しないことを追加した。`scanner:ble` JVM test 82件、`scanner:inateck` JVM test 46件と両moduleのlintが成功した。実BCST-36の電源/権限復旧、GATT復元、異常切断は実機待ちである。
+- Android 17/API 37.1・16KB emulatorで、予測型「戻る」の無効時fallbackとgesture cancel時のno-op、および実`LocaleManager`を使う日本語/英語の双方向同期と再生成loop防止を計4件実行して成功した。言語testは製品DataStoreを使わず、変更前のpackage localeを`finally`で復元する。予測型「戻る」の視覚遷移とOS設定画面の実操作は人手ゲートに残す。
 - 照合画面の動的な案内と一致/不一致/重複結果にTalkBack用のpolite live regionを追加し、Android 17/API 37.1・16KB emulatorで`ScanScreenTest` 11件を実行して成功した。同じemulatorで、test専用のUUID cacheとContentProviderを通したPDF write/read 1件も成功した。実TalkBack serviceの読み上げと外部viewer/共有先は人手ゲートに残す。
 - Pixel 7の履歴1件画面からDocumentsUIのDownloadsへPDFを保存し、空ではなくPDF headerを持つことと、Androidの共有先選択画面が開くことを確認した。ファイル名や履歴payloadは記録していない。外部viewerの内容確認、複数ページ、実共有先への受け渡しは未実施である。
+- 通常release APKのcompiled resourcesに通常/round/adaptive/monochromeのランチャーリソースが含まれ、最終Manifestが`mipmap/ic_launcher`と`mipmap/ic_launcher_round`を参照することをAndroid build toolsで確認した。ランチャー上の最終表示はOEM・テーマ依存のため実端末確認に残す。
 
 - 2026-09-04、Pixel 7（Android 16 / API 36）とBCST-36（GATT mode）へ非配付`scannerPoc`を導入した。公式SDKで検索・接続し、実機inventoryを基準にQR/Code 128だけを有効化してfresh readback後にReadyとなった。BCST-36のtype-1分割通知は公式`scanner_lib`で再構成後、公式iOS SDK互換のchecksum/header処理を通し、QR→Code 128の一致まで成功した。背景移行では開始前symbologyを復元し、fresh readback後に設定済みへ戻った。さらにQR待機のactive sessionでOS force-stop→再起動を行い、工程とBLE選択を保ったまま保存済みBCST-36へ自動再接続し、接続済み・設定済みへ戻った。その状態からQR→Code 128の一致を完了し、照合件数が1件増えて次のQR待機へ進んだ。安全なログは段階名だけでpayload、raw frame、設定値、device IDを含まない。通常release APK/AAB/dependency hardeningも成功した。未実施の重複・不一致・連続箱・手動/予期しない切断・scanner再起動・QR待機以外のforce-stop・timeout・Samsung・配付条件は完了扱いにしない。
 
