@@ -866,6 +866,8 @@ private fun ScannerCard(
                         else SettingsUiAction.StartDiscovery,
                     )
                 },
+                enabled = state.connectionState !is ConnectionState.Connecting &&
+                    !state.connectionState.isConnected,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 52.dp)

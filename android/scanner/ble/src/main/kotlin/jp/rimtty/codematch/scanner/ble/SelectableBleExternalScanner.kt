@@ -196,7 +196,10 @@ class SelectableBleExternalScanner(
     }
 
     private fun canReplace(current: BleScannerSessionCoordinator): Boolean =
-        !current.isSessionActive &&
+        // Idle/Unavailable may still describe a pending or closing physical
+        // link. Do not detach its settings owner before the close callback.
+        !connectionCoordinator.hasPhysicalLink &&
+            !current.isSessionActive &&
             connectionCoordinator.connectionState !is BleConnectionState.Connected &&
             connectionCoordinator.connectionState !is BleConnectionState.Connecting &&
             connectionCoordinator.connectionState !is BleConnectionState.Reconnecting

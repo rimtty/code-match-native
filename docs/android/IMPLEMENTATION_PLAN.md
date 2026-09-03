@@ -518,6 +518,8 @@ M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触�
 
 ### M4: Full parity
 
+利用可否bridgeの自動検証: 公式SDK gatewayのAndroid readinessをPoC hostから安全コアへ通知し、SCANのみの喪失とCONNECT/電源等の喪失を分離する。後者では旧linkのcallbackを失効させ、物理切断・fresh inventory・snapshot復元前にReadyへ戻さない。復元中の手動切断意図、旧linkのsettings owner保持、接続中の探索禁止、同期開始拒否時の切断待ち解放を回帰testで検査した。全module JVM 346件、lint、debug/release/PoC buildとartifact hardening、emulatorの設定画面14件が成功したが、実端末の権限取り消し・Bluetooth OFFは未検証である。
+
 接続境界の自動検証: coordinatorのrequest/link generationをSDK内部のcallback取消epochから分離し、手動切断・接続開始拒否後の再接続成功を正しく受理する。同期false/例外のclose-only再試行、利用不可通知中のlink identity・手動切断意図保持、明示再試行時の回数リセット、同期callbackの論理時刻もJVMで検査する。これらのソフトウェア証拠だけでは、実scannerの切断/再接続やAndroidの権限変化中のlive linkを完了扱いにしない。
 
 - 対象BLE scannerの接続、読み取り、完全設定復元

@@ -54,6 +54,8 @@ class InateckExternalScanner private constructor(
     private val ticker = object : Runnable {
         override fun run() {
             if (closed) return
+            transport.refreshReadiness()
+            if (closed) return
             delegate.tick(nowMillis())
             reconcileTransportReset()
             handler.postDelayed(this, TICK_INTERVAL_MILLIS)
@@ -95,23 +97,39 @@ class InateckExternalScanner private constructor(
     override fun removeListener(listener: ExternalScannerListener): Boolean =
         delegate.removeListener(listener)
 
-    override fun startDiscovery(): Boolean = delegate.startDiscovery()
-
-    override fun stopDiscovery(): Boolean = delegate.stopDiscovery()
-
-    override fun connect(device: ScannerDevice): Boolean = delegate.connect(device)
-
-    override fun disconnect(): Boolean {
-        return delegate.disconnect()
+    override fun startDiscovery(): Boolean {
+        transport.refreshReadiness()
+        return if (closed) false else delegate.startDiscovery()
     }
 
-    override fun reconnectKnownDevice(): Boolean = delegate.reconnectKnownDevice()
+    override fun stopDiscovery(): Boolean {
+        transport.refreshReadiness()
+        return if (closed) false else delegate.stopDiscovery()
+    }
+
+    override fun connect(device: ScannerDevice): Boolean {
+        transport.refreshReadiness()
+        return if (closed) false else delegate.connect(device)
+    }
+
+    override fun disconnect(): Boolean {
+        transport.refreshReadiness()
+        return if (closed) false else delegate.disconnect()
+    }
+
+    override fun reconnectKnownDevice(): Boolean {
+        transport.refreshReadiness()
+        return if (closed) false else delegate.reconnectKnownDevice()
+    }
 
     override fun setExpectedFormat(format: ScanFormat?): Boolean {
-        return delegate.setExpectedFormat(format)
+        transport.refreshReadiness()
+        return if (closed) false else delegate.setExpectedFormat(format)
     }
 
     override fun onStart(owner: LifecycleOwner) {
+        transport.refreshReadiness()
+        if (closed) return
         delegate.setApplicationActive(true, nowMillis())
         // A process recreation restores the known identity synchronously, but
         // it must still explicitly start the connection. Retry on a later

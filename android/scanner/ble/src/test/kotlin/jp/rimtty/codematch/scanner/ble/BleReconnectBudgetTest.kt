@@ -92,6 +92,46 @@ class BleReconnectBudgetTest {
         assertEquals(2, transport.connectCalls)
     }
 
+    @Test
+    fun rejectedConnectAfterReadinessLossDoesNotKeepAPhantomCloseIntent() {
+        val transport = TestTransport()
+        val coordinator = BleConnectionCoordinator(transport, nowMillis = { 0L })
+        transport.onConnect = {
+            transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.PoweredOff))
+            false
+        }
+        assertFalse(coordinator.connect(device))
+        assertFalse(coordinator.hasPhysicalLink)
+
+        transport.onConnect = { true }
+        assertTrue(coordinator.reconnectKnownDevice())
+        transport.emit(BleTransportEvent.Connected(device))
+        assertEquals(BleConnectionState.Connected(device), coordinator.connectionState)
+        assertEquals(2, transport.connectCalls)
+    }
+
+    @Test
+    fun manualCancellationDuringRejectedStartDoesNotScheduleAnotherConnection() {
+        val transport = TestTransport()
+        val coordinator = BleConnectionCoordinator(transport, nowMillis = { 0L })
+        transport.close = { true }
+        transport.onConnect = {
+            transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.PoweredOff))
+            assertTrue(coordinator.disconnect())
+            false
+        }
+        assertFalse(coordinator.connect(device))
+        assertFalse(coordinator.hasPhysicalLink)
+        assertEquals(null, coordinator.pendingReconnectAtMillis)
+        assertFalse(coordinator.tick(60_000L))
+        assertEquals(1, transport.connectCalls)
+
+        transport.onConnect = { true }
+        assertTrue(coordinator.connect(device))
+        transport.emit(BleTransportEvent.Connected(device))
+        assertEquals(BleConnectionState.Connected(device), coordinator.connectionState)
+    }
+
     private class TestTransport : BleTransport {
         override val availability = BleAvailability.Ready
         override var listener: BleTransportListener? = null
