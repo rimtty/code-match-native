@@ -134,7 +134,7 @@ class InateckSdkTransportTest {
     }
 
     @Test
-    fun disconnectFailureKeepsPhysicalLinkActiveAndEmitsNoDisconnectedEvent() {
+    fun disconnectFailureKeepsPhysicalLinkActiveAndEmitsTypedFailureEvent() {
         val gateway = FakeGateway()
         val transport = InateckSdkTransport(gateway)
         val events = mutableListOf<BleTransportEvent>()
@@ -148,6 +148,17 @@ class InateckSdkTransportTest {
 
         assertTrue(transport.isLinkActive)
         assertTrue(events.none { it is BleTransportEvent.Disconnected })
+        val failure = events.filterIsInstance<BleTransportEvent.DisconnectFailed>().single()
+        assertEquals(device, failure.device)
+        assertTrue(failure.requestGeneration != null)
+        assertTrue(failure.linkGeneration != null)
+
+        // The failed completion must leave the gateway retryable. A later
+        // successful close is the only event that clears the link.
+        assertTrue(transport.disconnect(device))
+        gateway.disconnectCompletion?.invoke(Result.success(Unit))
+        assertFalse(transport.isLinkActive)
+        assertEquals(1, events.filterIsInstance<BleTransportEvent.Disconnected>().size)
     }
 
     private fun listener(events: MutableList<BleTransportEvent>) = object : BleTransportListener {

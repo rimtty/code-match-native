@@ -195,6 +195,142 @@ class BleConnectionCoordinatorTest {
     }
 
     @Test
+    fun failedManualDisconnectCanBeRetriedWithoutReplacingPhysicalLink() {
+        val transport = RecordingTransport().apply { disconnectAccepted = false }
+        val coordinator = BleConnectionCoordinator(transport)
+
+        assertTrue(coordinator.connect(device))
+        transport.emit(BleTransportEvent.Connected(device))
+        assertFalse(coordinator.disconnect())
+        assertEquals(
+            BleConnectionState.Failed("Bluetooth disconnect could not start"),
+            coordinator.connectionState,
+        )
+        assertTrue(coordinator.hasPhysicalLink)
+
+        // A failed synchronous close must be retryable, but the retry cannot
+        // create a second connection while the first link is still retained.
+        transport.disconnectAccepted = true
+        assertTrue(coordinator.disconnect())
+        assertEquals(2, transport.disconnectCalls.size)
+        assertEquals(1, transport.connectCalls.size)
+        assertTrue(coordinator.hasPhysicalLink)
+
+        transport.emit(BleTransportEvent.Disconnected(device, unexpected = false))
+        assertFalse(coordinator.hasPhysicalLink)
+        assertEquals(BleConnectionState.Idle, coordinator.connectionState)
+    }
+
+    @Test
+    fun failedDisconnectIsReportedAndKnownReconnectRetriesCloseBeforeConnecting() {
+        val transport = RecordingTransport()
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            nowMillis = { 0L },
+        )
+
+        assertTrue(coordinator.connect(device))
+        transport.emit(BleTransportEvent.Connected(device))
+        assertTrue(coordinator.disconnect())
+        assertTrue(coordinator.hasPhysicalLink)
+
+        // The adapter accepted the close request but later reported that the
+        // physical link was still present. This must not be treated as a
+        // normal Disconnected event.
+        transport.emit(BleTransportEvent.DisconnectFailed(device))
+        assertEquals(
+            BleConnectionState.Failed("Bluetooth disconnect failed"),
+            coordinator.connectionState,
+        )
+        assertTrue(coordinator.hasPhysicalLink)
+
+        assertTrue(coordinator.reconnectKnownDevice())
+        assertEquals(2, transport.disconnectCalls.size)
+        assertEquals(1, transport.connectCalls.size)
+        assertTrue(coordinator.hasPhysicalLink)
+
+        // Only the close acknowledgement permits the reconnect timer to arm.
+        transport.emit(BleTransportEvent.Disconnected(device, unexpected = false))
+        assertEquals(8_000L, coordinator.pendingReconnectAtMillis)
+        assertTrue(coordinator.tick(8_000L))
+        assertEquals(2, transport.connectCalls.size)
+        assertEquals(BleConnectionState.Reconnecting(device, 1), coordinator.connectionState)
+    }
+
+    @Test
+    fun automaticReconnectRetriesAFailedCloseWithoutOverlappingConnectAttempts() {
+        var now = 0L
+        val transport = RecordingTransport()
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            reconnectDelayMillis = { 1_000L },
+            maxReconnectAttempts = 2,
+            nowMillis = { now },
+        )
+
+        assertTrue(coordinator.connect(device))
+        assertFalse(coordinator.tick(29_999L))
+        assertTrue(coordinator.tick(30_000L))
+        assertEquals(1, transport.disconnectCalls.size)
+
+        // The timeout close was accepted but the adapter could not prove that
+        // the pending GATT link closed. Retries target disconnect only.
+        transport.emit(BleTransportEvent.DisconnectFailed(device))
+        assertEquals(1_000L, coordinator.pendingReconnectAtMillis)
+        now = 1_000L
+        assertTrue(coordinator.tick(now))
+        assertEquals(2, transport.disconnectCalls.size)
+        assertEquals(1, transport.connectCalls.size)
+
+        transport.emit(BleTransportEvent.DisconnectFailed(device))
+        assertEquals(2_000L, coordinator.pendingReconnectAtMillis)
+        now = 2_000L
+        assertTrue(coordinator.tick(now))
+        assertEquals(3, transport.disconnectCalls.size)
+        assertEquals(1, transport.connectCalls.size)
+
+        // The bounded close retry budget is exhausted; no fresh connection is
+        // attempted over the still-retained physical link.
+        transport.emit(BleTransportEvent.DisconnectFailed(device))
+        assertEquals(null, coordinator.pendingReconnectAtMillis)
+        assertEquals(1, transport.connectCalls.size)
+        assertTrue(coordinator.hasPhysicalLink)
+    }
+
+    @Test
+    fun automaticReconnectConnectsOnlyAfterRetryCloseIsAcknowledged() {
+        var now = 0L
+        val transport = RecordingTransport()
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            reconnectDelayMillis = { 1_000L },
+            maxReconnectAttempts = 3,
+            nowMillis = { now },
+        )
+
+        assertTrue(coordinator.connect(device))
+        assertTrue(coordinator.tick(30_000L))
+        transport.emit(BleTransportEvent.DisconnectFailed(device))
+        assertEquals(1_000L, coordinator.pendingReconnectAtMillis)
+
+        now = 1_000L
+        assertTrue(coordinator.tick(now))
+        assertEquals(2, transport.disconnectCalls.size)
+        assertEquals(1, transport.connectCalls.size)
+
+        // A close acknowledgement, not the retry request itself, is the
+        // boundary that permits the next physical connection.
+        assertFalse(coordinator.tick(1_001L))
+        transport.emit(BleTransportEvent.Disconnected(device, unexpected = false))
+        assertEquals(2_000L, coordinator.pendingReconnectAtMillis)
+        assertFalse(coordinator.tick(1_999L))
+        now = 2_000L
+        assertTrue(coordinator.tick(now))
+        assertEquals(2, transport.connectCalls.size)
+        assertEquals(BleConnectionState.Reconnecting(device, 2), coordinator.connectionState)
+    }
+
+    @Test
     fun staleGenerationOrDeviceEventsCannotReplaceCurrentLinkOrDeliverScan() {
         val otherDevice = ScannerDevice("scanner-2", "BCST-47")
         var now = 0L
@@ -247,6 +383,13 @@ class BleConnectionCoordinatorTest {
                 device = device,
                 linkGeneration = secondLink,
                 requestGeneration = secondRequest,
+            ),
+        )
+        transport.emit(
+            BleTransportEvent.DisconnectFailed(
+                device = device,
+                linkGeneration = firstLink,
+                requestGeneration = firstRequest,
             ),
         )
         transport.emit(
