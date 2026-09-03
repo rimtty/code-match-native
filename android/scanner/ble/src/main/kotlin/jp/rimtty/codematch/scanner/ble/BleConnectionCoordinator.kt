@@ -136,6 +136,24 @@ class BleConnectionCoordinator(
         if (activeDevice != null || pendingConnectDevice != null || disconnectIntent != null) {
             return false
         }
+        return beginConnectionAttempt(device, reconnecting = false)
+    }
+
+    /**
+     * Starts a known-device connection with the reconnect policy enabled.
+     *
+     * A process-recreated scanner can have a persisted identity while the
+     * radio or runtime permission is temporarily unavailable. Treating this
+     * as an ordinary user connect used to leave the coordinator in
+     * [BleConnectionState.Unavailable] with no future attempt scheduled. The
+     * host ticker would therefore never notice that Bluetooth recovered while
+     * the app stayed in the foreground.
+     */
+    private fun beginConnectionAttempt(
+        device: ScannerDevice,
+        reconnecting: Boolean,
+        retryOnFailure: Boolean = reconnecting,
+    ): Boolean {
         if (!rememberKnownDevice(device)) {
             transition(
                 connection = BleConnectionState.Failed(
@@ -146,12 +164,16 @@ class BleConnectionCoordinator(
             return false
         }
         reconnectAtMillis = null
-        reconnectAttempt = 0
+        if (!reconnecting) reconnectAttempt = 0
         manualDisconnect = false
         payloadGate.reset()
         preferredDevice = device
         mutableDevices[device.id] = BleDiscoveredDevice(device)
-        return startConnectionAttempt(device, reconnecting = false)
+        return startConnectionAttempt(
+            device = device,
+            reconnecting = reconnecting,
+            retryOnFailure = retryOnFailure,
+        )
     }
 
     fun disconnect(): Boolean {
@@ -219,7 +241,14 @@ class BleConnectionCoordinator(
             return accepted
         }
         reconnectAtMillis = null
-        return connect(device)
+        reconnectAttempt = 0
+        // Preserve the existing immediate API state (Connecting) while still
+        // enabling bounded retries if readiness is temporarily unavailable.
+        return beginConnectionAttempt(
+            device = device,
+            reconnecting = false,
+            retryOnFailure = true,
+        )
     }
 
     /**
@@ -479,6 +508,7 @@ class BleConnectionCoordinator(
     private fun startConnectionAttempt(
         device: ScannerDevice,
         reconnecting: Boolean,
+        retryOnFailure: Boolean = reconnecting,
         startedAtMillis: Long = nowMillis(),
     ): Boolean {
         val readiness = readTransportReadiness()
@@ -486,6 +516,14 @@ class BleConnectionCoordinator(
         if (failure != null) {
             transition(connection = readiness.asConnectionState(forConnection = true))
             diagnostics.error(failure)
+            // Keep a persisted known-device recovery attempt alive across a
+            // temporary Bluetooth/permission outage. The bounded reconnect
+            // policy prevents this from becoming a tight retry loop, while a
+            // later foreground/readiness recovery can start a new sequence.
+            // A scheduled tick owns its logical timestamp. Using the
+            // platform clock here can immediately make the next retry due
+            // again when a host supplies a monotonic/test clock to tick().
+            if (retryOnFailure) scheduleReconnect(startedAtMillis)
             return false
         }
 
@@ -522,7 +560,7 @@ class BleConnectionCoordinator(
             diagnostics.error(
                 if (reconnecting) "Reconnect start failed" else "Connection start failed",
             )
-            if (reconnecting) scheduleReconnect(nowMillis())
+            if (retryOnFailure) scheduleReconnect(startedAtMillis)
         }
         return accepted
     }
