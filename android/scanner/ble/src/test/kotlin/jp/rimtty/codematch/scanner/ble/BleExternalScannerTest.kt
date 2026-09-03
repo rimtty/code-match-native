@@ -369,6 +369,88 @@ class BleExternalScannerTest {
         assertNull(snapshotStore.load(device.id))
     }
 
+    @Test
+    fun selectableFacadeBindsTheDiscoveredDeviceBeforeConnectionAndConfiguration() {
+        val transport = RecordingTransport()
+        val stack = createSelectableStack(transport)
+        val selected = ScannerDevice("scanner-selected", "selected scanner")
+        val connectionStates = mutableListOf<ConnectionState>()
+        stack.scanner.listener = object : ExternalScannerListener {
+            override fun onConnectionStateChanged(state: ConnectionState) {
+                connectionStates += state
+            }
+        }
+
+        assertTrue(stack.scanner.startDiscovery())
+        transport.emit(
+            BleTransportEvent.DeviceFound(
+                BleDiscoveredDevice(selected, setOf("service-observed")),
+            ),
+        )
+        assertEquals(listOf(selected), stack.scanner.devices)
+
+        assertTrue(stack.scanner.connect(selected))
+        assertEquals(selected, stack.scanner.boundDevice)
+        assertEquals(listOf(selected), transport.connectCalls)
+        transport.emit(BleTransportEvent.Connected(selected))
+        assertEquals(ConfigurationState.Configuring, stack.scanner.configurationState)
+
+        transport.completeRead(originalSettings())
+        assertEquals(ConfigurationState.Ready, stack.scanner.configurationState)
+        assertFalse(stack.scanner.isReadyForScanning)
+        assertTrue(stack.scanner.setExpectedFormat(ScanFormat.QR))
+        transport.completeWrite(0, Result.success(Unit))
+        assertTrue(stack.scanner.isReadyForScanning)
+        assertTrue(connectionStates.contains(ConnectionState.Connected(selected)))
+        assertEquals(listOf(selected), stack.createdSessions.map { it.scannerDevice })
+    }
+
+    @Test
+    fun selectableFacadeCannotRedirectAnActiveRestrictionToAnotherDevice() {
+        val transport = RecordingTransport()
+        val stack = createSelectableStack(transport)
+        val other = ScannerDevice("scanner-other", "other scanner")
+
+        assertTrue(stack.scanner.connect(device))
+        transport.emit(BleTransportEvent.Connected(device))
+        transport.completeRead(originalSettings())
+        assertTrue(stack.scanner.setExpectedFormat(ScanFormat.QR))
+        transport.completeWrite(0, Result.success(Unit))
+
+        assertFalse(stack.scanner.connect(other))
+        assertEquals(device, stack.scanner.boundDevice)
+        assertEquals(listOf(device), transport.connectCalls)
+
+        assertTrue(stack.scanner.disconnect())
+        transport.completeWrite(1, Result.success(Unit))
+        assertEquals(ConnectionState.Idle, stack.scanner.connectionState)
+        assertTrue(stack.scanner.connect(other))
+        assertEquals(other, stack.scanner.boundDevice)
+        assertEquals(listOf(device, other), transport.connectCalls)
+        assertEquals(listOf(device, other), stack.createdSessions.map { it.scannerDevice })
+    }
+
+    @Test
+    fun selectableFacadeRecreatesTheSessionForAPersistedKnownDevice() {
+        val knownStore = InMemoryKnownDeviceStore(profileIdentity)
+        val firstTransport = RecordingTransport()
+        val first = createSelectableStack(firstTransport, knownStore)
+
+        assertTrue(first.scanner.connect(device))
+        assertEquals(device, first.scanner.boundDevice)
+        first.scanner.close()
+
+        val recreatedTransport = RecordingTransport()
+        val recreated = createSelectableStack(recreatedTransport, knownStore)
+        assertNull(recreated.scanner.boundDevice)
+        assertTrue(recreated.scanner.reconnectKnownDevice())
+
+        assertEquals(device, recreated.scanner.boundDevice)
+        assertEquals(listOf(device), recreatedTransport.connectCalls)
+        assertEquals(listOf(device), recreated.createdSessions.map { it.scannerDevice })
+        assertEquals(ConnectionState.Connecting(device), recreated.scanner.connectionState)
+    }
+
     private fun startReadySession(
         transport: RecordingTransport,
         scanner: BleExternalScanner,
@@ -416,6 +498,41 @@ class BleExternalScannerTest {
         val bridge = BleScannerSessionCoordinator(connection, session)
         return Triple(session, bridge, BleExternalScanner(bridge))
     }
+
+    private fun createSelectableStack(
+        transport: RecordingTransport,
+        knownStore: KnownDeviceStore = InMemoryKnownDeviceStore(profileIdentity),
+    ): SelectableStack {
+        val connection = BleConnectionCoordinator(
+            transport = transport,
+            knownDeviceStore = knownStore,
+        )
+        val snapshotStore = InMemorySymbologySnapshotStore(profileIdentity)
+        val createdSessions = mutableListOf<BleSymbologySession>()
+        val scanner = SelectableBleExternalScanner(
+            connectionCoordinator = connection,
+            sessionFactory = BleSessionCoordinatorFactory { selected ->
+                val session = BleSymbologySession(
+                    device = selected,
+                    transport = transport,
+                    profile = BleSymbologyProfile(
+                        settingsCharacteristicUuid = "adapter-settings-endpoint",
+                        codec = IosObservedSymbologyCodec,
+                        identity = profileIdentity,
+                    ),
+                    snapshotStore = snapshotStore,
+                )
+                createdSessions += session
+                BleScannerSessionCoordinator(connection, session)
+            },
+        )
+        return SelectableStack(scanner, createdSessions)
+    }
+
+    private data class SelectableStack(
+        val scanner: SelectableBleExternalScanner,
+        val createdSessions: List<BleSymbologySession>,
+    )
 
     private class RecordingTransport : BleTransport {
         override var availability: BleAvailability = BleAvailability.Ready
