@@ -54,12 +54,13 @@ BCST-36のscanはtype 1で返り、Android command libraryは通知再構成ま�
 - `getSettingInfo`の実機inventoryからQR/Code 128を識別し、全barcode symbologyをsession用に制限してfresh readbackが一致した後だけReadyになった。
 - 分割されたQR通知とCode 128通知を公式native parserで再構成し、QR→Code 128の順で同一品番の一致まで完了した。
 - バックグラウンド移行後、保存した開始前symbologyを復元し、fresh readback後に接続済み・設定済みへ戻った。
+- active sessionのQR待機中に`scannerPoc`をOSからforce-stopして再起動し、checkpointの工程を維持したまま保存済みBCST-36へ自動再接続して、設定処理後に接続済み・Readyへ戻った。その状態からQR→Code 128を読み取り、照合件数が1件増えて次のQR待機へ進んだ。
 - 安全な段階ログは`incomplete` / `scan` / `delivered`だけで、payload、raw frame、設定値、device IDを含まなかった。
 
 ## 残る実機ゲート
 
 1. 同一QRの重複抑止、不一致、異なる箱QRの連続照合をBCST-36で確認する。
-2. 手動切断・予期しない切断・scanner再起動・アプリ強制終了後の既知端末再接続と完全復元を確認する。
+2. 手動切断・予期しない切断・scanner再起動後の既知端末再接続と完全復元を確認する。アプリ強制終了はQR待機で合格済みだが、Code 128待機・結果表示中の工程復元は別途確認する。
 3. 復元中の電源断やtimeoutでReadyにならず、カメラへ安全にfallbackすることを確認する。
 4. scanner型番に加えてfirmware revisionを記録する。
 5. Samsung系で同じ受け入れを実施する。配付へ進む場合は、その前に正式な再配布条件と対応ABIを確認する。

@@ -50,7 +50,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -100,6 +102,7 @@ fun HistoryScreen(
     HistoryLocalized(language) {
         HistorySessionList(
             sessions = sessions,
+            selectedSessionId = null,
             language = language,
             onSessionSelected = onSessionSelected,
             onDeleteSession = onDeleteSession,
@@ -137,6 +140,7 @@ fun HistoryContent(
         val list: @Composable (Modifier) -> Unit = { listModifier ->
             HistorySessionList(
                 sessions = sortedSessions,
+                selectedSessionId = selectedSessionId,
                 language = language,
                 onSessionSelected = onSessionSelected,
                 onDeleteSession = onDeleteSession,
@@ -185,6 +189,7 @@ fun HistoryContent(
 @Composable
 private fun HistorySessionList(
     sessions: List<MatchSession>,
+    selectedSessionId: String?,
     language: AppLanguage,
     onSessionSelected: (String) -> Unit,
     onDeleteSession: (String) -> Unit,
@@ -212,6 +217,7 @@ private fun HistorySessionList(
                     SessionRow(
                         session = session,
                         language = language,
+                        selected = session.id == selectedSessionId,
                         onClick = { onSessionSelected(session.id) },
                         onDelete = { onDeleteSession(session.id) },
                     )
@@ -251,11 +257,13 @@ private fun EmptyHistoryState(labels: HistoryUiLabels, modifier: Modifier = Modi
 private fun SessionRow(
     session: MatchSession,
     language: AppLanguage,
+    selected: Boolean,
     onClick: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val labels = HistoryUiResources.labels()
     val summary = HistoryUiResources.sessionAccessibilitySummary(session, language)
+    val selectionDescription = if (selected) labels.sessionSelected else labels.sessionNotSelected
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -265,6 +273,8 @@ private fun SessionRow(
             .semantics(mergeDescendants = true) {
                 contentDescription = summary
                 role = Role.Button
+                this.selected = selected
+                stateDescription = selectionDescription
             }
             .testTag(HistoryTestTags.SESSION_ROW),
         colors = CardDefaults.cardColors(

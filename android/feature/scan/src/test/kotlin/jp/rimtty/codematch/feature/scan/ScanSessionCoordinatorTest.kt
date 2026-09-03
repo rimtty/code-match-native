@@ -277,6 +277,35 @@ class ScanSessionCoordinatorTest {
     }
 
     @Test
+    fun restoredBluetoothWaitsForKnownDeviceConnectionInsteadOfFallingBackImmediately() {
+        val scanner = TestScanner().apply { markConnecting() }
+        var fallbackRequests = 0
+        val coordinator = ScanSessionCoordinator(
+            scanner = scanner,
+            restoredCheckpoint = ScanSessionCheckpoint(
+                sessionId = "session",
+                phase = ScanCheckpointPhase.WAITING_QR,
+                matchedCount = 1,
+                inputSource = ScanCheckpointInputSource.BLUETOOTH,
+            ),
+        )
+        coordinator.onBluetoothFallback = { fallbackRequests++ }
+
+        coordinator.startSession()
+
+        assertEquals(InputSource.BLUETOOTH, coordinator.inputSource)
+        assertEquals(InputSource.BLUETOOTH, coordinator.state.inputSource)
+        assertEquals(0, fallbackRequests)
+        assertEquals(ScanFormat.QR, scanner.expectedFormat)
+
+        scanner.markReady()
+
+        assertEquals(InputSource.BLUETOOTH, coordinator.inputSource)
+        assertEquals(0, fallbackRequests)
+        assertEquals(ScanFormat.QR, scanner.expectedFormat)
+    }
+
+    @Test
     fun explicitRestoredCameraChoiceStaysCameraAfterBluetoothBecomesReady() {
         val scanner = TestScanner().apply { markReady() }
         val coordinator = ScanSessionCoordinator(
@@ -456,6 +485,13 @@ class ScanSessionCoordinatorTest {
         fun markReady() {
             connectionState = ConnectionState.Connected(device)
             configurationState = ConfigurationState.Ready
+            listener?.onConnectionStateChanged(connectionState)
+            listener?.onConfigurationStateChanged(configurationState)
+        }
+
+        fun markConnecting() {
+            connectionState = ConnectionState.Connecting(device)
+            configurationState = ConfigurationState.Unavailable
             listener?.onConnectionStateChanged(connectionState)
             listener?.onConfigurationStateChanged(configurationState)
         }

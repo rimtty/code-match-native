@@ -4,6 +4,8 @@
     <string name="history_empty_title">履歴はまだありません</string>
     <string name="history_empty_description">照合タブで記録を開始すると、一致したコードがセッション単位で保存されます。</string>
     <string name="history_delete">削除</string>
+    <string name="history_session_selected">選択中</string>
+    <string name="history_session_not_selected">未選択</string>
     <string name="history_session_in_progress">照合中のセッション</string>
     <string name="history_session_ended">終了済み</string>
     <string name="history_session_name">セッション名</string>

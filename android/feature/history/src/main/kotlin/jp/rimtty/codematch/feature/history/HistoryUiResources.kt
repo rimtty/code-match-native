@@ -29,6 +29,8 @@ object HistoryUiResources {
         emptyTitle = stringResource(R.string.history_empty_title),
         emptyDescription = stringResource(R.string.history_empty_description),
         delete = stringResource(R.string.history_delete),
+        sessionSelected = stringResource(R.string.history_session_selected),
+        sessionNotSelected = stringResource(R.string.history_session_not_selected),
         sessionInProgress = stringResource(R.string.history_session_in_progress),
         sessionEnded = stringResource(R.string.history_session_ended),
         sessionName = stringResource(R.string.history_session_name),
