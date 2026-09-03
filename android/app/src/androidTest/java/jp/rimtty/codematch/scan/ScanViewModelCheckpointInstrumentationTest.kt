@@ -1,0 +1,251 @@
+package jp.rimtty.codematch.scan
+
+import android.content.Context
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import jp.rimtty.codematch.core.data.CodeMatchDatabase
+import jp.rimtty.codematch.core.data.CodeMatchDatabaseFactory
+import jp.rimtty.codematch.core.data.HistoryRepository
+import jp.rimtty.codematch.core.data.SettingsRepository
+import jp.rimtty.codematch.core.model.MatchResult
+import jp.rimtty.codematch.feedback.FeedbackPlayer
+import jp.rimtty.codematch.feature.scan.ScanPhase
+import jp.rimtty.codematch.scanner.api.InputSource
+import jp.rimtty.codematch.scanner.fake.FakeExternalScanner
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertEquals
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.File
+import java.util.UUID
+
+/**
+ * App-level checkpoint evidence using storage isolated from the normal app.
+ *
+ * The test drives [ScanViewModel] through its public UI actions, then closes
+ * and reopens the UUID-named Room database before constructing a new ViewModel.
+ * No default database, DataStore, or repository cleanup helper is used.
+ */
+@RunWith(AndroidJUnit4::class)
+class ScanViewModelCheckpointInstrumentationTest {
+    @Test
+    fun qrTransitionSurvivesIsolatedDatabaseReopenAndRestoresCode128Step() = runBlocking {
+        val fixture = IsolatedScanFixture.open()
+        var firstOwner: TestViewModelOwner? = null
+        var secondOwner: TestViewModelOwner? = null
+        try {
+            val first = fixture.createViewModel()
+            firstOwner = first.first
+            val firstViewModel = first.second
+
+            firstViewModel.onAction(jp.rimtty.codematch.feature.scan.ScanUiAction.StartSession)
+            awaitState(firstViewModel) { state ->
+                state.sessionActive && state.phase == ScanPhase.WAITING_QR
+            }
+            val sessionId = requireNotNull(fixture.history.activeSession.first()?.id)
+
+            val qrPayload = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
+            firstViewModel.onAction(
+                jp.rimtty.codematch.feature.scan.ScanUiAction.ScanReceived(
+                    jp.rimtty.codematch.scanner.api.ScanPayload.qr(
+                        value = qrPayload,
+                        source = InputSource.CAMERA,
+                        timestampMillis = 1_000L,
+                    ),
+                ),
+            )
+            val afterQr = awaitState(firstViewModel) { state ->
+                state.sessionActive &&
+                    state.phase == ScanPhase.WAITING_CODE_128 &&
+                    state.qrPayload == qrPayload
+            }
+            assertEquals(InputSource.CAMERA, afterQr.inputSource)
+            assertEquals(jp.rimtty.codematch.scanner.api.ScanFormat.CODE_128, afterQr.expectedFormat)
+
+            val persisted = awaitCheckpoint(fixture.history, sessionId, qrPayload)
+            assertEquals(qrPayload, persisted?.qrPayload)
+            assertEquals(
+                jp.rimtty.codematch.core.model.ScanCheckpointPhase.WAITING_CODE_128,
+                persisted?.phase,
+            )
+
+            firstOwner.viewModelStore.clear()
+            firstOwner = null
+            fixture.reopenDatabase()
+
+            val second = fixture.createViewModel()
+            secondOwner = second.first
+            val restored = awaitState(second.second) { state ->
+                state.sessionActive &&
+                    state.phase == ScanPhase.WAITING_CODE_128 &&
+                    state.qrPayload == qrPayload
+            }
+            assertEquals(InputSource.CAMERA, restored.inputSource)
+            assertEquals(jp.rimtty.codematch.scanner.api.ScanFormat.CODE_128, restored.expectedFormat)
+            assertEquals(0, restored.matchedCount)
+        } finally {
+            secondOwner?.viewModelStore?.clear()
+            firstOwner?.viewModelStore?.clear()
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun restoredMatchResultDoesNotReplayHistoryEntryAfterDatabaseReopen() = runBlocking {
+        val fixture = IsolatedScanFixture.open()
+        var owner: TestViewModelOwner? = null
+        try {
+            val sessionId = fixture.history.beginSession("result-${fixture.suffix}", at = 20_000L)
+            val qrPayload = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
+            val barcodePayload = "BCJH-52-81GG@1N5X0C"
+            val boxNumber = fixture.history.recordMatch(
+                code = "BCJH-52-81GG",
+                qrPayload = qrPayload,
+                barcodePayload = barcodePayload,
+                at = 20_001L,
+                sessionId = sessionId,
+                checkpoint = jp.rimtty.codematch.core.model.ScanSessionCheckpoint(
+                    sessionId = sessionId,
+                    phase = jp.rimtty.codematch.core.model.ScanCheckpointPhase.RESULT,
+                    qrPayload = qrPayload,
+                    barcodePayload = barcodePayload,
+                    result = MatchResult.MATCH,
+                    matchedCount = 0,
+                    inputSource = jp.rimtty.codematch.core.model.ScanCheckpointInputSource.CAMERA,
+                    cameraWasSelectedByUser = true,
+                ),
+            )
+            assertEquals(1, boxNumber)
+
+            fixture.reopenDatabase()
+            val created = fixture.createViewModel()
+            owner = created.first
+            val restored = awaitState(created.second) { state ->
+                state.sessionActive &&
+                    state.phase == ScanPhase.RESULT &&
+                    state.result == MatchResult.MATCH &&
+                    state.qrPayload == qrPayload &&
+                    state.barcodePayload == barcodePayload
+            }
+            assertEquals(1, restored.matchedCount)
+
+            val active = fixture.history.activeSession.first { it?.id == sessionId }
+            assertEquals(1, active?.entries?.size)
+            assertEquals("BCJH-52-81GG", active?.entries?.single()?.code)
+            assertEquals(
+                MatchResult.MATCH,
+                fixture.history.getScanCheckpoint(sessionId)?.result,
+            )
+        } finally {
+            owner?.viewModelStore?.clear()
+            fixture.close()
+        }
+    }
+
+    private suspend fun awaitState(
+        viewModel: ScanViewModel,
+        predicate: (jp.rimtty.codematch.feature.scan.ScanUiState) -> Boolean,
+    ): jp.rimtty.codematch.feature.scan.ScanUiState =
+        withTimeout(10_000L) { viewModel.state.first(predicate) }
+
+    private suspend fun awaitCheckpoint(
+        history: HistoryRepository,
+        sessionId: String,
+        qrPayload: String,
+    ): jp.rimtty.codematch.core.model.ScanSessionCheckpoint? = withTimeout(10_000L) {
+        var checkpoint: jp.rimtty.codematch.core.model.ScanSessionCheckpoint?
+        do {
+            checkpoint = history.getScanCheckpoint(sessionId)
+            if (checkpoint?.qrPayload != qrPayload) {
+                kotlinx.coroutines.delay(25L)
+            }
+        } while (checkpoint?.qrPayload != qrPayload)
+        checkpoint
+    }
+
+    private class TestViewModelOwner : ViewModelStoreOwner {
+        override val viewModelStore = ViewModelStore()
+    }
+
+    private class IsolatedScanFixture private constructor(
+        private val context: Context,
+        val suffix: String,
+        private val databaseName: String,
+        private val dataStoreFile: File,
+        private val dataStoreJob: Job,
+        var database: CodeMatchDatabase,
+        var history: HistoryRepository,
+        val settings: SettingsRepository,
+    ) {
+        fun createViewModel(): Pair<TestViewModelOwner, ScanViewModel> {
+            val owner = TestViewModelOwner()
+            val factory = object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    require(modelClass == ScanViewModel::class.java)
+                    return ScanViewModel(
+                        historyRepository = history,
+                        settingsRepository = settings,
+                        scanner = FakeExternalScanner(),
+                        feedbackPlayer = FeedbackPlayer(context),
+                    ) as T
+                }
+            }
+            return owner to ViewModelProvider(owner, factory)[ScanViewModel::class.java]
+        }
+
+        fun reopenDatabase() {
+            database.close()
+            database = CodeMatchDatabaseFactory.create(context, databaseName)
+            history = HistoryRepository(database)
+        }
+
+        suspend fun close() {
+            database.close()
+            dataStoreJob.cancelAndJoin()
+            context.deleteDatabase(databaseName)
+            dataStoreFile.delete()
+        }
+
+        companion object {
+            fun open(): IsolatedScanFixture {
+                val context: Context = ApplicationProvider.getApplicationContext()
+                val suffix = UUID.randomUUID().toString()
+                val databaseName = "scan-vm-$suffix.db"
+                val dataStoreFile = File(
+                    context.cacheDir,
+                    "scan-vm-$suffix.preferences_pb",
+                )
+                val dataStoreJob = SupervisorJob()
+                val dataStoreScope = CoroutineScope(Dispatchers.IO + dataStoreJob)
+                val dataStore = PreferenceDataStoreFactory.create(
+                    scope = dataStoreScope,
+                    produceFile = { dataStoreFile },
+                )
+                val database = CodeMatchDatabaseFactory.create(context, databaseName)
+                return IsolatedScanFixture(
+                    context = context,
+                    suffix = suffix,
+                    databaseName = databaseName,
+                    dataStoreFile = dataStoreFile,
+                    dataStoreJob = dataStoreJob,
+                    database = database,
+                    history = HistoryRepository(database),
+                    settings = SettingsRepository(dataStore),
+                )
+            }
+        }
+    }
+}
