@@ -157,7 +157,21 @@ internal class InateckSdkTransport(
         val link = linkGeneration
         val accepted = gateway.disconnect(target.id) completion@{ result ->
             if (!closed && request == connectionGeneration) {
-                if (result.isFailure) return@completion
+                if (result.isFailure) {
+                    // The SDK callback reports that the close operation did
+                    // not complete. Keep activeDevice/pendingDevice intact
+                    // and tell the safety core explicitly; emitting
+                    // Disconnected here would permit a replacement link to
+                    // overlap a still-live GATT connection.
+                    listener?.onTransportEvent(
+                        BleTransportEvent.DisconnectFailed(
+                            device = device,
+                            requestGeneration = request,
+                            linkGeneration = link,
+                        ),
+                    )
+                    return@completion
+                }
                 activeDevice = null
                 pendingDevice = null
                 connectionGeneration++

@@ -117,6 +117,16 @@ sealed interface BleTransportEvent {
         val linkGeneration: Long? = null,
         val requestGeneration: Long? = null,
     ) : BleTransportEvent
+    /**
+     * A disconnect request failed before the adapter could prove that the
+     * physical link was closed. Consumers must retain the link identity and
+     * must not start a replacement connection from this event.
+     */
+    data class DisconnectFailed(
+        val device: ScannerDevice,
+        val linkGeneration: Long? = null,
+        val requestGeneration: Long? = null,
+    ) : BleTransportEvent
     data class ScanReceived(
         val payload: ScanPayload,
         /** Required from adapters that can deliver callbacks from old links. */

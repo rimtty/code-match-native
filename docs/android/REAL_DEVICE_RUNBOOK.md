@@ -120,7 +120,7 @@ bash scripts/setup-inateck-sdk-poc.sh
 adb install -r app/build/outputs/apk/scannerPoc/app-scannerPoc.apk
 ```
 
-設定画面が生成する3つのCode 128は、自動instrumentationで同梱ML Kitから `/*EnterSet*/` → `/*BLE_GATT*/` → `/*ExitSave*/` の順にexact decodeできることを確認済みです。これは画像生成と復号の証拠であり、BCST-47が実際に読み取って設定を変更・保存した証拠ではありません。
+設定画面が生成する3つのCode 128は、自動instrumentationで同梱ML Kitから `/*EnterSet*/` → `/*BLE_GATT*/` → `/*ExitSave*/` の順にexact decodeできることを確認済みです。これは画像生成と復号の証拠であり、対象BCST-36が実際に読み取って設定を変更・保存した証拠ではありません。
 
 実装が用意された後だけ、次を対象端末で行います。
 

@@ -89,6 +89,13 @@ class BleConnectionCoordinator(
     val currentRequestGeneration: Long? get() = activeRequestGeneration
     /** Last accepted physical-link token, retained to reject stale callbacks. */
     val currentLinkGeneration: Long? get() = activeLinkGeneration
+    /**
+     * Whether the adapter still owns a physical or pending connection. A
+     * failed disconnect deliberately keeps this true until a matching
+     * [BleTransportEvent.Disconnected] arrives.
+     */
+    val hasPhysicalLink: Boolean
+        get() = activeDevice != null || pendingConnectDevice != null
 
     fun setListener(listener: BleScannerListener?) {
         this.listener = listener
@@ -178,7 +185,13 @@ class BleConnectionCoordinator(
 
     fun disconnect(): Boolean {
         val device = activeDevice ?: pendingConnectDevice ?: return false
-        if (disconnectIntent != null) return true
+        // A transport can reject a disconnect synchronously, or report an
+        // asynchronous failure while retaining the physical link. In that
+        // terminal state a later explicit disconnect is a safe retry; every
+        // other in-flight request remains idempotent.
+        if (disconnectIntent != null && connectionState !is BleConnectionState.Failed) {
+            return true
+        }
         manualDisconnect = true
         disconnectIntent = DisconnectIntent.MANUAL
         reconnectAtMillis = null
@@ -187,58 +200,44 @@ class BleConnectionCoordinator(
         // Keep the active request/link tokens until the adapter's disconnect
         // callback arrives; that callback is still relevant to this link.
         connectStartedAtMillis = null
-        val accepted = try {
-            transport.disconnect(device)
-        } catch (_: Exception) {
-            false
-        }
-        if (accepted) {
-            // The adapter may emit a final Disconnected callback later. Expose
-            // an idle state immediately so UI cannot submit more scan input.
-            transition(
-                connection = BleConnectionState.Idle,
-                configuration = ConfigurationState.Unavailable,
-            )
-            diagnostics.connection("Manual disconnect requested")
-        } else {
-            // Retain the physical-link identity. A late successful connection
-            // is immediately disconnected below instead of becoming Ready.
-            transition(
-                connection = BleConnectionState.Failed("Bluetooth disconnect could not start"),
-                configuration = ConfigurationState.Unavailable,
-            )
-            diagnostics.error("Disconnect start failed")
-        }
-        return accepted
+        return requestPhysicalDisconnect(
+            device = device,
+            intent = DisconnectIntent.MANUAL,
+            failureReason = "Bluetooth disconnect could not start",
+            acceptedMessage = "Manual disconnect requested",
+            failureMessage = "Disconnect start failed",
+        )
     }
 
     fun reconnectKnownDevice(): Boolean {
         val device = preferredDevice ?: readKnownDevice() ?: return false
         if (disconnectIntent != null) {
-            disconnectIntent = DisconnectIntent.RECONNECT
-            manualDisconnect = false
-            return true
+            if (connectionState !is BleConnectionState.Failed) {
+                disconnectIntent = DisconnectIntent.RECONNECT
+                manualDisconnect = false
+                return true
+            }
+            // A failed disconnect left the adapter owning the old link. Retry
+            // the close first; never call connect() over that link.
+            val current = activeDevice ?: pendingConnectDevice ?: return false
+            return requestPhysicalDisconnect(
+                device = current,
+                intent = DisconnectIntent.RECONNECT,
+                failureReason = "Bluetooth reconnect reset could not start",
+                acceptedMessage = "Reconnect reset requested",
+                failureMessage = "Reconnect reset start failed",
+            )
         }
         if (activeDevice != null || pendingConnectDevice != null) {
             if (activeDevice != null && configurationState.isReady) return true
-            disconnectIntent = DisconnectIntent.RECONNECT
-            manualDisconnect = false
-            reconnectAtMillis = null
-            val accepted = try {
-                transport.disconnect(activeDevice ?: pendingConnectDevice ?: return false)
-            } catch (_: Exception) {
-                false
-            }
-            if (!accepted) {
-                transition(
-                    connection = BleConnectionState.Failed(
-                        "Bluetooth reconnect reset could not start",
-                    ),
-                    configuration = ConfigurationState.Unavailable,
-                )
-                diagnostics.error("Reconnect reset start failed")
-            }
-            return accepted
+            val current = activeDevice ?: pendingConnectDevice ?: return false
+            return requestPhysicalDisconnect(
+                device = current,
+                intent = DisconnectIntent.RECONNECT,
+                failureReason = "Bluetooth reconnect reset could not start",
+                acceptedMessage = "Reconnect reset requested",
+                failureMessage = "Reconnect reset start failed",
+            )
         }
         reconnectAtMillis = null
         reconnectAttempt = 0
@@ -378,6 +377,21 @@ class BleConnectionCoordinator(
                 diagnostics.error("Scanner connection failed")
                 if (shouldReconnect || !wasManual) scheduleReconnect(nowMillis())
             }
+            is BleTransportEvent.DisconnectFailed -> {
+                if (!acceptDisconnectFailedEvent(event)) return
+                // This is intentionally not a Disconnected transition: the
+                // adapter explicitly could not prove that the old physical
+                // link closed. Keep the identity and wait for a retry or the
+                // matching close callback before allowing connect().
+                transition(
+                    connection = BleConnectionState.Failed("Bluetooth disconnect failed"),
+                    configuration = ConfigurationState.Unavailable,
+                )
+                diagnostics.error("Disconnect failed")
+                if (disconnectIntent == DisconnectIntent.RECONNECT) {
+                    scheduleDisconnectRetry(nowMillis())
+                }
+            }
             is BleTransportEvent.Disconnected -> {
                 if (!acceptDisconnectedEvent(event)) return
                 val shouldReconnect = disconnectIntent == DisconnectIntent.RECONNECT
@@ -493,6 +507,19 @@ class BleConnectionCoordinator(
         if (!applicationActive || nowMillis < dueAt) return false
         reconnectAtMillis = null
         val device = preferredDevice ?: return false
+        if (disconnectIntent == DisconnectIntent.RECONNECT && hasPhysicalLink) {
+            // A failed close may retain the adapter's old link while the
+            // app-level state is Failed. Retry the close, never overlap it
+            // with a fresh connect attempt.
+            val current = activeDevice ?: pendingConnectDevice ?: return false
+            return requestPhysicalDisconnect(
+                device = current,
+                intent = DisconnectIntent.RECONNECT,
+                failureReason = "Bluetooth reconnect reset could not start",
+                acceptedMessage = "Reconnect reset requested",
+                failureMessage = "Reconnect reset start failed",
+            )
+        }
         if (connectionState is BleConnectionState.Connected ||
             connectionState is BleConnectionState.Connecting ||
             connectionState is BleConnectionState.Reconnecting
@@ -570,6 +597,54 @@ class BleConnectionCoordinator(
         pendingConnectDevice = null
         pendingConnectRequestGeneration = null
         pendingPhysicalLinkGeneration = null
+    }
+
+    /**
+     * Requests a physical close while retaining the link identity until the
+     * adapter emits [BleTransportEvent.Disconnected]. A successful request is
+     * only an accepted operation, not proof that the link is already closed.
+     */
+    private fun requestPhysicalDisconnect(
+        device: ScannerDevice,
+        intent: DisconnectIntent,
+        failureReason: String,
+        acceptedMessage: String,
+        failureMessage: String,
+    ): Boolean {
+        disconnectIntent = intent
+        manualDisconnect = intent == DisconnectIntent.MANUAL
+        reconnectAtMillis = null
+        discoveryStartedAtMillis = null
+        connectStartedAtMillis = null
+        val accepted = try {
+            transport.disconnect(device)
+        } catch (_: Exception) {
+            false
+        }
+        if (accepted) {
+            // Preserve a synchronously delivered DisconnectFailed event. The
+            // old link is still retained and must remain non-ready until a
+            // successful close callback arrives.
+            val closeFailureStillHeld = connectionState is BleConnectionState.Failed &&
+                disconnectIntent == intent &&
+                hasPhysicalLink
+            if (!closeFailureStillHeld) {
+                transition(
+                    connection = BleConnectionState.Idle,
+                    configuration = ConfigurationState.Unavailable,
+                )
+                diagnostics.connection(acceptedMessage)
+            }
+        } else {
+            // Retain the physical-link identity. A late successful connection
+            // is immediately disconnected below instead of becoming Ready.
+            transition(
+                connection = BleConnectionState.Failed(failureReason),
+                configuration = ConfigurationState.Unavailable,
+            )
+            diagnostics.error(failureMessage)
+        }
+        return accepted
     }
 
     private fun readKnownDevice(): ScannerDevice? {
@@ -657,6 +732,23 @@ class BleConnectionCoordinator(
         return linkMatches
     }
 
+    private fun acceptDisconnectFailedEvent(event: BleTransportEvent.DisconnectFailed): Boolean {
+        // A failure callback is meaningful only while this coordinator owns
+        // a close request. In particular, an untagged late legacy callback
+        // must not demote a newer healthy connection for the same device.
+        if (disconnectIntent == null) return false
+        val expectedDevice = activeDevice ?: pendingConnectDevice
+        if (expectedDevice == null || event.device.id != expectedDevice.id) return false
+        val requestMatches = event.requestGeneration == null ||
+            event.requestGeneration == activeRequestGeneration ||
+            event.requestGeneration == pendingConnectRequestGeneration
+        if (!requestMatches) return false
+        val linkMatches = event.linkGeneration == null ||
+            event.linkGeneration == activeLinkGeneration ||
+            event.linkGeneration == pendingPhysicalLinkGeneration
+        return linkMatches
+    }
+
     private fun acceptScanEvent(event: BleTransportEvent.ScanReceived): Boolean {
         val connected = connectionState as? BleConnectionState.Connected ?: return false
         if (event.device != null && event.device.id != connected.device.id) return false
@@ -675,6 +767,21 @@ class BleConnectionCoordinator(
         if (reconnectAtMillis != null) return
         val nextAttempt = reconnectAttempt + 1
         val delay = reconnectDelayMillis(nextAttempt)
+        require(delay >= 0) { "reconnect delay must not be negative" }
+        reconnectAtMillis = nowMillis + delay
+    }
+
+    /**
+     * Schedules a bounded retry of a failed physical close. This uses the
+     * reconnect budget but never calls connect while the old link is retained.
+     */
+    private fun scheduleDisconnectRetry(nowMillis: Long) {
+        if (!applicationActive || disconnectIntent != DisconnectIntent.RECONNECT ||
+            preferredDevice == null || reconnectAtMillis != null ||
+            reconnectAttempt >= maxReconnectAttempts
+        ) return
+        reconnectAttempt = (reconnectAttempt + 1).coerceAtMost(maxReconnectAttempts)
+        val delay = reconnectDelayMillis(reconnectAttempt)
         require(delay >= 0) { "reconnect delay must not be negative" }
         reconnectAtMillis = nowMillis + delay
     }
