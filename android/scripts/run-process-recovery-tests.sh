@@ -61,6 +61,10 @@ apk_package() {
   "$codematch_aapt2" dump badging "$1" | sed -n "s/^package: name='\([^']*\)'.*/\1/p"
 }
 [ "$(apk_package "$app_apk")" = "$app_package" ] || fail 'refusing to install a non-isolated application APK'
+app_manifest="$("$codematch_aapt2" dump xmltree "$app_apk" --file AndroidManifest.xml)"
+if printf '%s\n' "$app_manifest" | grep -Fq 'android.permission.CAMERA'; then
+  fail 'the recovery application must not declare camera access'
+fi
 [ "$(apk_package "$test_apk")" = "$test_package" ] || fail 'refusing to install a non-isolated test APK'
 test_manifest="$("$codematch_aapt2" dump xmltree "$test_apk" --file AndroidManifest.xml)"
 printf '%s\n' "$test_manifest" | grep 'targetPackage' | grep -Fq "=\"$app_package\"" || \
@@ -70,9 +74,6 @@ printf '%s\n' "$test_manifest" | grep 'targetPackage' | grep -Fq "=\"$app_packag
 # is no pm clear, uninstall, broad data deletion, or physical camera/BLE access.
 adb_target install "$app_apk"
 adb_target install "$test_apk"
-# Prevent camera permission prompts/capture from affecting logical UI tests.
-adb_target shell pm revoke "$app_package" android.permission.CAMERA
-adb_target shell pm set-permission-flags "$app_package" android.permission.CAMERA user-set user-fixed
 
 instrument() {
   local method="$1"

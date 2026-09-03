@@ -42,7 +42,11 @@ case "$(basename "$0")" in
         printf "package: name='%s' versionCode='1'\n" "$package"
         ;;
       xmltree)
-        printf 'A: android:targetPackage(0x01010021)="jp.rimtty.codematch"\n'
+        if [[ "$3" == *androidTest* ]]; then
+          printf 'A: android:targetPackage(0x01010021)="jp.rimtty.codematch"\n'
+        elif [ "$CODEMATCH_GUARD_SCENARIO" = 'camera-permission' ]; then
+          printf 'A: android:name="android.permission.CAMERA"\n'
+        fi
         ;;
       *) exit 93 ;;
     esac
@@ -80,6 +84,7 @@ expect_rejection not-emulator 'the selected target does not identify as an emula
 expect_rejection existing-app 'a recovery package already exists' --serial emulator-5564
 expect_rejection existing-test 'a recovery package already exists' --serial emulator-5564
 expect_rejection normal-app 'refusing to install a non-isolated application APK' --serial emulator-5564
+expect_rejection camera-permission 'the recovery application must not declare camera access' --serial emulator-5564
 expect_rejection normal-test 'refusing to install a non-isolated test APK' --serial emulator-5564
 expect_rejection wrong-instrumentation 'instrumentation must target the isolated application only' --serial emulator-5564
-printf '[process-recovery-guard] all nine fail-closed target/package checks passed\n'
+printf '[process-recovery-guard] all ten fail-closed target/package checks passed\n'

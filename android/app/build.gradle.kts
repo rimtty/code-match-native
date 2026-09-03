@@ -83,6 +83,7 @@ android {
     }
 
     if (processRecoveryTests) {
+        sourceSets.getByName("debug").manifest.srcFile("src/processRecovery/AndroidManifest.xml")
         sourceSets.getByName("androidTest").kotlin.directories.add("src/processRecoveryAndroidTest/java")
     }
 }

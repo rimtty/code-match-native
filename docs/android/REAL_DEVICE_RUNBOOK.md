@@ -53,7 +53,7 @@ bash scripts/run-process-recovery-tests.sh --serial emulator-5554
 
 runnerは明示した`emulator-N`が実際にemulatorであることと、recovery app/test packageが未インストールであることを確認し、`-PcodematchProcessRecoveryTests=true`でビルドした`jp.rimtty.codematch.recoverytest`と対応test APKだけをインストールします。既存のrecovery packageがあればデータを消去せず拒否します。APKのpackageとinstrumentationの対象packageも完全一致で検査します。物理USB端末、対象未指定、通常debug/release/PoC APKは拒否します。通常ビルドにはこの専用test sourceを含めません。
 
-QR待機・Code 128待機・一致結果の各checkpointを合成データで準備し、起動中の対象PIDを確認してOSの`am force-stop`で停止、PID消失後に別のinstrumentationで新しいアプリprocessから復元を検査します。既存active sessionがあれば上書きせず失敗し、後始末は作成したsession IDだけに限定します。`pm clear`や通常アプリの削除は行いません。読み取り専用モードまたは破棄可能なemulatorを推奨し、カメラ権限はテスト用packageだけ拒否して実撮影を行いません。
+QR待機・Code 128待機・一致結果の各checkpointを合成データで準備し、起動中の対象PIDを確認してOSの`am force-stop`で停止、PID消失後に別のinstrumentationで新しいアプリprocessから復元を検査します。既存active sessionがあれば上書きせず失敗し、後始末は作成したsession IDだけに限定します。`pm clear`や通常アプリの削除は行いません。読み取り専用モードまたは破棄可能なemulatorを推奨します。専用debug manifest overlayはCAMERA権限を除去し、runnerも最終APKにCAMERA権限があれば拒否するため、実撮影やOSバージョン依存の権限flag操作は行いません。
 
 これはemulatorでのOS process境界の証拠であり、Pixel/Samsungの実操作、省電力制御、実カメラ、対象BLE scannerの接続・設定復元を代替しません。実機受入は後続の各ゲートで別途記録してください。
 
