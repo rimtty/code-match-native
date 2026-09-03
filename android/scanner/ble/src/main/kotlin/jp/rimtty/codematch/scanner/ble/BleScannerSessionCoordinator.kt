@@ -119,6 +119,9 @@ class BleScannerSessionCoordinator(
 
     fun disconnect(): Boolean {
         if (closed) return false
+        // A new manual disconnect supersedes a reconnect that was queued while
+        // an earlier restore was still in flight.
+        pendingReconnectAfterDisconnect = false
         val symbologyState = symbologySession.state
         if (symbologyState == BleSymbologySessionState.Restoring) {
             pendingManualDisconnect = true

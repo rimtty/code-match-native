@@ -118,6 +118,9 @@ class BleConnectionCoordinator(
             diagnostics.error(failure)
             return false
         }
+        // Explicit discovery supersedes an idle automatic reconnect. Do this
+        // before notifying listeners so its timer cannot race the new search.
+        reconnectAtMillis = null
         transition(connection = BleConnectionState.Searching)
         discoveryStartedAtMillis = nowMillis()
         diagnostics.connection("Discovery requested")
@@ -198,7 +201,7 @@ class BleConnectionCoordinator(
         // terminal state a later explicit disconnect is a safe retry; every
         // other in-flight request remains idempotent.
         if (disconnectIntent == DisconnectIntent.MANUAL &&
-            connectionState !is BleConnectionState.Failed
+            disconnectRequestInFlight
         ) {
             return true
         }
@@ -238,7 +241,7 @@ class BleConnectionCoordinator(
         // including when an exhausted sequence still owns a link to close.
         reconnectAttempt = 0
         if (disconnectIntent != null) {
-            if (connectionState !is BleConnectionState.Failed) {
+            if (disconnectRequestInFlight) {
                 disconnectIntent = DisconnectIntent.RECONNECT
                 manualDisconnect = false
                 return true
@@ -562,6 +565,9 @@ class BleConnectionCoordinator(
 
         val dueAt = reconnectAtMillis ?: return false
         if (!applicationActive || nowMillis < dueAt) return false
+        // Adapter-originated discovery may bypass startDiscovery(). Keep the
+        // deadline pending until discovery ends rather than overlapping it.
+        if (connectionState == BleConnectionState.Searching) return false
         reconnectAtMillis = null
         val device = preferredDevice ?: return false
         if (disconnectIntent == DisconnectIntent.RECONNECT && hasPhysicalLink) {

@@ -56,6 +56,8 @@ PoC hostは既存の250ms tickerと前景復帰・利用者操作の境界でSDK
 
 接続開始そのものが同期的に拒否された場合は、その要求に付随する切断待ちも解放します。接続中・切断中の新しい探索は禁止し、設定画面も接続中は検索ボタンを無効にします。これらはcallback/権限snapshotを注入する自動testと設定画面のemulator testで検査する境界であり、実Androidでの権限取り消し・Bluetooth OFFやscannerの物理切断を代替する証拠ではありません。
 
+利用者が明示的に探索を始めた場合は、linkがない状態の自動再接続予約を取り消して探索を優先します。adapter由来の探索中にもtimerで接続を重ねません。切断失敗後の再試行可否は表示状態ではなく実際のclose要求待ちで判断し、電源OFF/ONによって失敗表示が変化しても再試行できます。復元中に再接続を予約した後で再度切断を選んだ場合は、最後の手動切断を優先します。
+
 ### 公式flag/value形式の先行実装境界
 
 公式の[General Configuration](https://docs.inateck.com/scanner-sdk-en/ble/desktop_setting/)は、成功応答を`status=0`と`info`配列（`name`、`flag`、`value`）、書込commandを数値の`flag`/`value`配列として定義しています。また[General Configuration List](https://docs.inateck.com/scanner-sdk-en/ble/desktop_setting_list/)はCode 128をflag 2008、QR Codeをflag 2022としています。
