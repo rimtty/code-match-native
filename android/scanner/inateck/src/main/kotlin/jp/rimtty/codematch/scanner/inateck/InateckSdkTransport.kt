@@ -34,8 +34,11 @@ internal class InateckSdkTransport(
     private var pendingDevice: ScannerDevice? = null
     private var activeDevice: ScannerDevice? = null
     private var discoveryGeneration = 0L
+    /** Private callback epoch; never used as a coordinator request token. */
     private var connectionGeneration = 0L
-    private var linkGeneration = 0L
+    private var nextStandaloneGeneration = 0L
+    private var currentRequestGeneration: Long? = null
+    private var currentLinkGeneration: Long? = null
     private var closed = false
 
     override var listener: BleTransportListener? = null
@@ -93,70 +96,88 @@ internal class InateckSdkTransport(
     }
 
     override fun connect(device: ScannerDevice): Boolean {
+        val generation = ++nextStandaloneGeneration
+        return connect(device, generation, generation)
+    }
+
+    override fun connect(
+        device: ScannerDevice,
+        requestGeneration: Long,
+        linkGeneration: Long,
+    ): Boolean {
         if (closed || activeDevice != null || pendingDevice != null ||
             readiness.failureReason(forConnection = true) != null
         ) {
             return false
         }
         if (discovering) stopDiscovery()
-        val request = ++connectionGeneration
-        val link = ++linkGeneration
+        val epoch = ++connectionGeneration
+        val request = requestGeneration
+        val link = linkGeneration
+        nextStandaloneGeneration = maxOf(nextStandaloneGeneration, request, link)
+        currentRequestGeneration = request
+        currentLinkGeneration = link
         pendingDevice = device
-        val accepted = gateway.connect(
-            deviceId = device.id,
-            onScanBytes = { bytes -> acceptScanBytes(device, request, link, bytes) },
-            onDisconnected = { unexpected ->
-                if (!closed && request == connectionGeneration) {
-                    activeDevice = null
-                    listener?.onTransportEvent(
-                        BleTransportEvent.Disconnected(
-                            device = device,
-                            unexpected = unexpected,
-                            requestGeneration = request,
-                            linkGeneration = link,
-                        ),
-                    )
-                }
-            },
-            completion = { result ->
-                if (closed || request != connectionGeneration) return@connect
-                if (result.isSuccess) {
-                    pendingDevice = null
-                    activeDevice = device
-                    listener?.onTransportEvent(
-                        BleTransportEvent.Connected(
-                            device = device,
-                            requestGeneration = request,
-                            linkGeneration = link,
-                        ),
-                    )
-                } else {
-                    pendingDevice = null
-                    activeDevice = null
-                    listener?.onTransportEvent(
-                        BleTransportEvent.ConnectionFailed(
-                            device = device,
-                            reason = "Inateck scanner connection failed",
-                            requestGeneration = request,
-                            linkGeneration = link,
-                        ),
-                    )
-                }
-            },
-        )
-        if (!accepted) {
-            pendingDevice = null
-            connectionGeneration++
+        var connectCompletionDelivered = false
+        val accepted = runCatching {
+            gateway.connect(
+                deviceId = device.id,
+                onScanBytes = { bytes -> acceptScanBytes(device, epoch, request, link, bytes) },
+                onDisconnected = { unexpected ->
+                    if (!closed && epoch == connectionGeneration) {
+                        retireLink()
+                        listener?.onTransportEvent(
+                            BleTransportEvent.Disconnected(
+                                device = device,
+                                unexpected = unexpected,
+                                requestGeneration = request,
+                                linkGeneration = link,
+                            ),
+                        )
+                    }
+                },
+                completion = connectionCompletion@{ result ->
+                    if (closed || epoch != connectionGeneration || connectCompletionDelivered) {
+                        return@connectionCompletion
+                    }
+                    connectCompletionDelivered = true
+                    if (result.isSuccess) {
+                        pendingDevice = null
+                        activeDevice = device
+                        listener?.onTransportEvent(
+                            BleTransportEvent.Connected(
+                                device = device,
+                                requestGeneration = request,
+                                linkGeneration = link,
+                            ),
+                        )
+                    } else {
+                        retireLink()
+                        listener?.onTransportEvent(
+                            BleTransportEvent.ConnectionFailed(
+                                device = device,
+                                reason = "Inateck scanner connection failed",
+                                requestGeneration = request,
+                                linkGeneration = link,
+                            ),
+                        )
+                    }
+                },
+            )
+        }.getOrDefault(false)
+        if (!accepted && epoch == connectionGeneration && pendingDevice != null) {
+            retireLink()
         }
         return accepted
     }
 
     override fun disconnect(device: ScannerDevice): Boolean {
         val target = (activeDevice ?: pendingDevice)?.takeIf { it.id == device.id } ?: return false
-        val request = connectionGeneration
-        val link = linkGeneration
+        val epoch = connectionGeneration
+        val request = currentRequestGeneration ?: return false
+        val link = currentLinkGeneration ?: return false
         val accepted = gateway.disconnect(target.id) completion@{ result ->
-            if (!closed && request == connectionGeneration) {
+            if (!closed && epoch == connectionGeneration) {
                 if (result.isFailure) {
                     // The SDK callback reports that the close operation did
                     // not complete. Keep activeDevice/pendingDevice intact
@@ -172,9 +193,7 @@ internal class InateckSdkTransport(
                     )
                     return@completion
                 }
-                activeDevice = null
-                pendingDevice = null
-                connectionGeneration++
+                retireLink()
                 listener?.onTransportEvent(
                     BleTransportEvent.Disconnected(
                         device = device,
@@ -196,9 +215,9 @@ internal class InateckSdkTransport(
             return completeReadFailure(completion)
         }
         val device = activeDevice ?: return completeReadFailure(completion)
-        val request = connectionGeneration
+        val epoch = connectionGeneration
         return gateway.readSettings(device.id) { result ->
-            if (closed || request != connectionGeneration) return@readSettings
+            if (closed || epoch != connectionGeneration) return@readSettings
             completion(
                 result.mapCatching { settings ->
                     settingsEnvelope(settings).toByteArray(StandardCharsets.UTF_8)
@@ -217,9 +236,9 @@ internal class InateckSdkTransport(
         }
         val device = activeDevice ?: return completeWriteFailure(completion)
         val command = strictUtf8(payload) ?: return completeWriteFailure(completion)
-        val request = connectionGeneration
+        val epoch = connectionGeneration
         return gateway.writeSettings(device.id, command) { result ->
-            if (closed || request != connectionGeneration) return@writeSettings
+            if (closed || epoch != connectionGeneration) return@writeSettings
             completion(result)
         }
     }
@@ -229,20 +248,19 @@ internal class InateckSdkTransport(
         closed = true
         discovering = false
         discoveryGeneration++
-        pendingDevice = null
-        activeDevice = null
-        connectionGeneration++
+        retireLink()
         listener = null
         gateway.close()
     }
 
     private fun acceptScanBytes(
         device: ScannerDevice,
+        epoch: Long,
         request: Long,
         link: Long,
         bytes: ByteArray,
     ) {
-        if (closed || request != connectionGeneration || activeDevice?.id != device.id) {
+        if (closed || epoch != connectionGeneration || activeDevice?.id != device.id) {
             scanDeliveryObserver(InateckScanDeliveryKind.STALE)
             return
         }
@@ -268,6 +286,15 @@ internal class InateckSdkTransport(
         }
         scanDeliveryObserver(InateckScanDeliveryKind.DELIVERED)
         listener?.onTransportEvent(event)
+    }
+
+    /** Invalidate old callbacks before publishing the terminal event. */
+    private fun retireLink() {
+        pendingDevice = null
+        activeDevice = null
+        currentRequestGeneration = null
+        currentLinkGeneration = null
+        connectionGeneration++
     }
 
     private fun settingsEnvelope(settings: List<Map<String, String>>): String {

@@ -83,6 +83,30 @@ class AndroidBleTransportTest {
     }
 
     @Test
+    fun coordinatorTokensArePreservedAfterReadinessRejectedAnEarlierAttempt() {
+        val platform = FakePlatform()
+        val permissions = FakePermissions(connection = BlePermissionState.DENIED)
+        val transport = newTransport(platform = platform, permissions = permissions)
+        val events = mutableListOf<BleTransportEvent>()
+        transport.listener = BleTransportListener { events += it }
+        assertFalse(transport.connect(device, requestGeneration = 40L, linkGeneration = 72L))
+
+        permissions.connection = BlePermissionState.GRANTED
+        assertTrue(transport.connect(device, requestGeneration = 41L, linkGeneration = 73L))
+        val gatt = platform.gatts.single()
+        platform.emitConnected(0, gatt)
+        platform.emitServices(0, gatt)
+        val connected = events.filterIsInstance<BleTransportEvent.Connected>().single()
+        assertEquals(41L, connected.requestGeneration)
+        assertEquals(73L, connected.linkGeneration)
+
+        assertTrue(transport.disconnect(device))
+        val disconnected = events.filterIsInstance<BleTransportEvent.Disconnected>().single()
+        assertEquals(41L, disconnected.requestGeneration)
+        assertEquals(73L, disconnected.linkGeneration)
+    }
+
+    @Test
     fun lifecycleStopDisconnectsClosesResetsAndDropsOldGenerationCallbacks() {
         val platform = FakePlatform()
         val transport = newTransport(platform = platform)

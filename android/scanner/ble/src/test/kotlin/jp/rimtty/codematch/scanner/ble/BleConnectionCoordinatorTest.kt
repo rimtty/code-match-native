@@ -131,6 +131,156 @@ class BleConnectionCoordinatorTest {
     }
 
     @Test
+    fun availabilityLossRetainsPendingLinkAndClosesBeforeRecoveryConnect() {
+        var now = 0L
+        val transport = RecordingTransport()
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            reconnectDelayMillis = { 1_000L },
+            nowMillis = { now },
+        )
+
+        assertTrue(coordinator.connect(device))
+        val requestGeneration = coordinator.pendingRequestGeneration
+        val linkGeneration = coordinator.pendingLinkGeneration
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.PoweredOff))
+        assertEquals(BleConnectionState.Unavailable("Bluetooth is off"), coordinator.connectionState)
+        assertEquals(requestGeneration, coordinator.pendingRequestGeneration)
+        assertEquals(linkGeneration, coordinator.pendingLinkGeneration)
+        assertTrue(coordinator.hasPhysicalLink)
+        assertEquals(1_000L, coordinator.pendingReconnectAtMillis)
+
+        // Ready means only that the adapter can be used again; it is not a
+        // close acknowledgement and must not publish a connection or connect.
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.Ready))
+        assertEquals(BleConnectionState.Unavailable("Bluetooth is off"), coordinator.connectionState)
+        assertEquals(1, transport.connectCalls.size)
+        assertFalse(coordinator.tick(999L))
+
+        now = 1_000L
+        assertTrue(coordinator.tick(now))
+        assertEquals(1, transport.disconnectCalls.size)
+        assertEquals(1, transport.connectCalls.size)
+        assertEquals(requestGeneration, coordinator.pendingRequestGeneration)
+        assertEquals(linkGeneration, coordinator.pendingLinkGeneration)
+        assertEquals(BleConnectionState.Unavailable("Bluetooth is off"), coordinator.connectionState)
+
+        transport.emit(
+            BleTransportEvent.Disconnected(
+                device = device,
+                unexpected = false,
+                requestGeneration = requestGeneration,
+                linkGeneration = linkGeneration,
+            ),
+        )
+        assertEquals(2_000L, coordinator.pendingReconnectAtMillis)
+        now = 2_000L
+        assertTrue(coordinator.tick(now))
+        assertEquals(2, transport.connectCalls.size)
+        assertEquals(BleConnectionState.Reconnecting(device, 2), coordinator.connectionState)
+    }
+
+    @Test
+    fun availabilityLossRetainsActiveLinkSuppressesScanAndUsesCloseOnlyRetry() {
+        var now = 0L
+        val transport = RecordingTransport()
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            reconnectDelayMillis = { 1_000L },
+            nowMillis = { now },
+        )
+        val received = mutableListOf<String>()
+        coordinator.setListener(object : BleScannerListener {
+            override fun onScanPayload(payload: ScanPayload) {
+                received += payload.value
+            }
+        })
+
+        assertTrue(coordinator.connect(device))
+        transport.emit(BleTransportEvent.Connected(device))
+        coordinator.markConfiguration(ConfigurationState.Ready)
+        val requestGeneration = coordinator.currentRequestGeneration
+        val linkGeneration = coordinator.currentLinkGeneration
+
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.PoweredOff))
+        assertEquals(BleConnectionState.Unavailable("Bluetooth is off"), coordinator.connectionState)
+        assertEquals(requestGeneration, coordinator.currentRequestGeneration)
+        assertEquals(linkGeneration, coordinator.currentLinkGeneration)
+        assertTrue(coordinator.hasPhysicalLink)
+        assertEquals(1_000L, coordinator.pendingReconnectAtMillis)
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.Ready))
+        coordinator.markConfiguration(ConfigurationState.Ready)
+        transport.emit(BleTransportEvent.ScanReceived(ScanPayload.qr("blocked")))
+        assertTrue(received.isEmpty())
+
+        // Duplicate availability notifications do not stack close requests.
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.PoweredOff))
+        assertEquals(1_000L, coordinator.pendingReconnectAtMillis)
+        now = 1_000L
+        assertTrue(coordinator.tick(now))
+        assertEquals(1, transport.disconnectCalls.size)
+        assertEquals(1, transport.connectCalls.size)
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.PoweredOff))
+        assertEquals(1, transport.disconnectCalls.size)
+        assertEquals(null, coordinator.pendingReconnectAtMillis)
+
+        transport.emit(
+            BleTransportEvent.Disconnected(
+                device = device,
+                unexpected = false,
+                requestGeneration = requestGeneration,
+                linkGeneration = linkGeneration,
+            ),
+        )
+        assertEquals(2_000L, coordinator.pendingReconnectAtMillis)
+        now = 2_000L
+        assertTrue(coordinator.tick(now))
+        assertEquals(2, transport.connectCalls.size)
+        assertEquals(BleConnectionState.Reconnecting(device, 2), coordinator.connectionState)
+    }
+
+    @Test
+    fun availabilityLossPreservesManualDisconnectAndNeverSchedulesReconnect() {
+        var now = 0L
+        val transport = RecordingTransport()
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            reconnectDelayMillis = { 1_000L },
+            nowMillis = { now },
+        )
+
+        assertTrue(coordinator.connect(device))
+        transport.emit(BleTransportEvent.Connected(device))
+        val requestGeneration = coordinator.currentRequestGeneration
+        val linkGeneration = coordinator.currentLinkGeneration
+        assertTrue(coordinator.disconnect())
+        assertEquals(1, transport.disconnectCalls.size)
+        assertTrue(coordinator.hasPhysicalLink)
+
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.PoweredOff))
+        assertEquals(BleConnectionState.Unavailable("Bluetooth is off"), coordinator.connectionState)
+        assertEquals(requestGeneration, coordinator.currentRequestGeneration)
+        assertEquals(linkGeneration, coordinator.currentLinkGeneration)
+        assertEquals(null, coordinator.pendingReconnectAtMillis)
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.Ready))
+        assertEquals(null, coordinator.pendingReconnectAtMillis)
+        assertFalse(coordinator.tick(10_000L))
+        assertEquals(1, transport.connectCalls.size)
+        assertEquals(1, transport.disconnectCalls.size)
+
+        transport.emit(
+            BleTransportEvent.Disconnected(
+                device = device,
+                unexpected = false,
+                requestGeneration = requestGeneration,
+                linkGeneration = linkGeneration,
+            ),
+        )
+        assertEquals(BleConnectionState.Idle, coordinator.connectionState)
+        assertEquals(null, coordinator.pendingReconnectAtMillis)
+    }
+
+    @Test
     fun discoveryTimeoutStopsAtExactlyFiveSeconds() {
         var now = 0L
         val transport = RecordingTransport()
@@ -173,6 +323,79 @@ class BleConnectionCoordinatorTest {
     }
 
     @Test
+    fun synchronousTimeoutDisconnectFailureSchedulesBoundedCloseOnlyRetries() {
+        var now = 0L
+        val transport = RecordingTransport().apply { disconnectAccepted = false }
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            reconnectDelayMillis = { 1_000L },
+            maxReconnectAttempts = 2,
+            nowMillis = { now },
+        )
+
+        assertTrue(coordinator.connect(device))
+        now = 30_000L
+        assertFalse(coordinator.tick(now))
+        assertEquals(1, transport.disconnectCalls.size)
+        assertEquals(31_000L, coordinator.pendingReconnectAtMillis)
+        assertTrue(coordinator.hasPhysicalLink)
+
+        // A synchronous false result retains the pending link. Each due tick
+        // retries close only, with no replacement connect over that link.
+        now = 30_999L
+        assertFalse(coordinator.tick(now))
+        assertEquals(1, transport.disconnectCalls.size)
+        now = 31_000L
+        assertFalse(coordinator.tick(now))
+        assertEquals(2, transport.disconnectCalls.size)
+        assertEquals(32_000L, coordinator.pendingReconnectAtMillis)
+        assertEquals(1, transport.connectCalls.size)
+
+        now = 32_000L
+        assertFalse(coordinator.tick(now))
+        assertEquals(3, transport.disconnectCalls.size)
+        assertEquals(null, coordinator.pendingReconnectAtMillis)
+        assertEquals(1, transport.connectCalls.size)
+        assertTrue(coordinator.hasPhysicalLink)
+    }
+
+    @Test
+    fun synchronousReconnectDisconnectExceptionSchedulesCloseRetryAndWaitsForAck() {
+        var now = 0L
+        val transport = RecordingTransport().apply {
+            disconnectException = IllegalStateException("synthetic disconnect failure")
+        }
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            reconnectDelayMillis = { 1_000L },
+            nowMillis = { now },
+        )
+
+        assertTrue(coordinator.connect(device))
+        transport.emit(BleTransportEvent.Connected(device))
+        assertFalse(coordinator.reconnectKnownDevice())
+        assertEquals(1_000L, coordinator.pendingReconnectAtMillis)
+        assertEquals(1, transport.disconnectCalls.size)
+        assertEquals(1, transport.connectCalls.size)
+        assertTrue(coordinator.hasPhysicalLink)
+
+        transport.disconnectException = null
+        now = 1_000L
+        assertTrue(coordinator.tick(now))
+        assertEquals(2, transport.disconnectCalls.size)
+        assertEquals(1, transport.connectCalls.size)
+        assertTrue(coordinator.hasPhysicalLink)
+
+        transport.emit(BleTransportEvent.Disconnected(device, unexpected = false))
+        assertEquals(2_000L, coordinator.pendingReconnectAtMillis)
+        assertFalse(coordinator.tick(1_999L))
+        now = 2_000L
+        assertTrue(coordinator.tick(now))
+        assertEquals(2, transport.connectCalls.size)
+        assertEquals(BleConnectionState.Reconnecting(device, 2), coordinator.connectionState)
+    }
+
+    @Test
     fun failedTimeoutCancellationCannotPublishLateConnectionOrStartReconnect() {
         var now = 0L
         val transport = RecordingTransport().apply { disconnectAccepted = false }
@@ -182,15 +405,19 @@ class BleConnectionCoordinatorTest {
         now = 30_000L
         assertFalse(coordinator.tick(now))
         assertEquals(BleConnectionState.Failed("Bluetooth connection timed out"), coordinator.connectionState)
-        assertEquals(null, coordinator.pendingReconnectAtMillis)
+        assertEquals(38_000L, coordinator.pendingReconnectAtMillis)
 
         // The SDK may finish connecting after its public cancellation failed.
         // It must be closed again and must never become app-visible Connected.
         transport.emit(BleTransportEvent.Connected(device))
         assertEquals(2, transport.disconnectCalls.size)
         assertTrue(coordinator.connectionState !is BleConnectionState.Connected)
-        assertEquals(null, coordinator.pendingReconnectAtMillis)
-        assertFalse(coordinator.tick(60_000L))
+        assertEquals(38_000L, coordinator.pendingReconnectAtMillis)
+        assertFalse(coordinator.tick(37_999L))
+        now = 38_000L
+        assertFalse(coordinator.tick(now))
+        assertEquals(3, transport.disconnectCalls.size)
+        assertEquals(46_000L, coordinator.pendingReconnectAtMillis)
         assertEquals(1, transport.connectCalls.size)
     }
 
@@ -449,6 +676,7 @@ class BleConnectionCoordinatorTest {
         val connectCalls = mutableListOf<ScannerDevice>()
         val disconnectCalls = mutableListOf<ScannerDevice>()
         var disconnectAccepted = true
+        var disconnectException: Exception? = null
 
         override fun startDiscovery(): Boolean {
             discoveryStarts += 1
@@ -469,6 +697,7 @@ class BleConnectionCoordinatorTest {
 
         override fun disconnect(device: ScannerDevice): Boolean {
             disconnectCalls += device
+            disconnectException?.let { throw it }
             return disconnectAccepted
         }
 

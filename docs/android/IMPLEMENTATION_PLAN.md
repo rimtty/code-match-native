@@ -518,6 +518,8 @@ M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触�
 
 ### M4: Full parity
 
+接続境界の自動検証: coordinatorのrequest/link generationをSDK内部のcallback取消epochから分離し、手動切断・接続開始拒否後の再接続成功を正しく受理する。同期false/例外のclose-only再試行、利用不可通知中のlink identity・手動切断意図保持、明示再試行時の回数リセット、同期callbackの論理時刻もJVMで検査する。これらのソフトウェア証拠だけでは、実scannerの切断/再接続やAndroidの権限変化中のlive linkを完了扱いにしない。
+
 - 対象BLE scannerの接続、読み取り、完全設定復元
 - Pixel系/Samsung系で実機回帰
 - Swift版との機能対応表に未完了がない

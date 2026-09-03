@@ -4,6 +4,8 @@ import jp.rimtty.codematch.scanner.api.ScanFormat
 import jp.rimtty.codematch.scanner.api.ScannerDevice
 import jp.rimtty.codematch.scanner.ble.BleAdapterLifecycleState
 import jp.rimtty.codematch.scanner.ble.BleAvailability
+import jp.rimtty.codematch.scanner.ble.BleConnectionCoordinator
+import jp.rimtty.codematch.scanner.ble.BleConnectionState
 import jp.rimtty.codematch.scanner.ble.BlePermissionState
 import jp.rimtty.codematch.scanner.ble.BleTransportEvent
 import jp.rimtty.codematch.scanner.ble.BleTransportListener
@@ -161,6 +163,129 @@ class InateckSdkTransportTest {
         assertEquals(1, events.filterIsInstance<BleTransportEvent.Disconnected>().size)
     }
 
+    @Test
+    fun coordinatorAcceptsReconnectAfterAcknowledgedManualDisconnect() {
+        val gateway = FakeGateway()
+        val transport = InateckSdkTransport(gateway)
+        val coordinator = BleConnectionCoordinator(transport)
+        val device = ScannerDevice("id-1", "scanner")
+        assertTrue(coordinator.connect(device))
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+        assertEquals(BleConnectionState.Connected(device), coordinator.connectionState)
+
+        assertTrue(coordinator.disconnect())
+        gateway.disconnectCompletion?.invoke(Result.success(Unit))
+        assertFalse(coordinator.hasPhysicalLink)
+        assertTrue(coordinator.reconnectKnownDevice())
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+
+        assertEquals(BleConnectionState.Connected(device), coordinator.connectionState)
+        assertTrue(coordinator.hasPhysicalLink)
+    }
+
+    @Test
+    fun pendingUnexpectedDisconnectRetiresCallbacksAndAllowsAnotherAttempt() {
+        val gateway = FakeGateway()
+        val transport = InateckSdkTransport(gateway)
+        val events = mutableListOf<BleTransportEvent>()
+        transport.listener = listener(events)
+        val device = ScannerDevice("id-1", "scanner")
+        assertTrue(transport.connect(device))
+        val lateCompletion = gateway.connectCompletion
+        val oldDisconnect = gateway.disconnectCallback
+
+        oldDisconnect?.invoke(true)
+        assertFalse(transport.isLinkActive)
+        lateCompletion?.invoke(Result.success(Unit))
+        assertTrue(events.none { it is BleTransportEvent.Connected })
+        assertTrue(transport.connect(device))
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+        oldDisconnect?.invoke(true)
+
+        assertTrue(transport.isLinkActive)
+        assertEquals(1, events.filterIsInstance<BleTransportEvent.Connected>().size)
+        assertEquals(1, events.filterIsInstance<BleTransportEvent.Disconnected>().size)
+    }
+
+    @Test
+    fun duplicateConnectCompletionCannotDemoteEstablishedLink() {
+        val gateway = FakeGateway()
+        val transport = InateckSdkTransport(gateway)
+        val events = mutableListOf<BleTransportEvent>()
+        transport.listener = listener(events)
+        assertTrue(transport.connect(ScannerDevice("id-1", "scanner")))
+
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+        gateway.connectCompletion?.invoke(Result.failure(IllegalStateException("late")))
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+
+        assertTrue(transport.isLinkActive)
+        assertEquals(1, events.filterIsInstance<BleTransportEvent.Connected>().size)
+        assertTrue(events.none { it is BleTransportEvent.ConnectionFailed })
+    }
+
+    @Test
+    fun coordinatorAcceptsConnectionAfterSynchronousGatewayRejection() {
+        val gateway = FakeGateway().apply { connectAccepted = false }
+        val transport = InateckSdkTransport(gateway)
+        val coordinator = BleConnectionCoordinator(transport)
+        val device = ScannerDevice("id-1", "scanner")
+        assertFalse(coordinator.connect(device))
+        val staleCompletion = gateway.connectCompletion
+        assertFalse(transport.isLinkActive)
+
+        gateway.connectAccepted = true
+        assertTrue(coordinator.connect(device))
+        staleCompletion?.invoke(Result.success(Unit))
+        assertEquals(BleConnectionState.Connecting(device), coordinator.connectionState)
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+
+        assertEquals(BleConnectionState.Connected(device), coordinator.connectionState)
+    }
+
+    @Test
+    fun explicitCoordinatorTokensAreEchoedIndependentlyOfCallbackEpoch() {
+        val gateway = FakeGateway()
+        val transport = InateckSdkTransport(gateway)
+        val events = mutableListOf<BleTransportEvent>()
+        transport.listener = listener(events)
+        val device = ScannerDevice("id-1", "scanner")
+        assertTrue(transport.connect(device, requestGeneration = 41L, linkGeneration = 73L))
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+        gateway.scanBytes?.invoke("TEST-ONLY".encodeToByteArray())
+        assertTrue(transport.disconnect(device))
+        gateway.disconnectCompletion?.invoke(Result.success(Unit))
+
+        val connected = events.filterIsInstance<BleTransportEvent.Connected>().single()
+        val scanned = events.filterIsInstance<BleTransportEvent.ScanReceived>().single()
+        val disconnected = events.filterIsInstance<BleTransportEvent.Disconnected>().single()
+        assertEquals(41L, connected.requestGeneration)
+        assertEquals(73L, connected.linkGeneration)
+        assertEquals(41L, scanned.requestGeneration)
+        assertEquals(73L, scanned.linkGeneration)
+        assertEquals(41L, disconnected.requestGeneration)
+        assertEquals(73L, disconnected.linkGeneration)
+    }
+
+    @Test
+    fun gatewayConnectExceptionRetiresPendingIdentityAndLateCompletion() {
+        val gateway = FakeGateway().apply { throwOnConnect = true }
+        val transport = InateckSdkTransport(gateway)
+        val events = mutableListOf<BleTransportEvent>()
+        transport.listener = listener(events)
+        val device = ScannerDevice("id-1", "scanner")
+        assertFalse(transport.connect(device))
+        val staleCompletion = gateway.connectCompletion
+        assertFalse(transport.isLinkActive)
+
+        gateway.throwOnConnect = false
+        assertTrue(transport.connect(device))
+        staleCompletion?.invoke(Result.success(Unit))
+        assertTrue(events.none { it is BleTransportEvent.Connected })
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+        assertEquals(1, events.filterIsInstance<BleTransportEvent.Connected>().size)
+    }
+
     private fun listener(events: MutableList<BleTransportEvent>) = object : BleTransportListener {
         override fun onTransportEvent(event: BleTransportEvent) {
             events += event
@@ -188,6 +313,8 @@ class InateckSdkTransportTest {
         var readCompletion: ((Result<List<Map<String, String>>>) -> Unit)? = null
         var writeCompletion: ((Result<Unit>) -> Unit)? = null
         var readCalls = 0
+        var connectAccepted = true
+        var throwOnConnect = false
 
         override fun startDiscovery(
             onDevice: (InateckSdkDevice) -> Unit,
@@ -209,7 +336,8 @@ class InateckSdkTransportTest {
             scanBytes = onScanBytes
             disconnectCallback = onDisconnected
             connectCompletion = completion
-            return true
+            if (throwOnConnect) throw IllegalStateException("test connection failure")
+            return connectAccepted
         }
 
         override fun disconnect(
