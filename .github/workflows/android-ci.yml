@@ -174,7 +174,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Assemble release APK and app bundle
-        run: ./gradlew assembleRelease bundleRelease --stacktrace
+        # Qualify the app tasks so this camera-only job never tries to build
+        # the separately provisioned, non-distributed scanner PoC module.
+        run: ./gradlew :app:assembleRelease :app:bundleRelease --stacktrace
 
       - name: Verify release hardening and dependency graph
         shell: bash
