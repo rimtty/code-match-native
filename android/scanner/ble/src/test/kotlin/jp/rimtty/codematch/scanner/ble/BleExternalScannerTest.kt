@@ -282,6 +282,79 @@ class BleExternalScannerTest {
     }
 
     @Test
+    fun availabilityLossDuringManualRestoreClosesWithoutAutomaticReconnect() {
+        var now = 0L
+        val transport = RecordingTransport()
+        val store = InMemorySymbologySnapshotStore(profileIdentity)
+        val (session, bridge, scanner) = createStack(
+            transport = transport,
+            snapshotStore = store,
+            nowMillis = { now },
+            reconnectDelayMillis = { 100L },
+        )
+        startReadySession(transport, scanner)
+        assertTrue(scanner.disconnect())
+        assertEquals(BleSymbologySessionState.Restoring, session.state)
+        assertTrue(transport.disconnectCalls.isEmpty())
+
+        transport.availability = BleAvailability.PoweredOff
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.PoweredOff))
+        assertFalse(scanner.isReadyForScanning)
+        assertNotNull(store.load(device.id))
+        assertEquals(listOf(device), transport.disconnectCalls)
+
+        // A late restore reply cannot prove the unavailable link was restored.
+        transport.completeWrite(1, Result.success(Unit))
+        assertNotNull(store.load(device.id))
+        transport.emit(BleTransportEvent.Disconnected(device, unexpected = false))
+        transport.availability = BleAvailability.Ready
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.Ready))
+        now = 100L
+        assertFalse(bridge.tick(now).connectionOperationStarted)
+        assertEquals(listOf(device), transport.connectCalls)
+        assertNotNull(store.load(device.id))
+    }
+
+    @Test
+    fun availabilityRecoveryKeepsSnapshotUntilAcknowledgedCloseAndFreshRestore() {
+        var now = 0L
+        val transport = RecordingTransport()
+        val store = InMemorySymbologySnapshotStore(profileIdentity)
+        val (session, bridge, scanner) = createStack(
+            transport = transport,
+            snapshotStore = store,
+            nowMillis = { now },
+            reconnectDelayMillis = { 100L },
+        )
+        startReadySession(transport, scanner)
+        transport.availability = BleAvailability.Unauthorized
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.Unauthorized))
+        assertFalse(scanner.isReadyForScanning)
+        assertNotNull(store.load(device.id))
+
+        transport.availability = BleAvailability.Ready
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.Ready))
+        assertFalse(scanner.isReadyForScanning)
+        assertEquals(1, transport.readCallbacks.size)
+        now = 100L
+        assertTrue(bridge.tick(now).connectionOperationStarted)
+        assertEquals(listOf(device), transport.disconnectCalls)
+        assertEquals(listOf(device), transport.connectCalls)
+        transport.emit(BleTransportEvent.Disconnected(device, unexpected = false))
+        now = 200L
+        assertTrue(bridge.tick(now).connectionOperationStarted)
+        transport.emit(BleTransportEvent.Connected(device))
+        assertFalse(scanner.isReadyForScanning)
+        transport.completeRead(restrictedSettings())
+        assertEquals(BleSymbologySessionState.Restoring, session.state)
+        assertNotNull(store.load(device.id))
+        transport.completeWrite(1, Result.success(Unit))
+        assertEquals(BleSymbologySessionState.Ready, session.state)
+        assertNull(store.load(device.id))
+        assertFalse(scanner.isReadyForScanning)
+    }
+
+    @Test
     fun timeoutRequiresResetAndLateCallbackCannotOpenFacadeForScanning() {
         var now = 0L
         val transport = RecordingTransport()
@@ -427,11 +500,29 @@ class BleExternalScannerTest {
         assertTrue(stack.scanner.disconnect())
         transport.completeWrite(1, Result.success(Unit))
         assertEquals(ConnectionState.Idle, stack.scanner.connectionState)
+        // Idle is the app-visible closing state, not proof of physical close.
+        assertFalse(stack.scanner.connect(other))
+        assertEquals(device, stack.scanner.boundDevice)
         transport.emit(BleTransportEvent.Disconnected(device, unexpected = false))
         assertTrue(stack.scanner.connect(other))
         assertEquals(other, stack.scanner.boundDevice)
         assertEquals(listOf(device, other), transport.connectCalls)
         assertEquals(listOf(device, other), stack.createdSessions.map { it.scannerDevice })
+    }
+
+    @Test
+    fun unavailablePendingLinkCannotRebindTheSessionToAnotherDevice() {
+        val transport = RecordingTransport()
+        val stack = createSelectableStack(transport)
+        val other = ScannerDevice("scanner-other", "other scanner")
+        assertTrue(stack.scanner.connect(device))
+        transport.availability = BleAvailability.PoweredOff
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.PoweredOff))
+
+        assertFalse(stack.scanner.connect(other))
+        assertEquals(device, stack.scanner.boundDevice)
+        assertEquals(listOf(device), stack.createdSessions.map { it.scannerDevice })
+        assertEquals(listOf(device), transport.connectCalls)
     }
 
     @Test

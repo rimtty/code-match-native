@@ -46,6 +46,18 @@ BCST-36のscanはtype 1で返り、Android command libraryは通知再構成ま�
 
 終端の切断・接続失敗では、pending/active identityとcallback epochを先に無効化してから通知します。接続完了callbackの重複、切断後の遅延成功、失敗した接続開始後の古いcallbackは受理しません。実coordinatorとSDK gatewayのFakeを組み合わせ、手動切断後の再接続、同期開始拒否後の再接続、pending切断、重複通知、明示generationの往復をJVM testで検査します。これはSDKとのソフトウェア境界の証拠であり、BCST-36の手動切断・再接続の実機ゲートを完了させるものではありません。
 
+### 利用可否と設定復元の境界
+
+Androidは[探索と接続に別の権限](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions)を要求します。SCANだけの不許可と、接続中にCONNECTが失われる場合を同一の接続喪失として扱いません。
+
+PoC hostは既存の250ms tickerと前景復帰・利用者操作の境界でSDK gatewayのreadinessを再確認し、変化を安全コアへ通知します。接続が利用不可になったlinkでは、物理切断のepochを残したまま読み取り・設定応答を無効化し、一時的にReadyへ戻っても古いcallbackを受理しません。切断・再接続後に改めてinventoryとsnapshot復元を確認します。SCANだけを失った場合は探索を停止し、CONNECTが有効な既存linkは失効させません。
+
+安全コアは利用不可通知でも物理linkのidentityとsnapshotを保持します。復元中に手動切断が要求されていた場合、利用不可への変化でその意図を自動再接続へ変更しません。旧linkの切断完了までは別deviceへsettings ownerを付け替えず、Ready通知だけで保存済みsnapshotを消しません。物理linkがないときのReady通知は古い利用不可表示をIdleへ戻すだけで、再接続のdeadline/回数や設定確認結果は変更しません。
+
+接続開始そのものが同期的に拒否された場合は、その要求に付随する切断待ちも解放します。接続中・切断中の新しい探索は禁止し、設定画面も接続中は検索ボタンを無効にします。これらはcallback/権限snapshotを注入する自動testと設定画面のemulator testで検査する境界であり、実Androidでの権限取り消し・Bluetooth OFFやscannerの物理切断を代替する証拠ではありません。
+
+利用者が明示的に探索を始めた場合は、linkがない状態の自動再接続予約を取り消して探索を優先します。adapter由来の探索中にもtimerで接続を重ねません。切断失敗後の再試行可否は表示状態ではなく実際のclose要求待ちで判断し、電源OFF/ONによって失敗表示が変化しても再試行できます。復元中に再接続を予約した後で再度切断を選んだ場合は、最後の手動切断を優先します。
+
 ### 公式flag/value形式の先行実装境界
 
 公式の[General Configuration](https://docs.inateck.com/scanner-sdk-en/ble/desktop_setting/)は、成功応答を`status=0`と`info`配列（`name`、`flag`、`value`）、書込commandを数値の`flag`/`value`配列として定義しています。また[General Configuration List](https://docs.inateck.com/scanner-sdk-en/ble/desktop_setting_list/)はCode 128をflag 2008、QR Codeをflag 2022としています。

@@ -8,12 +8,14 @@ import java.nio.charset.StandardCharsets
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
 import jp.rimtty.codematch.scanner.api.ScannerDevice
+import jp.rimtty.codematch.scanner.ble.BleAdapterLifecycleState
 import jp.rimtty.codematch.scanner.ble.BleAvailability
 import jp.rimtty.codematch.scanner.ble.BleDiscoveredDevice
 import jp.rimtty.codematch.scanner.ble.BleScanCallbackDecoder
 import jp.rimtty.codematch.scanner.ble.BleTransport
 import jp.rimtty.codematch.scanner.ble.BleTransportEvent
 import jp.rimtty.codematch.scanner.ble.BleTransportListener
+import jp.rimtty.codematch.scanner.ble.BlePermissionState
 import jp.rimtty.codematch.scanner.ble.BleTransportReadiness
 
 /**
@@ -40,19 +42,87 @@ internal class InateckSdkTransport(
     private var currentRequestGeneration: Long? = null
     private var currentLinkGeneration: Long? = null
     private var closed = false
+    /** Last effective connection readiness observed by the refresh bridge. */
+    private var observedConnectionAvailability: BleAvailability? = null
+    /** Readiness loss invalidates callbacks without retiring the physical link. */
+    private var connectionReadinessInvalidated = false
 
     override var listener: BleTransportListener? = null
 
     override val availability: BleAvailability
-        get() = gateway.readiness.availability
+        get() = readGatewayReadiness().availability
 
     override val readiness: BleTransportReadiness
-        get() = gateway.readiness
+        get() = readGatewayReadiness()
 
     val isLinkActive: Boolean
         get() = activeDevice != null || pendingDevice != null
 
+    /**
+     * Reconcile dynamic SDK readiness with the BLE safety core.
+     *
+     * Our SDK gateway exposes Android readiness as a getter rather than as a
+     * callback. The host therefore calls this method from its serialized
+     * ticker and lifecycle/user-operation boundaries. A readiness transition
+     * never retires a pending or active link: its physical close callback (or
+     * a matching connection failure) remains the only authority that clears
+     * link identity and generations.
+     *
+     * The return value is the sanitized snapshot used for this refresh. It is
+     * useful to callback gates so a callback does not read the SDK twice after
+     * a synchronous listener reaction.
+     */
+    fun refreshReadiness(): BleTransportReadiness {
+        val current = readGatewayReadiness()
+        if (closed) return current
+
+        val previous = observedConnectionAvailability
+        val effective = current.effectiveConnectionAvailability()
+        observedConnectionAvailability = effective
+
+        // Discovery depends on SCAN, but an established link depends on
+        // CONNECT. A revoked SCAN grant must stop discovery only; it must not
+        // demote a connected scanner when CONNECT is still available.
+        val connectionReadinessChanged = previous != effective
+        val shouldStopDiscovery = discovering &&
+            current.failureReason(forConnection = false) != null
+        val discoveryGenerationBeforeNotification = discoveryGeneration
+        if (effective !is BleAvailability.Ready && isLinkActive) {
+            // Keep this latch set across a transient recovery. A link that was
+            // observed while CONNECT was unavailable must close and reconnect
+            // before its callbacks can make the app Ready again.
+            connectionReadinessInvalidated = true
+        }
+
+        // Do not publish a synthetic initial Ready/Unknown event. In
+        // particular, an SDK that starts in Unknown and settles on Ready must
+        // not cause a needless reconnect from the construction path. Once a
+        // baseline exists, publish both loss and recovery so the core can
+        // update availability UI; the core deliberately does not auto-connect
+        // from the Ready event.
+        if (connectionReadinessChanged &&
+            (previous != null || (effective !is BleAvailability.Ready && isLinkActive))
+        ) {
+            listener?.onTransportEvent(BleTransportEvent.AvailabilityChanged(effective))
+        }
+
+        // Publish the connection transition before the discovery-stop event.
+        // A listener may synchronously refresh readiness or start a new
+        // discovery; generation/closed checks prevent this older snapshot from
+        // stopping that newer operation.
+        if (shouldStopDiscovery &&
+            !closed &&
+            discovering &&
+            discoveryGeneration == discoveryGenerationBeforeNotification &&
+            observedConnectionAvailability == effective
+        ) {
+            stopDiscoveryForReadiness()
+        }
+        return current
+    }
+
     override fun startDiscovery(): Boolean {
+        refreshReadiness()
         if (closed || discovering || readiness.failureReason(forConnection = false) != null) {
             return false
         }
@@ -87,12 +157,9 @@ internal class InateckSdkTransport(
     }
 
     override fun stopDiscovery(): Boolean {
+        refreshReadiness()
         if (closed || !discovering) return false
-        discovering = false
-        discoveryGeneration++
-        val accepted = gateway.stopDiscovery()
-        listener?.onTransportEvent(BleTransportEvent.DiscoveryStopped)
-        return accepted
+        return stopDiscoveryForReadiness()
     }
 
     override fun connect(device: ScannerDevice): Boolean {
@@ -105,6 +172,7 @@ internal class InateckSdkTransport(
         requestGeneration: Long,
         linkGeneration: Long,
     ): Boolean {
+        refreshReadiness()
         if (closed || activeDevice != null || pendingDevice != null ||
             readiness.failureReason(forConnection = true) != null
         ) {
@@ -118,6 +186,7 @@ internal class InateckSdkTransport(
         currentRequestGeneration = request
         currentLinkGeneration = link
         pendingDevice = device
+        connectionReadinessInvalidated = false
         var connectCompletionDelivered = false
         val accepted = runCatching {
             gateway.connect(
@@ -141,7 +210,15 @@ internal class InateckSdkTransport(
                         return@connectionCompletion
                     }
                     connectCompletionDelivered = true
+                    val currentReadiness = refreshReadiness()
+                    // A refresh may synchronously cause the safety core to
+                    // request/acknowledge a physical close. Re-check before
+                    // allowing a late success to become an active link.
+                    if (closed || epoch != connectionGeneration) return@connectionCompletion
                     if (result.isSuccess) {
+                        if (!connectionCallbacksAllowed(currentReadiness)) {
+                            return@connectionCompletion
+                        }
                         pendingDevice = null
                         activeDevice = device
                         listener?.onTransportEvent(
@@ -165,6 +242,10 @@ internal class InateckSdkTransport(
                 },
             )
         }.getOrDefault(false)
+        // A gateway can synchronously reject after its readiness changed. Read
+        // the state once more before handling that rejection so the bridge can
+        // notify the coordinator without exposing the SDK exception/details.
+        refreshReadiness()
         if (!accepted && epoch == connectionGeneration && pendingDevice != null) {
             retireLink()
         }
@@ -172,6 +253,7 @@ internal class InateckSdkTransport(
     }
 
     override fun disconnect(device: ScannerDevice): Boolean {
+        refreshReadiness()
         val target = (activeDevice ?: pendingDevice)?.takeIf { it.id == device.id } ?: return false
         val epoch = connectionGeneration
         val request = currentRequestGeneration ?: return false
@@ -211,13 +293,23 @@ internal class InateckSdkTransport(
         characteristicUuid: String,
         completion: (Result<ByteArray>) -> Unit,
     ): Boolean {
+        val currentReadiness = refreshReadiness()
         if (characteristicUuid != INATECK_SETTINGS_ENDPOINT) {
             return completeReadFailure(completion)
         }
         val device = activeDevice ?: return completeReadFailure(completion)
+        if (!connectionCallbacksAllowed(currentReadiness)) {
+            return completeReadFailure(completion, READINESS_UNAVAILABLE_REASON)
+        }
         val epoch = connectionGeneration
         return gateway.readSettings(device.id) { result ->
             if (closed || epoch != connectionGeneration) return@readSettings
+            val callbackReadiness = refreshReadiness()
+            if (closed || epoch != connectionGeneration) return@readSettings
+            if (!connectionCallbacksAllowed(callbackReadiness)) {
+                completion(Result.failure(IllegalStateException(READINESS_UNAVAILABLE_REASON)))
+                return@readSettings
+            }
             completion(
                 result.mapCatching { settings ->
                     settingsEnvelope(settings).toByteArray(StandardCharsets.UTF_8)
@@ -231,14 +323,24 @@ internal class InateckSdkTransport(
         payload: ByteArray,
         completion: (Result<Unit>) -> Unit,
     ): Boolean {
+        val currentReadiness = refreshReadiness()
         if (characteristicUuid != INATECK_SETTINGS_ENDPOINT) {
             return completeWriteFailure(completion)
         }
         val device = activeDevice ?: return completeWriteFailure(completion)
+        if (!connectionCallbacksAllowed(currentReadiness)) {
+            return completeWriteFailure(completion, READINESS_UNAVAILABLE_REASON)
+        }
         val command = strictUtf8(payload) ?: return completeWriteFailure(completion)
         val epoch = connectionGeneration
         return gateway.writeSettings(device.id, command) { result ->
             if (closed || epoch != connectionGeneration) return@writeSettings
+            val callbackReadiness = refreshReadiness()
+            if (closed || epoch != connectionGeneration) return@writeSettings
+            if (!connectionCallbacksAllowed(callbackReadiness)) {
+                completion(Result.failure(IllegalStateException(READINESS_UNAVAILABLE_REASON)))
+                return@writeSettings
+            }
             completion(result)
         }
     }
@@ -260,7 +362,10 @@ internal class InateckSdkTransport(
         link: Long,
         bytes: ByteArray,
     ) {
-        if (closed || epoch != connectionGeneration || activeDevice?.id != device.id) {
+        val currentReadiness = refreshReadiness()
+        if (closed || epoch != connectionGeneration || activeDevice?.id != device.id ||
+            !connectionCallbacksAllowed(currentReadiness)
+        ) {
             scanDeliveryObserver(InateckScanDeliveryKind.STALE)
             return
         }
@@ -294,7 +399,41 @@ internal class InateckSdkTransport(
         activeDevice = null
         currentRequestGeneration = null
         currentLinkGeneration = null
+        connectionReadinessInvalidated = false
         connectionGeneration++
+    }
+
+    /** Readiness is adapter state; it is not evidence that a link is closed. */
+    private fun connectionCallbacksAllowed(readiness: BleTransportReadiness): Boolean {
+        if (readiness.failureReason(forConnection = true) != null) {
+            connectionReadinessInvalidated = true
+            return false
+        }
+        return !connectionReadinessInvalidated
+    }
+
+    private fun stopDiscoveryForReadiness(): Boolean {
+        if (closed || !discovering) return false
+        discovering = false
+        discoveryGeneration++
+        val accepted = runCatching { gateway.stopDiscovery() }.getOrDefault(false)
+        listener?.onTransportEvent(BleTransportEvent.DiscoveryStopped)
+        return accepted
+    }
+
+    private fun readGatewayReadiness(): BleTransportReadiness = runCatching {
+        gateway.readiness
+    }.getOrElse { FAILED_READINESS }
+
+    private fun BleTransportReadiness.effectiveConnectionAvailability(): BleAvailability = when {
+        lifecycle == BleAdapterLifecycleState.DESTROYED ->
+            BleAvailability.Failed("Bluetooth adapter is closed")
+        lifecycle == BleAdapterLifecycleState.BACKGROUND ->
+            BleAvailability.Failed("Bluetooth adapter is inactive")
+        availability !is BleAvailability.Ready -> availability
+        connectionPermission != BlePermissionState.GRANTED ->
+            BleAvailability.Unauthorized
+        else -> BleAvailability.Ready
     }
 
     private fun settingsEnvelope(settings: List<Map<String, String>>): String {
@@ -312,14 +451,30 @@ internal class InateckSdkTransport(
             .toString()
     }.getOrNull()
 
-    private fun completeReadFailure(completion: (Result<ByteArray>) -> Unit): Boolean {
-        completion(Result.failure(IllegalStateException("Inateck scanner is not connected")))
+    private fun completeReadFailure(
+        completion: (Result<ByteArray>) -> Unit,
+        reason: String = "Inateck scanner is not connected",
+    ): Boolean {
+        completion(Result.failure(IllegalStateException(reason)))
         return false
     }
 
-    private fun completeWriteFailure(completion: (Result<Unit>) -> Unit): Boolean {
-        completion(Result.failure(IllegalStateException("Inateck scanner is not connected")))
+    private fun completeWriteFailure(
+        completion: (Result<Unit>) -> Unit,
+        reason: String = "Inateck scanner is not connected",
+    ): Boolean {
+        completion(Result.failure(IllegalStateException(reason)))
         return false
+    }
+
+    private companion object {
+        const val READINESS_UNAVAILABLE_REASON = "Inateck scanner readiness unavailable"
+        val FAILED_READINESS = BleTransportReadiness(
+            lifecycle = BleAdapterLifecycleState.FOREGROUND,
+            availability = BleAvailability.Failed("Bluetooth readiness unavailable"),
+            discoveryPermission = BlePermissionState.UNKNOWN,
+            connectionPermission = BlePermissionState.UNKNOWN,
+        )
     }
 }
 

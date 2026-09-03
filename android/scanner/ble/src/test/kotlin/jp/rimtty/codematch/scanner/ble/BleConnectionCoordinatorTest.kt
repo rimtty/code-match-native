@@ -131,6 +131,69 @@ class BleConnectionCoordinatorTest {
     }
 
     @Test
+    fun discoveryCannotReplacePendingActiveOrClosingConnectionState() {
+        val transport = RecordingTransport()
+        val coordinator = BleConnectionCoordinator(transport)
+        assertTrue(coordinator.connect(device))
+        assertFalse(coordinator.startDiscovery())
+        assertEquals(BleConnectionState.Connecting(device), coordinator.connectionState)
+
+        transport.emit(BleTransportEvent.Connected(device))
+        coordinator.markConfiguration(ConfigurationState.Ready)
+        assertFalse(coordinator.startDiscovery())
+        assertEquals(BleConnectionState.Connected(device), coordinator.connectionState)
+        assertEquals(ConfigurationState.Ready, coordinator.configurationState)
+
+        assertTrue(coordinator.disconnect())
+        assertFalse(coordinator.startDiscovery())
+        assertEquals(0, transport.discoveryStarts)
+        transport.emit(BleTransportEvent.Disconnected(device, unexpected = false))
+        assertTrue(coordinator.startDiscovery())
+        assertEquals(1, transport.discoveryStarts)
+    }
+
+    @Test
+    fun availabilityRecoveryClearsIdleErrorWithoutConnectingOrBecomingConfigured() {
+        val transport = RecordingTransport()
+        val coordinator = BleConnectionCoordinator(transport)
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.Unauthorized))
+        assertTrue(coordinator.connectionState is BleConnectionState.Unavailable)
+
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.Ready))
+        assertEquals(BleConnectionState.Idle, coordinator.connectionState)
+        assertEquals(ConfigurationState.Unavailable, coordinator.configurationState)
+        assertTrue(transport.connectCalls.isEmpty())
+        assertFalse(coordinator.hasPhysicalLink)
+        assertEquals(null, coordinator.pendingReconnectAtMillis)
+    }
+
+    @Test
+    fun availabilityRecoveryPreservesScheduledBackoffAndDoesNotClearConnectionFailure() {
+        val transport = RecordingTransport()
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            reconnectDelayMillis = { 1_000L },
+            nowMillis = { 0L },
+        )
+        assertTrue(coordinator.connect(device))
+        transport.emit(BleTransportEvent.ConnectionFailed(device, "synthetic failure"))
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.Ready))
+        assertEquals(BleConnectionState.Failed("synthetic failure"), coordinator.connectionState)
+
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.PoweredOff))
+        val deadline = coordinator.pendingReconnectAtMillis
+        val attempts = coordinator.reconnectAttemptCount
+        transport.emit(BleTransportEvent.AvailabilityChanged(BleAvailability.Ready))
+        assertEquals(BleConnectionState.Idle, coordinator.connectionState)
+        assertEquals(deadline, coordinator.pendingReconnectAtMillis)
+        assertEquals(attempts, coordinator.reconnectAttemptCount)
+        assertFalse(coordinator.tick(999L))
+        assertEquals(1, transport.connectCalls.size)
+        assertTrue(coordinator.tick(1_000L))
+        assertEquals(2, transport.connectCalls.size)
+    }
+
+    @Test
     fun availabilityLossRetainsPendingLinkAndClosesBeforeRecoveryConnect() {
         var now = 0L
         val transport = RecordingTransport()

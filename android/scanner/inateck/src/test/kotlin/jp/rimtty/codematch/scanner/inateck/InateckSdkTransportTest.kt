@@ -286,9 +286,348 @@ class InateckSdkTransportTest {
         assertEquals(1, events.filterIsInstance<BleTransportEvent.Connected>().size)
     }
 
+    @Test
+    fun readinessLossDemotesLiveCoordinatorButRetainsLinkAndBlocksLateSettingsAndScans() {
+        var now = 0L
+        val gateway = FakeGateway()
+        val deliveries = mutableListOf<InateckScanDeliveryKind>()
+        val transport = InateckSdkTransport(
+            gateway = gateway,
+            nowMillis = { now },
+            scanDeliveryObserver = deliveries::add,
+        )
+        val events = mutableListOf<BleTransportEvent>()
+        transport.listener = listener(events)
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            nowMillis = { now },
+            reconnectDelayMillis = { 100L },
+        )
+        transport.listener = forwardingListener(coordinator, events)
+        val device = ScannerDevice("id-1", "scanner")
+
+        assertTrue(coordinator.connect(device))
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+        assertEquals(BleConnectionState.Connected(device), coordinator.connectionState)
+
+        var readResult: Result<ByteArray>? = null
+        assertTrue(transport.read(INATECK_SETTINGS_ENDPOINT) { readResult = it })
+        gateway.readinessSnapshot = readiness(availability = BleAvailability.PoweredOff)
+        transport.refreshReadiness()
+
+        assertEquals(
+            BleConnectionState.Unavailable("Bluetooth is off"),
+            coordinator.connectionState,
+        )
+        assertTrue(coordinator.hasPhysicalLink)
+        assertEquals(device, coordinator.knownDevice)
+
+        // The callback belongs to the old physical link, but its successful
+        // settings result must not reopen Ready after readiness loss.
+        gateway.readCompletion?.invoke(Result.success(settings()))
+        assertTrue(readResult?.isFailure == true)
+        assertTrue(readResult?.exceptionOrNull()?.message == "Inateck scanner readiness unavailable")
+
+        gateway.scanBytes?.invoke("late-scan".encodeToByteArray())
+        assertTrue(events.none { it is BleTransportEvent.ScanReceived })
+        assertEquals(listOf(InateckScanDeliveryKind.STALE), deliveries)
+
+        // Readiness recovery is only a status event. It neither closes the
+        // link nor clears the identity, and it cannot make the old callback
+        // epoch usable again.
+        gateway.readinessSnapshot = readiness()
+        transport.refreshReadiness()
+        assertTrue(coordinator.hasPhysicalLink)
+        assertTrue(events.count { it is BleTransportEvent.AvailabilityChanged } == 2)
+        gateway.scanBytes?.invoke("still-late".encodeToByteArray())
+        assertEquals(2, deliveries.size)
+        assertTrue(events.none { it is BleTransportEvent.ScanReceived })
+
+        // Only a matching physical close retires the old identity.
+        gateway.disconnectCallback?.invoke(false)
+        assertFalse(coordinator.hasPhysicalLink)
+        assertEquals(1, events.count { it is BleTransportEvent.Disconnected })
+    }
+
+    @Test
+    fun lateWriteCompletionAfterReadinessRecoveryCannotPublishReady() {
+        var now = 0L
+        val gateway = FakeGateway()
+        val transport = InateckSdkTransport(gateway, nowMillis = { now })
+        val events = mutableListOf<BleTransportEvent>()
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            nowMillis = { now },
+            reconnectDelayMillis = { 100L },
+        )
+        transport.listener = forwardingListener(coordinator, events)
+        val device = ScannerDevice("id-1", "scanner")
+        val command = "[{\"area\":\"barcode\",\"name\":\"qrcode_on\",\"value\":\"1\"}]"
+
+        assertTrue(coordinator.connect(device))
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+        var writeResult: Result<Unit>? = null
+        assertTrue(
+            transport.write(INATECK_SETTINGS_ENDPOINT, command.encodeToByteArray()) {
+                writeResult = it
+            },
+        )
+        val oldWriteCompletion = gateway.writeCompletion
+
+        gateway.readinessSnapshot = readiness(availability = BleAvailability.PoweredOff)
+        transport.refreshReadiness()
+        gateway.readinessSnapshot = readiness()
+        transport.refreshReadiness()
+        oldWriteCompletion?.invoke(Result.success(Unit))
+
+        assertTrue(writeResult?.isFailure == true)
+        assertEquals(
+            "Inateck scanner readiness unavailable",
+            writeResult?.exceptionOrNull()?.message,
+        )
+        assertEquals(
+            BleConnectionState.Unavailable("Bluetooth is off"),
+            coordinator.connectionState,
+        )
+        assertTrue(coordinator.hasPhysicalLink)
+
+        // A fresh physical link clears the readiness latch; its write callback
+        // is accepted only after the new connection has been acknowledged.
+        gateway.disconnectCallback?.invoke(false)
+        assertFalse(coordinator.hasPhysicalLink)
+        assertTrue(coordinator.reconnectKnownDevice())
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+        var freshWriteResult: Result<Unit>? = null
+        assertTrue(
+            transport.write(INATECK_SETTINGS_ENDPOINT, command.encodeToByteArray()) {
+                freshWriteResult = it
+            },
+        )
+        gateway.writeCompletion?.invoke(Result.success(Unit))
+        assertTrue(freshWriteResult?.isSuccess == true)
+    }
+
+    @Test
+    fun readinessLossDuringPendingConnectRejectsLateSuccessUntilExplicitCloseAndReconnect() {
+        var now = 0L
+        val gateway = FakeGateway()
+        val transport = InateckSdkTransport(gateway, nowMillis = { now })
+        val events = mutableListOf<BleTransportEvent>()
+        transport.listener = listener(events)
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            nowMillis = { now },
+            reconnectDelayMillis = { 100L },
+        )
+        transport.listener = forwardingListener(coordinator, events)
+        val device = ScannerDevice("id-1", "scanner")
+
+        assertTrue(coordinator.connect(device))
+        val lateCompletion = gateway.connectCompletion
+        gateway.readinessSnapshot = readiness(connectionPermission = BlePermissionState.DENIED)
+        transport.refreshReadiness()
+
+        assertEquals(
+            BleConnectionState.Unavailable("Bluetooth permission is required"),
+            coordinator.connectionState,
+        )
+        assertTrue(coordinator.hasPhysicalLink)
+        assertEquals(device, coordinator.knownDevice)
+
+        // Even if the SDK reports success after a CONNECT denial, this old
+        // callback cannot become an active/Ready link.
+        gateway.readinessSnapshot = readiness()
+        transport.refreshReadiness()
+        lateCompletion?.invoke(Result.success(Unit))
+        assertTrue(coordinator.hasPhysicalLink)
+        assertTrue(events.none { it is BleTransportEvent.Connected })
+
+        // A user close is explicit recovery authority; the subsequent
+        // attempt is a fresh link and must perform its own connect callback.
+        assertTrue(coordinator.disconnect())
+        gateway.disconnectCompletion?.invoke(Result.success(Unit))
+        assertFalse(coordinator.hasPhysicalLink)
+        assertTrue(coordinator.reconnectKnownDevice())
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+        assertEquals(BleConnectionState.Connected(device), coordinator.connectionState)
+        assertEquals(1, events.count { it is BleTransportEvent.Connected })
+    }
+
+    @Test
+    fun scanPermissionLossStopsDiscoveryWithoutDemotingConnectGrantedLink() {
+        val gateway = FakeGateway()
+        val transport = InateckSdkTransport(gateway)
+        val events = mutableListOf<BleTransportEvent>()
+        transport.listener = listener(events)
+        val coordinator = BleConnectionCoordinator(transport)
+        transport.listener = forwardingListener(coordinator, events)
+        val device = ScannerDevice("id-1", "scanner")
+
+        assertTrue(coordinator.startDiscovery())
+        gateway.readinessSnapshot = readiness(discoveryPermission = BlePermissionState.DENIED)
+        transport.refreshReadiness()
+        assertEquals(BleConnectionState.Idle, coordinator.connectionState)
+        assertEquals(1, events.count { it is BleTransportEvent.DiscoveryStopped })
+        assertTrue(events.none { it is BleTransportEvent.AvailabilityChanged })
+
+        // SCAN is not required by an already-connected link, and it is not a
+        // prerequisite for a CONNECT-granted connection attempt.
+        assertTrue(coordinator.connect(device))
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+        assertEquals(BleConnectionState.Connected(device), coordinator.connectionState)
+        gateway.scanBytes?.invoke("scan-without-scan-permission".encodeToByteArray())
+        assertEquals(1, events.count { it is BleTransportEvent.ScanReceived })
+    }
+
+    @Test
+    fun repeatedReadinessLossIsDeduplicatedAndReadyDoesNotAutoConnect() {
+        var now = 0L
+        val gateway = FakeGateway()
+        val transport = InateckSdkTransport(gateway, nowMillis = { now })
+        val events = mutableListOf<BleTransportEvent>()
+        transport.listener = listener(events)
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            nowMillis = { now },
+            reconnectDelayMillis = { 100L },
+        )
+        transport.listener = forwardingListener(coordinator, events)
+        val device = ScannerDevice("id-1", "scanner")
+
+        assertTrue(coordinator.connect(device))
+        gateway.readinessSnapshot = readiness(availability = BleAvailability.PoweredOff)
+        transport.refreshReadiness()
+        transport.refreshReadiness()
+        transport.refreshReadiness()
+        assertEquals(1, events.count { it is BleTransportEvent.AvailabilityChanged })
+        assertEquals(1, coordinator.reconnectAttemptCount)
+
+        gateway.readinessSnapshot = readiness()
+        transport.refreshReadiness()
+        transport.refreshReadiness()
+        assertEquals(2, events.count { it is BleTransportEvent.AvailabilityChanged })
+        assertEquals(0, events.count { it is BleTransportEvent.Connected })
+        assertEquals(1, coordinator.reconnectAttemptCount)
+        assertTrue(coordinator.hasPhysicalLink)
+    }
+
+    @Test
+    fun readinessReadFailureUsesSanitizedFailClosedStateAndNoDynamicError() {
+        val gateway = FakeGateway()
+        val transport = InateckSdkTransport(gateway)
+        val events = mutableListOf<BleTransportEvent>()
+        transport.listener = listener(events)
+        val coordinator = BleConnectionCoordinator(transport)
+        transport.listener = forwardingListener(coordinator, events)
+        val device = ScannerDevice("id-1", "scanner")
+
+        assertTrue(coordinator.connect(device))
+        gateway.throwOnReadiness = true
+        transport.refreshReadiness()
+
+        assertEquals(
+            BleAvailability.Failed("Bluetooth readiness unavailable"),
+            transport.readiness.availability,
+        )
+        val availability = events.filterIsInstance<BleTransportEvent.AvailabilityChanged>().single()
+        assertEquals(BleAvailability.Failed("Bluetooth readiness unavailable"), availability.availability)
+        assertTrue(coordinator.hasPhysicalLink)
+        assertTrue(events.none { it.toString().contains("sdk-private") })
+    }
+
+    @Test
+    fun gatewayConnectRejectionAfterReadinessLossDoesNotLeaveStaleCloseIntent() {
+        val gateway = FakeGateway().apply {
+            connectAccepted = false
+            readinessOnConnect = readiness(availability = BleAvailability.PoweredOff)
+        }
+        val transport = InateckSdkTransport(gateway)
+        val coordinator = BleConnectionCoordinator(transport)
+        transport.listener = forwardingListener(coordinator, mutableListOf())
+        val device = ScannerDevice("id-1", "scanner")
+
+        assertFalse(coordinator.connect(device))
+        assertFalse(coordinator.hasPhysicalLink)
+
+        // The failed start was not a physical link, so recovery after the
+        // readiness outage must be able to begin a fresh user connection.
+        gateway.readinessSnapshot = readiness()
+        gateway.connectAccepted = true
+        gateway.readinessOnConnect = null
+        assertTrue(coordinator.connect(device))
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+        assertEquals(BleConnectionState.Connected(device), coordinator.connectionState)
+    }
+
+    @Test
+    fun initialUnknownToReadyRefreshDoesNotStartAConnection() {
+        val gateway = FakeGateway().apply {
+            readinessSnapshot = readiness(availability = BleAvailability.Unknown)
+        }
+        val transport = InateckSdkTransport(gateway)
+        val events = mutableListOf<BleTransportEvent>()
+        val coordinator = BleConnectionCoordinator(transport)
+        transport.listener = forwardingListener(coordinator, events)
+        val device = ScannerDevice("id-1", "scanner")
+
+        transport.refreshReadiness()
+        assertFalse(coordinator.connect(device))
+        assertEquals(0, gateway.connectCalls)
+        gateway.readinessSnapshot = readiness()
+        transport.refreshReadiness()
+        transport.refreshReadiness()
+
+        assertEquals(0, gateway.connectCalls)
+        assertEquals(1, events.count { it is BleTransportEvent.AvailabilityChanged })
+        assertEquals(BleConnectionState.Idle, coordinator.connectionState)
+    }
+
+    @Test
+    fun readinessRefreshCannotStopAReentrantNewDiscovery() {
+        val gateway = FakeGateway()
+        val transport = InateckSdkTransport(gateway)
+        val events = mutableListOf<BleTransportEvent>()
+        var reentered = false
+        transport.listener = object : BleTransportListener {
+            override fun onTransportEvent(event: BleTransportEvent) {
+                events += event
+                if (event is BleTransportEvent.AvailabilityChanged && !reentered) {
+                    reentered = true
+                    // Replace the old operation from inside the readiness
+                    // callback. The outer refresh must not stop this new one.
+                    transport.stopDiscovery()
+                    gateway.readinessSnapshot = readiness()
+                    assertTrue(transport.startDiscovery())
+                }
+            }
+        }
+
+        assertTrue(transport.startDiscovery())
+        gateway.readinessSnapshot = readiness(
+            availability = BleAvailability.PoweredOff,
+            discoveryPermission = BlePermissionState.DENIED,
+        )
+        transport.refreshReadiness()
+
+        assertEquals(1, gateway.stopDiscoveryCalls)
+        assertEquals(2, events.count { it is BleTransportEvent.DiscoveryStarted })
+        assertEquals(1, events.count { it is BleTransportEvent.DiscoveryStopped })
+        assertFalse(transport.startDiscovery())
+    }
+
     private fun listener(events: MutableList<BleTransportEvent>) = object : BleTransportListener {
         override fun onTransportEvent(event: BleTransportEvent) {
             events += event
+        }
+    }
+
+    private fun forwardingListener(
+        coordinator: BleConnectionCoordinator,
+        events: MutableList<BleTransportEvent>,
+    ) = object : BleTransportListener {
+        override fun onTransportEvent(event: BleTransportEvent) {
+            events += event
+            coordinator.onTransportEvent(event)
         }
     }
 
@@ -298,14 +637,16 @@ class InateckSdkTransportTest {
     )
 
     private class FakeGateway : InateckSdkGateway {
-        override val readiness = BleTransportReadiness(
-            lifecycle = BleAdapterLifecycleState.FOREGROUND,
-            availability = BleAvailability.Ready,
-            discoveryPermission = BlePermissionState.GRANTED,
-            connectionPermission = BlePermissionState.GRANTED,
-        )
+        var readinessSnapshot = readiness()
+        var throwOnReadiness = false
+        override val readiness: BleTransportReadiness
+            get() {
+                if (throwOnReadiness) error("sdk-private readiness detail")
+                return readinessSnapshot
+            }
         var discoveryDevice: ((InateckSdkDevice) -> Unit)? = null
         var discoveryFinished: (() -> Unit)? = null
+        var stopDiscoveryCalls = 0
         var scanBytes: ((ByteArray) -> Unit)? = null
         var disconnectCallback: ((Boolean) -> Unit)? = null
         var connectCompletion: ((Result<Unit>) -> Unit)? = null
@@ -313,8 +654,10 @@ class InateckSdkTransportTest {
         var readCompletion: ((Result<List<Map<String, String>>>) -> Unit)? = null
         var writeCompletion: ((Result<Unit>) -> Unit)? = null
         var readCalls = 0
+        var connectCalls = 0
         var connectAccepted = true
         var throwOnConnect = false
+        var readinessOnConnect: BleTransportReadiness? = null
 
         override fun startDiscovery(
             onDevice: (InateckSdkDevice) -> Unit,
@@ -325,7 +668,10 @@ class InateckSdkTransportTest {
             return true
         }
 
-        override fun stopDiscovery(): Boolean = true
+        override fun stopDiscovery(): Boolean {
+            stopDiscoveryCalls++
+            return true
+        }
 
         override fun connect(
             deviceId: String,
@@ -333,9 +679,11 @@ class InateckSdkTransportTest {
             onDisconnected: (unexpected: Boolean) -> Unit,
             completion: (Result<Unit>) -> Unit,
         ): Boolean {
+            connectCalls++
             scanBytes = onScanBytes
             disconnectCallback = onDisconnected
             connectCompletion = completion
+            readinessOnConnect?.let { readinessSnapshot = it }
             if (throwOnConnect) throw IllegalStateException("test connection failure")
             return connectAccepted
         }
@@ -367,5 +715,29 @@ class InateckSdkTransportTest {
         }
 
         override fun close() = Unit
+
+        private fun readiness(
+            lifecycle: BleAdapterLifecycleState = BleAdapterLifecycleState.FOREGROUND,
+            availability: BleAvailability = BleAvailability.Ready,
+            discoveryPermission: BlePermissionState = BlePermissionState.GRANTED,
+            connectionPermission: BlePermissionState = BlePermissionState.GRANTED,
+        ): BleTransportReadiness = BleTransportReadiness(
+            lifecycle = lifecycle,
+            availability = availability,
+            discoveryPermission = discoveryPermission,
+            connectionPermission = connectionPermission,
+        )
     }
+
+    private fun readiness(
+        lifecycle: BleAdapterLifecycleState = BleAdapterLifecycleState.FOREGROUND,
+        availability: BleAvailability = BleAvailability.Ready,
+        discoveryPermission: BlePermissionState = BlePermissionState.GRANTED,
+        connectionPermission: BlePermissionState = BlePermissionState.GRANTED,
+    ): BleTransportReadiness = BleTransportReadiness(
+        lifecycle = lifecycle,
+        availability = availability,
+        discoveryPermission = discoveryPermission,
+        connectionPermission = connectionPermission,
+    )
 }

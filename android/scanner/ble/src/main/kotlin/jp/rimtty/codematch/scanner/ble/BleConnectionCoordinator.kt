@@ -108,7 +108,9 @@ class BleConnectionCoordinator(
     }
 
     fun startDiscovery(): Boolean {
-        if (connectionState == BleConnectionState.Searching) return false
+        // Discovery shares the public connection state. Do not replace a
+        // selected link's state/settings owner with Searching before closure.
+        if (hasPhysicalLink || connectionState == BleConnectionState.Searching) return false
         val readiness = readTransportReadiness()
         val failure = readiness.failureReason(forConnection = false)
         if (failure != null) {
@@ -116,6 +118,9 @@ class BleConnectionCoordinator(
             diagnostics.error(failure)
             return false
         }
+        // Explicit discovery supersedes an idle automatic reconnect. Do this
+        // before notifying listeners so its timer cannot race the new search.
+        reconnectAtMillis = null
         transition(connection = BleConnectionState.Searching)
         discoveryStartedAtMillis = nowMillis()
         diagnostics.connection("Discovery requested")
@@ -196,7 +201,7 @@ class BleConnectionCoordinator(
         // terminal state a later explicit disconnect is a safe retry; every
         // other in-flight request remains idempotent.
         if (disconnectIntent == DisconnectIntent.MANUAL &&
-            connectionState !is BleConnectionState.Failed
+            disconnectRequestInFlight
         ) {
             return true
         }
@@ -236,7 +241,7 @@ class BleConnectionCoordinator(
         // including when an exhausted sequence still owns a link to close.
         reconnectAttempt = 0
         if (disconnectIntent != null) {
-            if (connectionState !is BleConnectionState.Failed) {
+            if (disconnectRequestInFlight) {
                 disconnectIntent = DisconnectIntent.RECONNECT
                 manualDisconnect = false
                 return true
@@ -465,7 +470,18 @@ class BleConnectionCoordinator(
                 )
             }
             is BleTransportEvent.AvailabilityChanged -> {
-                if (event.availability !is BleAvailability.Ready) {
+                if (event.availability is BleAvailability.Ready) {
+                    // Clear a stale radio/permission notice only while no
+                    // physical link is owned. Keep retry timing unchanged:
+                    // radio readiness is neither a connection nor a settings
+                    // confirmation, and must not erase a connection failure.
+                    if (!hasPhysicalLink && connectionState is BleConnectionState.Unavailable) {
+                        transition(
+                            connection = BleConnectionState.Idle,
+                            configuration = ConfigurationState.Unavailable,
+                        )
+                    }
+                } else {
                     discoveryStartedAtMillis = null
                     val retainedLink = hasPhysicalLink
                     // Readiness is adapter-level status only; it does not prove
@@ -549,6 +565,9 @@ class BleConnectionCoordinator(
 
         val dueAt = reconnectAtMillis ?: return false
         if (!applicationActive || nowMillis < dueAt) return false
+        // Adapter-originated discovery may bypass startDiscovery(). Keep the
+        // deadline pending until discovery ends rather than overlapping it.
+        if (connectionState == BleConnectionState.Searching) return false
         reconnectAtMillis = null
         val device = preferredDevice ?: return false
         if (disconnectIntent == DisconnectIntent.RECONNECT && hasPhysicalLink) {
@@ -630,7 +649,17 @@ class BleConnectionCoordinator(
             operationAtMillis = previousOperationAtMillis
         }
         if (!accepted && pendingConnectRequestGeneration == requestGeneration) {
+            val reconnectRequested = disconnectIntent == DisconnectIntent.RECONNECT
+            val wasManual = disconnectIntent == DisconnectIntent.MANUAL || manualDisconnect
             clearPendingConnection()
+            // A readiness callback can request closure reentrantly while the
+            // adapter is starting a link. If that same start is rejected, no
+            // physical link exists to acknowledge the close. Retire only this
+            // request's intent so the next connection is not closed as stale.
+            disconnectIntent = null
+            disconnectRequestInFlight = false
+            manualDisconnect = false
+            if (wasManual) reconnectAtMillis = null
             transition(
                 connection = if (reconnecting) {
                     BleConnectionState.Failed("Bluetooth reconnect could not start")
@@ -641,7 +670,9 @@ class BleConnectionCoordinator(
             diagnostics.error(
                 if (reconnecting) "Reconnect start failed" else "Connection start failed",
             )
-            if (retryOnFailure) scheduleReconnect(startedAtMillis)
+            if (!wasManual && (retryOnFailure || reconnectRequested)) {
+                scheduleReconnect(startedAtMillis)
+            }
         }
         return accepted
     }

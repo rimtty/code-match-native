@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -290,9 +292,16 @@ class SettingsScreenTest {
         composeRule.onNodeWithTag(SettingsTestTags.SCANNER_PROGRESS)
             .performScrollTo()
             .assertIsDisplayed()
+        composeRule.onNodeWithTag(SettingsTestTags.DISCOVERY)
+            .performScrollTo()
+            .assertIsNotEnabled()
 
         state.value = state.value.copy(connectionState = ConnectionState.Connected(device))
         composeRule.onAllNodesWithTag(SettingsTestTags.SCANNER_PROGRESS).assertCountEquals(0)
+        composeRule.onNodeWithTag(SettingsTestTags.DISCOVERY).assertIsNotEnabled()
+
+        state.value = state.value.copy(connectionState = ConnectionState.Idle)
+        composeRule.onNodeWithTag(SettingsTestTags.DISCOVERY).assertIsEnabled()
     }
 
     @Test

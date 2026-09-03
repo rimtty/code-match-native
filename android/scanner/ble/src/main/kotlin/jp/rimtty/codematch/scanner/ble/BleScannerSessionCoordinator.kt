@@ -119,6 +119,9 @@ class BleScannerSessionCoordinator(
 
     fun disconnect(): Boolean {
         if (closed) return false
+        // A new manual disconnect supersedes a reconnect that was queued while
+        // an earlier restore was still in flight.
+        pendingReconnectAfterDisconnect = false
         val symbologyState = symbologySession.state
         if (symbologyState == BleSymbologySessionState.Restoring) {
             pendingManualDisconnect = true
@@ -295,6 +298,12 @@ class BleScannerSessionCoordinator(
         if (!pendingManualDisconnect) return
         if (connectionCoordinator.connectionState.connectedDevice == null) {
             pendingManualDisconnect = false
+            // Availability loss can invalidate a restore before the physical
+            // link closes. Carry the user's manual intent into that close;
+            // otherwise the availability event schedules an unwanted retry.
+            if (connectionCoordinator.hasPhysicalLink) {
+                connectionCoordinator.disconnect()
+            }
             reconnectAfterPendingDisconnect()
             return
         }
