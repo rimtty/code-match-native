@@ -733,6 +733,10 @@ class BleConnectionCoordinator(
     }
 
     private fun acceptDisconnectFailedEvent(event: BleTransportEvent.DisconnectFailed): Boolean {
+        // A failure callback is meaningful only while this coordinator owns
+        // a close request. In particular, an untagged late legacy callback
+        // must not demote a newer healthy connection for the same device.
+        if (disconnectIntent == null) return false
         val expectedDevice = activeDevice ?: pendingConnectDevice
         if (expectedDevice == null || event.device.id != expectedDevice.id) return false
         val requestMatches = event.requestGeneration == null ||

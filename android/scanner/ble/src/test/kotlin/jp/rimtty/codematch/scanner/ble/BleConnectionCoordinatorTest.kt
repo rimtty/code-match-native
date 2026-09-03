@@ -331,6 +331,24 @@ class BleConnectionCoordinatorTest {
     }
 
     @Test
+    fun unrequestedUntaggedDisconnectFailureCannotDemoteCurrentConnection() {
+        val transport = RecordingTransport()
+        val coordinator = BleConnectionCoordinator(transport)
+
+        assertTrue(coordinator.connect(device))
+        transport.emit(BleTransportEvent.Connected(device))
+        assertEquals(BleConnectionState.Connected(device), coordinator.connectionState)
+
+        // Legacy transports may omit generation tokens. Without a matching
+        // coordinator-owned disconnect request, a late failure is ambiguous
+        // and must not replace a healthy link.
+        transport.emit(BleTransportEvent.DisconnectFailed(device))
+
+        assertEquals(BleConnectionState.Connected(device), coordinator.connectionState)
+        assertTrue(coordinator.hasPhysicalLink)
+    }
+
+    @Test
     fun staleGenerationOrDeviceEventsCannotReplaceCurrentLinkOrDeliverScan() {
         val otherDevice = ScannerDevice("scanner-2", "BCST-47")
         var now = 0L
