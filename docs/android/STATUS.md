@@ -7,7 +7,7 @@
 | 領域 | このcheckoutで確認できるもの | まだ完了扱いにしないもの |
 |---|---|---|
 | Domain / matching | 純Kotlin matcher/parser、shared fixture、JVM test、Swift unit 71本/UI 5本との意図対応表 | Swift/Kotlinの全ケースを同一CI実行で確認した記録 |
-| UI / navigation | Composeの照合・履歴・設定、3 destination、system/predictive backの完了・無効・cancel境界、保存可能なdestination/履歴選択、expanded履歴選択のselected/stateDescription semantics、動的な読取案内・結果のpolite live region、履歴のActivity再生成・destination往復・compact back stack自動test、320dp/840dp・font scale 1.3/2.0の主要操作到達test、debug Fake境界 | predictive gestureの視覚遷移、WAITING Code 128・RESULTを含むOS process kill/relaunchの実操作、TalkBack、Switch Access、複数OEMの人手確認 |
+| UI / navigation | Composeの照合・履歴・設定、3 destination、system/predictive backの完了・無効・cancel境界、保存可能なdestination/履歴選択、expanded履歴選択のselected/stateDescription semantics、動的な読取案内・結果のpolite live region、履歴のActivity再生成・destination往復・compact back stack自動test、320dp/840dp・font scale 1.3/2.0の主要操作到達test、debug Fake境界、隔離emulatorアプリでQR待機・Code 128待機・一致結果のOS force-stop後UI復元 | predictive gestureの視覚遷移、実端末でのWAITING Code 128・RESULTを含むOS process kill/relaunch、TalkBack、Switch Access、複数OEMの人手確認 |
 | History / settings / PDF | Room/DataStore、日英リソース、Android 13以降のper-app locale双方向同期/no-loop、0件破棄・名称変更・詳細・削除のapp E2E、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test、実ContentProvider write/read test、Pixel 7のDocumentsUIでの1件PDF保存と共有画面起動 | OS設定画面を使った言語変更、外部viewerでの内容/複数ページ確認、実際の共有先アプリへの受け渡し、複数OEMの業務受け入れ |
 | Camera | CameraX/ML Kit adapter、ROI、権限・lifecycle・focus、非同期provider/format切替/古いcallback破棄、処理中frameをdrainしてからsession終了・terminal closeする自動test、Pixel 7縦画面でガイド内に限定した実ラベルQR→Code 128一致 | Pixelで不一致・連続箱・focus・回転・背景復帰、Samsungで同じ実カメラ受け入れを完了した記録 |
 | Privacy / release | Manifest、backup規則、FileProvider、source/APK/AAB checker、通常・round・adaptive・monochromeアプリアイコン、すべてのAndroid Gradle CI jobでのWrapper validation | 通信観測、ストア提出回答、署名済み配布物の運用承認 |
@@ -19,7 +19,7 @@
 
 [`TEST_PARITY.md`](TEST_PARITY.md) の `N/A` は、Androidに未実装のまま残した行ではなく、現行Androidの共通仕様に含まれないことをソースと仕様のリンクで確認した行です。現在の対象は、iOS固有の画面収録防御（#6）、旧iOS UserDefaultsのCode128-only recovery移行（#38）、旧iOS diagnosticsからの既知端末migration（#42）です。Android版は独立Gradle projectとして導入され、現行のBLE復旧はversion/profile付きの新規snapshot・known-device envelopeを使うため、これら旧iOS状態を読む入口はありません（[`android/README.md`](../../android/README.md#L1)、[`BleSymbologySnapshotStore.kt`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleSymbologySnapshotStore.kt#L63)、[`BleKnownDeviceStore.kt`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceStore.kt#L90)）。
 
-これは実機・手動ゲートの免除ではありません。ROIのclamp（#5）はiOSとAndroidでpolicyが異なるため`P`のまま、active restriction（#27）は現行session mode文言だけを検査した`P`、camera lifetime（#58）はprocess破棄を含まない`P`です。OS設定画面、QR待機以外のforce-stop/relaunch（UI #4）、対象scannerの未試験の切断・timeout・完全復元（#35、#37、#40）は未完了境界として残します。
+これは実機・手動ゲートの免除ではありません。ROIのclamp（#5）はiOSとAndroidでpolicyが異なるため`P`のまま、active restriction（#27）は現行session mode文言だけを検査した`P`、camera lifetime（#58）はprocess破棄を含まない`P`です。OS設定画面、実端末のQR待機以外のforce-stop/relaunch（UI #4）、対象scannerの未試験の切断・timeout・完全復元（#35、#37、#40）は未完了境界として残します。
 
 ## 再現可能なチェック
 
@@ -41,6 +41,9 @@ bash scripts/verify-release-hardening.sh \
 JDK/SDKがない環境ではGradle結果を推測せず、実行不能として記録します。エミュレーター・CIのinstrumentation成功は、カメラの実読取やBLE通信の実機成功を意味しません。
 
 ## 2026-09-02〜04 統合検証記録
+
+- 2026-09-04、Android 17/API 37.1・16KBのread-only emulatorで、専用application IDの`ProcessRecoveryInstrumentationTest`をhost runnerから実行した。QR待機・Code 128待機・一致結果の3ケース（各seed/verify、計6回のinstrumentation）がすべて成功した。公開ViewModel actionで合成checkpointを永続化し、実際に起動したアプリのPIDを確認してOS force-stop、PID消失後の新しいApplication/MainActivityで工程・session名・受理済み値・件数・全設定値・英語UIを確認した。一致結果は保存済み5秒delayを超えてもRESULTのまま、履歴entryは1件でcountdownを再開しない。これは完了済み保存からのOS process復元の証拠であり、書込途中の強制終了・実カメラ・BLE復元・OEM省電力挙動は検査していない。
+- 同変更でJVM test 351件（失敗・error・skip 0）、全module lint、debug/release/非配付PoC APKとrelease AAB、release source/APK/AAB/dependency hardening、PoC artifact検査が成功した。実ContentProviderのUUID cache write/read 1件も通常debug testで再成功。runnerは物理端末・対象未指定・既存recovery app/test・通常APK・異なるinstrumentation targetを拒否し、10件のguard regressionが成功した。通常アプリとテスト専用アプリを同居させてもtest providerが衝突しない。物理端末・scannerには接続していない。専用debug manifestではCAMERA権限を除去し、API 31にない権限flag shell commandを使わない。
 
 - 2026-09-04、公式SDK gatewayのAndroid利用可否をPoC hostの既存ticker・前景復帰・操作境界から安全コアへ通知するbridgeを追加した。SCANだけの喪失は探索停止、CONNECT/電源等の利用不可は旧linkのcallback失効として分離し、物理切断確認までidentityとsnapshotを保持する。利用可否が戻っても古いread/write/scanを受理せず、fresh inventoryと復元確認が必要となる。復元中の手動切断意図、旧linkがある間のdevice owner固定、接続中の探索禁止、同期接続拒否時の切断待ち解放も回帰testへ追加した。
 - 同bridge統合とレビュー指摘の修正後、全moduleのJVM test 351件（`scanner:ble` 104、`scanner:inateck` 61を含む）、lint、debug/release APK、release AAB、非配付`scannerPoc` APK、app androidTest compileが成功した。release source/APK/AAB/dependency hardeningとPoC artifact検査も成功した。再接続予約中の明示探索、探索中のtimer抑止、電源変化を挟んだ失敗closeの明示再試行、復元中の最後の手動切断優先も回帰testに含む。Android 17/API 37.1・16KBのread-only emulatorでは`SettingsScreenTest` 14件を実行し、接続中・接続済みの検索無効化とIdleでの再有効化を含めて成功した。物理端末・scannerへは接続していない。これはFake gatewayと自動UIによる証拠であり、実Androidの権限取り消し・Bluetooth OFF、実scannerの切断/復元・再接続は引き続き実機ゲートに残す。

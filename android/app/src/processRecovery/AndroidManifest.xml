@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Logical recovery tests must never capture frames or request camera access. -->
+    <uses-permission
+        android:name="android.permission.CAMERA"
+        tools:node="remove"
+        tools:ignore="PermissionImpliesUnsupportedChromeOsHardware" />
+</manifest>

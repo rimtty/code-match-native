@@ -76,6 +76,9 @@ jobs:
       - name: Verify release hardening source contract
         run: bash scripts/test-release-hardening.sh
 
+      - name: Verify process recovery runner refuses unsafe targets
+        run: bash scripts/test-process-recovery-runner.sh
+
   android-emulator-test:
     name: Android emulator tests
     runs-on: ubuntu-latest
@@ -132,7 +135,9 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim
           disable-animations: true
           working-directory: android
-          script: bash scripts/run-connected-tests.sh
+          script: |
+            bash scripts/run-connected-tests.sh
+            bash scripts/run-process-recovery-tests.sh --serial "emulator-$EMULATOR_PORT"
 
   android-release-build:
     name: Android release build

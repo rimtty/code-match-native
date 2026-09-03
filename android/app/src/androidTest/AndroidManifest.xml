@@ -3,7 +3,7 @@
     <application>
         <provider
             android:name="jp.rimtty.codematch.history.RecordingDocumentProvider"
-            android:authorities="jp.rimtty.codematch.test.history.documents"
+            android:authorities="${applicationId}.history.documents"
             android:exported="true"
             android:grantUriPermissions="true" />
     </application>
