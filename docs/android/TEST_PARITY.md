@@ -1,6 +1,6 @@
 # iOS↔Android テスト意図パリティ表
 
-監査日: 2026-09-03。対象は [`CodeMatcherTests.swift`](../../ios/CodeMatchTests/CodeMatcherTests.swift) の XCTest 68本と [`CodeMatchUITests.swift`](../../ios/CodeMatchUITests/CodeMatchUITests.swift) の UI テスト5本。件数やテスト名の一致ではなく、各テストが保証する意図を Android 側の証拠へ対応付ける。Android の `D` は同じ契約を同等の層で検査、`P` は近接する状態・部品の検査（元テスト全体の代替ではない）、`—` は Android に適用されるが証拠がない行、`N/A` は Android の現行共通仕様に含まれず対応不要と根拠リンクで確認した行を表す。
+監査日: 2026-09-04。対象は [`CodeMatcherTests.swift`](../../ios/CodeMatchTests/CodeMatcherTests.swift) の XCTest 71本と [`CodeMatchUITests.swift`](../../ios/CodeMatchUITests/CodeMatchUITests.swift) の UI テスト5本。件数やテスト名の一致ではなく、各テストが保証する意図を Android 側の証拠へ対応付ける。Android の `D` は同じ契約を同等の層で検査、`P` は近接する状態・部品の検査（元テスト全体の代替ではない）、`—` は Android に適用されるが証拠がない行、`N/A` は Android の現行共通仕様に含まれず対応不要と根拠リンクで確認した行を表す。
 
 共通照合データは [`matching-cases.json`](../../shared/test-fixtures/matching-cases.json)（schemaVersion 1、5ケース）であり、Swift はファイルを直接読み、Kotlin は test runtime classpath から読む。`src/test` は JVM テスト、`src/androidTest` は端末・エミュレーター依存の証拠である。D/P は「実カメラ読取」や「対象 BLE scanner 通信」の成功を意味しない。
 
@@ -50,7 +50,7 @@
 | `NavigationTest` | `android/app/src/androidTest/java/jp/rimtty/codematch/NavigationTest.kt` |
 
 
-## Swift 単体テスト（68本）
+## Swift 単体テスト（71本）
 
 | # | Swift の意図（テスト） | Android の証拠 | 判定 |
 |---:|---|---|:---:|
@@ -102,26 +102,29 @@
 | 46 | countdown を5秒へ変更すると表示を再開（`:904`） | `ScanReducerTest.kt::changingDelayRestartsOnlyAnActiveMatchCountdown` | D |
 | 47 | countdown を1秒へ変更すると表示を再開（`:918`） | `ScanReducerTest.kt::autoAdvanceSupportsOneThreeAndFiveSecondsWithVirtualTicks` | D |
 | 48 | 不一致では auto-advance countdown を開始しない（`:930`） | `ScanReducerTest.kt::mismatchRemainsVisibleAndNeverProducesRecordEffect` + `::changingDelayRestartsOnlyAnActiveMatchCountdown` | D |
-| 49 | Bluetooth で Code 128 を QR 前に読んでも進めない（`:940`） | `ScanReducerTest.kt::reverseOrderAndInvalidPayloadAreRejectedWithoutChangingState` + `::bluetoothRequiresBusinessPayloadFormats` | D（論理状態） |
-| 50 | Code 128 待機中の QR callback を reject（`:967`） | `ScanReducerTest.kt::reverseOrderAndInvalidPayloadAreRejectedWithoutChangingState` | D（論理状態） |
-| 51 | QR reread で値を消し Bluetooth を QR 待機へ戻す（`:986`） | `ScanReducerTest.kt::rereadQrReturnsToQrAndPreservesMatchedCount` + `ScanSessionCoordinatorTest.kt::disconnectFallsBackToCameraWithoutDiscardingCurrentQrStep`（工程保持） | D（状態） |
-| 52 | Bluetooth の QR→Code 128 で即時一致し、同じ session mode を維持（`:1008`） | `ScanReducerTest.kt::cameraQrThenCode128ProducesMatchAndRecordEffect` + `BleScannerSessionCoordinatorTest.kt::connectionReadAndWriteMustCompleteBeforePayloadsAreForwarded` + `AppFlowInstrumentationTest.kt::fakeScannerConnectsCameraSwitchRejectsReverseOrderAndRecordsTwoMatches` | D（debug Fake） |
-| 53 | 接続済み Bluetooth を既定にするが手動 camera 選択を尊重（`:1045`） | `ScanSessionCoordinatorTest.kt::readyBluetoothIsSelectedAtSessionStart` + `::explicitCameraChoiceWinsOverLaterReadyCallbacks` | D |
-| 54 | configuration message 後に QR 読取案内へ戻る（`:1061`） | `ScanScreenTest.kt::bluetoothConfigurationStatusReturnsToSessionRestrictionAfterReady` はConfiguring文言が消え、Ready後にQR読取案内とsession restriction文言へ戻ることを検査する。`ScanSessionCoordinatorTest.kt::configurationFailureKeepsTypedIssueWhenBaselineRestoreMakesScannerReady` は設定失敗をbaseline復元後も型付きで保持する | D（stateless UI + coordinator） |
-| 55 | background で baseline、foreground で現在工程の mode を再適用（`:1078`） | `ScanSessionCoordinatorTest.kt::backgroundStopsScannerAndForegroundResumesCurrentFormat` + `ScanReducerTest.kt::backgroundCancelsCountdownWithoutDiscardingResult`/`::foregroundResumesExpectedFormatWithoutChangingTheCurrentStep` | D（coordinator/reducer） |
-| 56 | Bluetooth session 終了で unrestricted baseline へ復元（`:1103`） | `BleSymbologySessionTest.kt::connectedSessionRequiresFreshInventoryAndKeepsLogicalStepChangesPhysical` | D（安全コア層） |
-| 57 | camera stop 完了まで session end completion を待つ（`:1123`） | `CameraScannerAsyncTest.kt::unbind completion waits for an in-flight ML Kit task to drain` + `CameraStopBoundaryTest.kt::sessionEndWaitsForDelayedHostStopCompletion`。CameraX unbindと処理中frame完了後にだけ論理sessionを終了 | D |
-| 58 | ViewModel deinit が camera stop を drain するまで待つ（`:1153`） | Androidではcamera hostがViewModel外で資源を所有し、composition disposal時にCameraScannerのterminal `close`/`unbind` completionを同じdrain境界へ保持する。`CameraScannerAsyncTest::close completion and a late unbind wait for an in-flight ML Kit task` が処理中frame・client解放順序を検査するが、Activity/process破棄を含む一体化lifetime試験ではない | P |
-| 59 | Bluetooth disconnect 後も現在工程・QRを保持して camera へ fallback（`:1184`） | `ScanSessionCoordinatorTest.kt::disconnectFallsBackToCameraWithoutDiscardingCurrentQrStep` は工程・QR保持を検査し、`ScanScreenTest.kt::bluetoothFallbackPreservesCurrentStepAndOffersRetryAndSettings` はtyped fallback文言と再接続・設定actionを検査する | D（stateless UI + coordinator） |
-| 60 | 正規化した match を記録して session を終了（`:1246`） | `HistoryRepositoryTest.kt::recordMatchTrimsCodeReturnsOneBasedBoxNumberAndPreservesDuplicates` + `::endingEmptySessionDeletesItAndEndingNonEmptySessionStoresEndedAt` | D |
-| 61 | history を保存し再ロード（`:1266`） | `HistoryRepositoryTest.kt::activeSessionIsRestoredAfterDatabaseRecreation` + `::activeSessionAndCheckpointPhasesSurviveIsolatedDatabaseReopen` + `::endingEmptySessionDeletesItAndEndingNonEmptySessionStoresEndedAt` | D |
-| 62 | 前 session と別の新 session を作成（`:1281`） | `HistoryRepositoryTest.kt::sessionsAreNewestFirstAndRenameBlankBecomesNull` | D |
-| 63 | payload を保存し code ごとの count を返す（`:1297`） | `HistoryRepositoryTest.kt::payloadsArePersistedWithEachDuplicateEntry` + `::recordMatchTrimsCodeReturnsOneBasedBoxNumberAndPreservesDuplicates` | D |
-| 64 | duplicate match を記録し first-seen 順に箱へ group（`:1319`） | `HistoryRepositoryTest.kt::recordMatchTrimsCodeReturnsOneBasedBoxNumberAndPreservesDuplicates` + `HistoryModelsTest.kt::groupedEntriesKeepFirstSeenPartOrderAndEveryDuplicate` | D |
-| 65 | 開始時の名前と rename（空白・再保存含む）（`:1346`） | `HistoryRepositoryTest.kt::beginSessionTrimsNameAndReusesActiveSession` + `::sessionsAreNewestFirstAndRenameBlankBecomesNull` + `::nonBlankRenameSurvivesDatabaseReopen` + `AppFlowInstrumentationTest.kt::completedSessionCanBeRenamedViewedInDetailsAndDeleted` | D |
-| 66 | 空名を nil/空 display name として扱う（`:1366`） | `HistoryRepositoryTest.kt::blankNameIsStoredAsNull` + `HistoryModelsTest.kt::blankDisplayNameAndEndedStateAreRepresented` | D |
-| 67 | session 削除を保存し cascade する（`:1375`） | `HistoryRepositoryTest.kt::deletingSessionCascadesEntries` + `AppFlowInstrumentationTest.kt::completedSessionCanBeRenamedViewedInDetailsAndDeleted` | D |
-| 68 | match なし終了は history へ保存せず破棄（`:1395`） | `HistoryRepositoryTest.kt::endingEmptySessionDeletesItAndEndingNonEmptySessionStoresEndedAt` + `AppFlowInstrumentationTest.kt::emptySessionIsNotKeptAfterConfirmedEnd` | D |
+| 49 | 同じ箱QRの成功済み照合は二重計上せず、auto-advanceも開始しない（`:940`） | `ScanReducerTest.kt::sameBoxQrCannotBeCountedTwiceInOneActiveSession` + `::restoredBoxQrIsDuplicateIgnoringCaseAndSurroundingWhitespace` + `AppFlowInstrumentationTest.kt::fakeScannerDifferentBoxesDuplicateRereadAndMismatchPreserveCountAndHistory` | D（Reducer + debug Fake/Room） |
+| 50 | 箱QRが異なれば同一Code 128でも別箱として2件計上（`:959`） | `ScanReducerTest.kt::differentBoxQrsWithSameBarcodeAreBothRecorded` + `AppFlowInstrumentationTest.kt::fakeScannerDifferentBoxesDuplicateRereadAndMismatchPreserveCountAndHistory` | D（Reducer + debug Fake/Room） |
+| 51 | Bluetooth で Code 128 を QR 前に読んでも進めない（`:988`） | `ScanReducerTest.kt::reverseOrderAndInvalidPayloadAreRejectedWithoutChangingState` + `::bluetoothRequiresBusinessPayloadFormats` | D（論理状態） |
+| 52 | Code 128 待機中の QR callback を reject（`:1015`） | `ScanReducerTest.kt::reverseOrderAndInvalidPayloadAreRejectedWithoutChangingState` | D（論理状態） |
+| 53 | QR reread で値を消し Bluetooth を QR 待機へ戻す（`:1034`） | `ScanReducerTest.kt::rereadQrReturnsToQrAndPreservesMatchedCount` + `ScanSessionCoordinatorTest.kt::disconnectFallsBackToCameraWithoutDiscardingCurrentQrStep`（工程保持） | D（状態） |
+| 54 | Bluetooth の QR→Code 128 で即時一致し、同じ session mode を維持（`:1056`） | `ScanReducerTest.kt::cameraQrThenCode128ProducesMatchAndRecordEffect` + `BleScannerSessionCoordinatorTest.kt::connectionReadAndWriteMustCompleteBeforePayloadsAreForwarded` + `AppFlowInstrumentationTest.kt::fakeScannerConnectsCameraSwitchRejectsReverseOrderAndRecordsTwoMatches` | D（debug Fake） |
+| 55 | 接続済み Bluetooth を既定にするが手動 camera 選択を尊重（`:1093`） | `ScanSessionCoordinatorTest.kt::readyBluetoothIsSelectedAtSessionStart` + `::explicitCameraChoiceWinsOverLaterReadyCallbacks` | D |
+| 56 | configuration message 後に QR 読取案内へ戻る（`:1109`） | `ScanScreenTest.kt::bluetoothConfigurationStatusReturnsToSessionRestrictionAfterReady` はConfiguring文言が消え、Ready後にQR読取案内とsession restriction文言へ戻ることを検査する。`ScanSessionCoordinatorTest.kt::configurationFailureKeepsTypedIssueWhenBaselineRestoreMakesScannerReady` は設定失敗をbaseline復元後も型付きで保持する | D（stateless UI + coordinator） |
+| 57 | background で baseline、foreground で現在工程の mode を再適用（`:1126`） | `ScanSessionCoordinatorTest.kt::backgroundStopsScannerAndForegroundResumesCurrentFormat` + `ScanReducerTest.kt::backgroundCancelsCountdownWithoutDiscardingResult`/`::foregroundResumesExpectedFormatWithoutChangingTheCurrentStep` | D（coordinator/reducer） |
+| 58 | Bluetooth session 終了で unrestricted baseline へ復元（`:1151`） | `BleSymbologySessionTest.kt::connectedSessionRequiresFreshInventoryAndKeepsLogicalStepChangesPhysical` | D（安全コア層） |
+| 59 | camera stop 完了まで session end completion を待つ（`:1171`） | `CameraScannerAsyncTest.kt::unbind completion waits for an in-flight ML Kit task to drain` + `CameraStopBoundaryTest.kt::sessionEndWaitsForDelayedHostStopCompletion`。CameraX unbindと処理中frame完了後にだけ論理sessionを終了 | D |
+| 60 | ViewModel deinit が camera stop を drain するまで待つ（`:1201`） | Androidではcamera hostがViewModel外で資源を所有し、composition disposal時にCameraScannerのterminal `close`/`unbind` completionを同じdrain境界へ保持する。`CameraScannerAsyncTest::close completion and a late unbind wait for an in-flight ML Kit task` が処理中frame・client解放順序を検査するが、Activity/process破棄を含む一体化lifetime試験ではない | P |
+| 61 | Bluetooth disconnect 後も現在工程・QRを保持して camera へ fallback（`:1232`） | `ScanSessionCoordinatorTest.kt::disconnectFallsBackToCameraWithoutDiscardingCurrentQrStep` は工程・QR保持を検査し、`ScanScreenTest.kt::bluetoothFallbackPreservesCurrentStepAndOffersRetryAndSettings` はtyped fallback文言と再接続・設定actionを検査する | D（stateless UI + coordinator） |
+| 62 | 正規化した match を記録して session を終了（`:1294`） | `HistoryRepositoryTest.kt::recordMatchTrimsCodeReturnsOneBasedBoxNumberAndPreservesDuplicates` + `::endingEmptySessionDeletesItAndEndingNonEmptySessionStoresEndedAt` | D |
+| 63 | history を保存し再ロード（`:1314`） | `HistoryRepositoryTest.kt::activeSessionIsRestoredAfterDatabaseRecreation` + `::activeSessionAndCheckpointPhasesSurviveIsolatedDatabaseReopen` + `::endingEmptySessionDeletesItAndEndingNonEmptySessionStoresEndedAt` | D |
+| 64 | 前 session と別の新 session を作成（`:1329`） | `HistoryRepositoryTest.kt::sessionsAreNewestFirstAndRenameBlankBecomesNull` | D |
+| 65 | payload を保存し code ごとの count を返す（`:1345`） | `HistoryRepositoryTest.kt::payloadsArePersistedWithEachDuplicateEntry` + `::recordMatchTrimsCodeReturnsOneBasedBoxNumberAndPreservesDuplicates` | D |
+| 66 | active sessionの成功済み箱QRだけを正規化して重複判定（`:1366`） | `ScanReducerTest.kt::restoredBoxQrIsDuplicateIgnoringCaseAndSurroundingWhitespace` は履歴から注入したQR identityのみで大文字/小文字と前後空白を正規化して重複とし、Code 128値で別箱を拒否しないことを検査する | D（Reducer復元境界） |
+| 67 | 同一品番でも異なるラベルは別箱として記録し first-seen 順に group（`:1388`） | `ScanReducerTest.kt::differentBoxQrsWithSameBarcodeAreBothRecorded` + `HistoryRepositoryTest.kt::recordMatchTrimsCodeReturnsOneBasedBoxNumberAndPreservesDuplicates` + `HistoryModelsTest.kt::groupedEntriesKeepFirstSeenPartOrderAndEveryDuplicate` | D |
+| 68 | 開始時の名前と rename（空白・再保存含む）（`:1415`） | `HistoryRepositoryTest.kt::beginSessionTrimsNameAndReusesActiveSession` + `::sessionsAreNewestFirstAndRenameBlankBecomesNull` + `::nonBlankRenameSurvivesDatabaseReopen` + `AppFlowInstrumentationTest.kt::completedSessionCanBeRenamedViewedInDetailsAndDeleted` | D |
+| 69 | 空名を nil/空 display name として扱う（`:1435`） | `HistoryRepositoryTest.kt::blankNameIsStoredAsNull` + `HistoryModelsTest.kt::blankDisplayNameAndEndedStateAreRepresented` | D |
+| 70 | session 削除を保存し cascade する（`:1444`） | `HistoryRepositoryTest.kt::deletingSessionCascadesEntries` + `AppFlowInstrumentationTest.kt::completedSessionCanBeRenamedViewedInDetailsAndDeleted` | D |
+| 71 | match なし終了は history へ保存せず破棄（`:1464`） | `HistoryRepositoryTest.kt::endingEmptySessionDeletesItAndEndingNonEmptySessionStoresEndedAt` + `AppFlowInstrumentationTest.kt::emptySessionIsNotKeptAfterConfirmedEnd` | D |
 
 ## Swift UI テスト（5本）
 
@@ -141,7 +144,7 @@ Swift UI 5本の直接対応とは別に、`NavigationTest`は履歴のsession�
 
 - AVFoundationのPreview層attach/detachとqueued shutdownはAndroidのCameraX境界へ対応済みだが、#5はiOSのclampとAndroidのrejectでpolicyが異なるためPのままにする。#6のscreen-capture policyはiOS固有であり、共通仕様にないことを根拠リンクで確認したN/Aである。
 - Android の camera adapter について、実端末での QR→Code 128 実読取、focus 成否、連続箱、回転、background/foreground、権限の実結果は [`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md) に記録する。Compose stage/ROI テストだけでは完了にならない。
-- Android BLE はSDK非依存 safety coreとFake/UIに加え、公式Inateck Android SDK 2.0.0を非配付`scannerPoc`へ接続した。2026-09-04にPixel 7 / BCST-36で検索・接続、実機inventory由来のQR+Code 128制限とfresh readback、分割通知、QR→Code 128一致、背景時復元を確認した。logical format補正、接続・探索世代取消、PoC最小権限とvendor-log除去は自動検査する。同一箱重複・不一致・連続箱、切断/scanner再起動/app強制終了/timeout、Samsung、配付条件は未完了。
+- Android BLE はSDK非依存 safety coreとFake/UIに加え、公式Inateck Android SDK 2.0.0を非配付`scannerPoc`へ接続した。2026-09-04にPixel 7 / BCST-36で検索・接続、実機inventory由来のQR+Code 128制限とfresh readback、分割通知、QR→Code 128一致、背景時復元、QR待機中のapp強制終了後の既知端末自動再接続と追加のQR→Code 128一致を確認した。logical format補正、接続・探索世代取消、一時的なBluetooth/権限不可時の有限再試行、PoC最小権限とvendor-log除去は自動検査する。同一箱重複・不一致・連続箱、手動/予期しない切断、scanner再起動、Code 128待機/結果表示中のapp強制終了、timeout、Samsung、配付条件は未完了。
 - #38のlegacy Code128-only recoveryと#42のdiagnosticsからの既知端末migrationは、旧iOS UserDefaults/diagnosticsをAndroidへ移すproduct-history-only処理なのでN/Aとする。Android側の新規snapshot/known-device envelope、service再生成後のidentity保持、fresh inventory、復元完了前Ready禁止は [`BleKnownDeviceRecoveryTest`](../../android/scanner/ble/src/test/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceRecoveryTest.kt) / [`BleKnownDeviceStoreTest`](../../android/scanner/ble/src/androidTest/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceStoreTest.kt) で自動化したが、対象scanner実通信の証拠ではない。
 - Swift UI 5本のうち、Fake接続、一致→duplicate→読み直し→不一致、設定ガイド、実時間auto-advanceは同じdebug Fake/DI/repositoryを通すapp instrumentationへ昇格した。0件破棄、履歴名称変更・詳細・削除、履歴選択のActivity再生成/画面往復/system back、英語1/2 plural、テスト専用ランダムファイルを使ったDataStore/Room再オープン（active session、全checkpoint phase、全設定値）、PDF render/Intent契約も自動化済み。これらはストレージと復元経路の証拠であり、OSのprocess kill/force-stop後にアプリを再起動するUI証拠ではない。実DocumentProvider/共有先、TalkBack/Switch Access、実カメラ、対象BLE、Samsung受け入れは引き続き別ゲートである。
 
@@ -155,9 +158,10 @@ Swift UI 5本の直接対応とは別に、`NavigationTest`は履歴のsession�
 
 ## 検証
 
-- Swift source の `func test` 数: unit 68、UI 5。fixture は JSON として schemaVersion 1、5 case、ID 重複なし。
+- Swift source の `func test` 数: unit 71、UI 5。fixture は JSON として schemaVersion 1、5 case、ID 重複なし。
 - Android の focused Gradle test は Android Studio の JDK と SDK を明示して実行し、次の2系統がともに `BUILD SUCCESSFUL` になった。`./gradlew :core:model:testDebugUnitTest :core:matching:testDebugUnitTest :feature:scan:testDebugUnitTest :scanner:ble:testDebugUnitTest :scanner:fake:testDebugUnitTest`、および `./gradlew :core:export:testDebugUnitTest :feature:history:testDebugUnitTest :feature:settings:testDebugUnitTest :app:testDebugUnitTest`。
 - `:scanner:camera:testDebugUnitTest` は非同期境界20テストを含め `BUILD SUCCESSFUL`、`:scanner:camera:lintDebug` も `BUILD SUCCESSFUL` になった。`BundledMlKitImageDecodeTest` 3件は共有QR/Code 128画像の実decodeと誤形式拒否に成功したが、実機 camera readを意味しない。
 - 2026-09-03の追加hardening後、Android JVM testは全249件が成功した。Pixel 7/API 36では通常のdebugアプリ保存領域を消去せず、`core:data` 21件、`feature:scan` 15件、`scanner:camera` 3件の計39件を実行し、失敗・skip 0だった。以前の全module instrumentation 80件、BLE変更時のfocused 36件、Android 17/API 37.1・16KB emulator 63件は別時点の記録であり、この差分全体はPRのAPI 31/36 CIで再確認する。
 - Android実装の証拠にiOS Simulatorは使用しない。iOS XCTestは、同一リポジトリの既存iOS版を壊していないことを確認するPR CIの回帰ゲートとしてのみ扱う。
+- 2026-09-04の追加差分は、`feature:scan`/`scanner:ble`/`app`の対象JVM test、Android test compile、lintが成功した。Android 17/API 37.1・16KB emulatorで`ScanScreenTest` 11件と実ContentProvider経由のPDF write/read 1件が成功し、検証後にemulatorを終了した。対象BCST-36はオートスリープ中のため、BLE実通信の追加合否には使用していない。
 - 実行可能だった静的確認は source/test 数、fixture 構造、`git diff --check`。実機 camera/BLE の結果はこの表に含めていない。

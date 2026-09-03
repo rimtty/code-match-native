@@ -89,6 +89,62 @@ class BleKnownDeviceRecoveryTest {
     }
 
     @Test
+    fun knownReconnectRetriesAfterTemporaryBluetoothOutage() {
+        val knownStore = InMemoryKnownDeviceStore(profileIdentity).apply {
+            save(device)
+        }
+        val transport = RecordingTransport(BleAvailability.PoweredOff)
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            knownDeviceStore = knownStore,
+            reconnectDelayMillis = { 1_000L },
+            nowMillis = { 0L },
+        )
+
+        // A process recreation can happen while the scanner radio is off.
+        // The first recovery request remains bounded but must not be lost.
+        assertFalse(coordinator.reconnectKnownDevice())
+        assertEquals(
+            BleConnectionState.Unavailable("Bluetooth is off"),
+            coordinator.connectionState,
+        )
+        assertEquals(1_000L, coordinator.pendingReconnectAtMillis)
+        assertTrue(transport.connectCalls.isEmpty())
+
+        transport.availability = BleAvailability.Ready
+        assertFalse(coordinator.tick(999L))
+        assertTrue(coordinator.tick(1_000L))
+        assertEquals(listOf(device), transport.connectCalls)
+        assertEquals(BleConnectionState.Reconnecting(device, 1), coordinator.connectionState)
+    }
+
+    @Test
+    fun unavailableKnownReconnectStopsAfterBoundedAttempts() {
+        val knownStore = InMemoryKnownDeviceStore(profileIdentity).apply {
+            save(device)
+        }
+        val transport = RecordingTransport(BleAvailability.PoweredOff)
+        val coordinator = BleConnectionCoordinator(
+            transport = transport,
+            knownDeviceStore = knownStore,
+            reconnectDelayMillis = { 100L },
+            maxReconnectAttempts = 2,
+            nowMillis = { 0L },
+        )
+
+        assertFalse(coordinator.reconnectKnownDevice())
+        assertEquals(100L, coordinator.pendingReconnectAtMillis)
+        assertFalse(coordinator.tick(99L))
+        assertFalse(coordinator.tick(100L))
+        assertEquals(200L, coordinator.pendingReconnectAtMillis)
+        assertFalse(coordinator.tick(200L))
+        assertEquals(null, coordinator.pendingReconnectAtMillis)
+        assertEquals(2, coordinator.reconnectAttemptCount)
+        assertTrue(transport.connectCalls.isEmpty())
+        assertTrue(coordinator.state.diagnostics.size <= 20)
+    }
+
+    @Test
     fun rejectedIdentityCannotStartReconnectOrAdvertiseReady() {
         val expectedProfileIdentity = profileIdentity
         val knownStore = object : KnownDeviceStore {
@@ -148,8 +204,9 @@ class BleKnownDeviceRecoveryTest {
         }
     }
 
-    private class RecordingTransport : BleTransport {
-        override var availability: BleAvailability = BleAvailability.Ready
+    private class RecordingTransport(
+        override var availability: BleAvailability = BleAvailability.Ready,
+    ) : BleTransport {
         override var listener: BleTransportListener? = null
         val connectCalls = mutableListOf<ScannerDevice>()
 
