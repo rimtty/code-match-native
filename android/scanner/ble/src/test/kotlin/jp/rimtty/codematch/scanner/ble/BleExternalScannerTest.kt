@@ -125,7 +125,7 @@ class BleExternalScannerTest {
     @Test
     fun reconnectRequestedDuringRestoreRunsAfterThePhysicalDisconnect() {
         val transport = RecordingTransport()
-        val (_, _, scanner) = createStack(transport)
+        val (_, bridge, scanner) = createStack(transport, nowMillis = { 0L })
         startReadySession(transport, scanner)
 
         assertTrue(scanner.disconnect())
@@ -136,6 +136,9 @@ class BleExternalScannerTest {
         transport.completeWrite(1, Result.success(Unit))
 
         assertEquals(1, transport.disconnectCalls.size)
+        assertEquals(1, transport.connectCalls.size)
+        transport.emit(BleTransportEvent.Disconnected(device, unexpected = false))
+        bridge.tick(atMillis = 8_000L)
         assertEquals(2, transport.connectCalls.size)
         assertEquals(device, transport.connectCalls.last())
         assertEquals(ConnectionState.Connecting(device), scanner.connectionState)
@@ -424,6 +427,7 @@ class BleExternalScannerTest {
         assertTrue(stack.scanner.disconnect())
         transport.completeWrite(1, Result.success(Unit))
         assertEquals(ConnectionState.Idle, stack.scanner.connectionState)
+        transport.emit(BleTransportEvent.Disconnected(device, unexpected = false))
         assertTrue(stack.scanner.connect(other))
         assertEquals(other, stack.scanner.boundDevice)
         assertEquals(listOf(device, other), transport.connectCalls)

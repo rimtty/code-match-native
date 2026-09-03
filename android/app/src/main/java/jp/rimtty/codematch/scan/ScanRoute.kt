@@ -28,6 +28,7 @@ import jp.rimtty.codematch.feature.scan.ScanUiAction
 import jp.rimtty.codematch.navigation.CodeMatchBackHandler
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
+import jp.rimtty.codematch.scanner.api.ScannerIssue
 
 /**
  * Application-owned scan destination.
@@ -49,7 +50,7 @@ fun ScanRoute(
     /** Optional CameraX/ML Kit adapter. Null keeps previews deterministic in M2. */
     cameraHost: CameraHost? = null,
     /** Host-owned, testable hook for opening platform Bluetooth settings. */
-    onOpenBluetoothSettings: () -> Unit = {},
+    onOpenBluetoothSettings: (ScannerIssue) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -219,7 +220,7 @@ fun ScanRoute(
         cameraPreview = cameraPreview,
         onCameraFocus = { point -> currentCameraHost?.focus(point) },
         onOpenCameraSettings = { currentCameraHost?.openSettings() },
-        onOpenBluetoothSettings = onOpenBluetoothSettings,
+        onOpenBluetoothSettings = { onOpenBluetoothSettings(state.bluetoothIssue) },
     )
 
     if (showEndSessionDialog && state.sessionActive) {

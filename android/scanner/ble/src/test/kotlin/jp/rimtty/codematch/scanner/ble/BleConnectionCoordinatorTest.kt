@@ -157,6 +157,11 @@ class BleConnectionCoordinatorTest {
         assertTrue(coordinator.tick(30_000L))
         assertEquals(BleConnectionState.Failed("Bluetooth connection timed out"), coordinator.connectionState)
         assertEquals(listOf(device), transport.disconnectCalls)
+        assertEquals(null, coordinator.pendingReconnectAtMillis)
+
+        // A new link is not attempted until the transport confirms that the
+        // timed-out physical GATT has actually closed.
+        transport.emit(BleTransportEvent.Disconnected(device, unexpected = false))
         assertEquals(38_000L, coordinator.pendingReconnectAtMillis)
 
         now = 37_999L
@@ -165,6 +170,28 @@ class BleConnectionCoordinatorTest {
         assertTrue(coordinator.tick(now))
         assertEquals(BleConnectionState.Reconnecting(device, 1), coordinator.connectionState)
         assertEquals(listOf(device, device), transport.connectCalls)
+    }
+
+    @Test
+    fun failedTimeoutCancellationCannotPublishLateConnectionOrStartReconnect() {
+        var now = 0L
+        val transport = RecordingTransport().apply { disconnectAccepted = false }
+        val coordinator = BleConnectionCoordinator(transport, nowMillis = { now })
+
+        assertTrue(coordinator.connect(device))
+        now = 30_000L
+        assertFalse(coordinator.tick(now))
+        assertEquals(BleConnectionState.Failed("Bluetooth connection timed out"), coordinator.connectionState)
+        assertEquals(null, coordinator.pendingReconnectAtMillis)
+
+        // The SDK may finish connecting after its public cancellation failed.
+        // It must be closed again and must never become app-visible Connected.
+        transport.emit(BleTransportEvent.Connected(device))
+        assertEquals(2, transport.disconnectCalls.size)
+        assertTrue(coordinator.connectionState !is BleConnectionState.Connected)
+        assertEquals(null, coordinator.pendingReconnectAtMillis)
+        assertFalse(coordinator.tick(60_000L))
+        assertEquals(1, transport.connectCalls.size)
     }
 
     @Test
@@ -260,6 +287,7 @@ class BleConnectionCoordinatorTest {
         var discoveryStops = 0
         val connectCalls = mutableListOf<ScannerDevice>()
         val disconnectCalls = mutableListOf<ScannerDevice>()
+        var disconnectAccepted = true
 
         override fun startDiscovery(): Boolean {
             discoveryStarts += 1
@@ -280,7 +308,7 @@ class BleConnectionCoordinatorTest {
 
         override fun disconnect(device: ScannerDevice): Boolean {
             disconnectCalls += device
-            return true
+            return disconnectAccepted
         }
 
         override fun write(

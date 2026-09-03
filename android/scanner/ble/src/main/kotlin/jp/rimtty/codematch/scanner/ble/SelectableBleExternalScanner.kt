@@ -66,6 +66,11 @@ class SelectableBleExternalScanner(
     val boundDevice: ScannerDevice?
         get() = sessionCoordinator?.device
 
+    /** True only while a timed-out settings operation waits for link reset. */
+    val isAwaitingTransportReset: Boolean
+        get() = sessionCoordinator?.state?.symbology ==
+            BleSymbologySessionState.AwaitingTransportReset
+
     override var listener: ExternalScannerListener?
         get() = mutableListener
         set(value) {

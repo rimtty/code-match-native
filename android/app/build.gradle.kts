@@ -23,6 +23,24 @@ android {
     }
 
     buildTypes {
+        create("scannerPoc") {
+            isDebuggable = false
+            // Resolve library release variants so debug-only Compose tooling
+            // manifests cannot add externally exported activities to the PoC.
+            matchingFallbacks += listOf("release")
+            signingConfig = signingConfigs.getByName("debug")
+            applicationIdSuffix = ".scannerpoc"
+            versionNameSuffix = "-scanner-poc"
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+                "scanner-poc-rules.pro",
+            )
+            ndk {
+                abiFilters += "arm64-v8a"
+            }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -87,6 +105,7 @@ dependencies {
     implementation(libs.androidx.navigation3.ui)
 
     debugImplementation(project(":scanner:fake"))
+    "scannerPocImplementation"(project(":scanner:inateck"))
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 

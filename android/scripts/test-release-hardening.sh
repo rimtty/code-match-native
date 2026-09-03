@@ -92,4 +92,24 @@ assert_manifest_mutation_is_rejected \
     'android.permission.BLUETOOTH_SCAN' \
     "contains forbidden permission android.permission.BLUETOOTH_SCAN"
 
+for coordinate in \
+    'project :scanner:inateck' \
+    'com.github.Jasonchenlijian:FastBle:2.4.0'; do
+    dependency_fixture="$tmp_dir/unsafe-dependency.txt"
+    printf '%s\n' "$coordinate" > "$dependency_fixture"
+    dependency_output="$tmp_dir/unsafe-dependency.log"
+    if "$checker" --dependency-report "$dependency_fixture" --skip-artifacts \
+        > "$dependency_output" 2>&1; then
+        printf 'Release hardening checker accepted unsafe dependency: %s\n' "$coordinate" >&2
+        exit 1
+    fi
+    rg -q -F 'Inateck scanner PoC dependency leaked into the release graph' \
+        "$dependency_output" || {
+        printf 'Release hardening checker rejected %s for an unexpected reason:\n' \
+            "$coordinate" >&2
+        sed -n '1,80p' "$dependency_output" >&2
+        exit 1
+    }
+done
+
 printf '[release-hardening-test] positive and fail-closed source checks passed\n'

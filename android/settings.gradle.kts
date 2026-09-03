@@ -4,6 +4,14 @@ pluginManagement {
     repositories {
         google()
         mavenCentral()
+        exclusiveContent {
+            forRepository {
+                maven("https://jitpack.io")
+            }
+            filter {
+                includeGroup("com.github.Jasonchenlijian")
+            }
+        }
         gradlePluginPortal()
     }
 }
@@ -13,6 +21,14 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        exclusiveContent {
+            forRepository {
+                maven("https://jitpack.io")
+            }
+            filter {
+                includeGroup("com.github.Jasonchenlijian")
+            }
+        }
     }
 }
 
@@ -32,6 +48,7 @@ include(":feature:settings")
 include(":scanner:api")
 include(":scanner:camera")
 include(":scanner:ble")
+include(":scanner:inateck")
 
 // The fake scanner is deliberately a debug-only dependency of :app. Keeping it
 // as a separate module makes the release dependency graph auditable.

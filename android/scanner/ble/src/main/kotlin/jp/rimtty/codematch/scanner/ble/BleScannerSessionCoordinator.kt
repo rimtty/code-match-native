@@ -231,9 +231,13 @@ class BleScannerSessionCoordinator(
         // A coordinator for a BLE transport must never forward a callback
         // mislabeled as camera input. Dropping it is safer than recording it.
         if (payload.source != InputSource.BLUETOOTH) return
+        val expectedFormat = mutableState.expectedFormat ?: return
         // Do not add the value to state or diagnostics. The typed payload is
         // delivered only to the caller that explicitly subscribed.
-        onPayload?.invoke(payload)
+        // A BLE notification does not reliably contain its symbology. The
+        // logical QR/Code128 step is authoritative and survives background
+        // restore/reconnect independently of an adapter-local label.
+        onPayload?.invoke(payload.copy(format = expectedFormat))
     }
 
     /** Separate payload callback keeps state snapshots free of scan text. */

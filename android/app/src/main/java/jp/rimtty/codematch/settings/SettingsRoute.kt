@@ -9,13 +9,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import jp.rimtty.codematch.feature.settings.SettingsScreen
 import jp.rimtty.codematch.feature.settings.SettingsUiAction
 import jp.rimtty.codematch.navigation.CodeMatchBackHandler
+import jp.rimtty.codematch.scanner.api.ScannerIssue
 
 @Composable
 fun SettingsRoute(
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
     /** Host-owned, testable hook for opening platform Bluetooth settings. */
-    onOpenBluetoothSettings: () -> Unit = {},
+    onOpenBluetoothSettings: (ScannerIssue) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.refreshScannerState() }
@@ -29,6 +30,6 @@ fun SettingsRoute(
         state = state,
         onAction = viewModel::onAction,
         modifier = modifier,
-        onOpenBluetoothSettings = onOpenBluetoothSettings,
+        onOpenBluetoothSettings = { onOpenBluetoothSettings(state.resolvedScannerIssue) },
     )
 }

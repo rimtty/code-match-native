@@ -11,9 +11,9 @@
 | History / settings / PDF | Room/DataStore、日英リソース、0件破棄・名称変更・詳細・削除のapp E2E、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test、保存/共有失敗の一般化メッセージと再試行 | 実際の保存先・viewer・共有先アプリを含む実端末の業務受け入れ |
 | Camera | CameraX/ML Kit adapter、ROI、権限・lifecycle・focus、非同期provider/format切替/古いcallback破棄、処理中frameをdrainしてからsession終了・terminal closeする自動test | Pixel/SamsungでQR→Code 128実読取、連続箱、focus結果の完了記録 |
 | Privacy / release | Manifest、backup規則、FileProvider、source/APK/AAB checker、すべてのAndroid Gradle CI jobでのWrapper validation | 通信観測、ストア提出回答、署名済み配布物の運用承認 |
-| BLE | SDK/UUID非依存の安全コア、`ExternalScanner` facade、検索後の選択端末へsettings sessionを安全にbindする動的facade、注入profile方式の汎用Android GATT transport、公式SDK-level flag/value形式のstrict codec、複数listener、Fake/Unavailable境界、型付き設定失敗・camera fallback・明示再接続UI、snapshot/queue/lifecycle JVM test、backup除外DataStoreでのsnapshot/既知端末identity再オープンと復元前Ready禁止test | 実測protocol profile、versioned SDK契約、release接続とNearby権限要求、対象scanner通信、実機の全symbology復元、Pixel/Samsung受け入れ |
+| BLE | SDK非依存の安全コア、端末選択facade、公式Inateck Android SDK 2.0.0を使う`scannerPoc` adapter、area/name/value全件read/write/readback実装、分割FF01通知router、Nearby最小権限、R8 vendor-log除去、snapshot/queue/lifecycle/既知端末復旧test | 対象scannerでの検索・接続・scan、SDK callbackとexact readbackの実通信、実機の全symbology完全復元、Pixel/Samsung受け入れ、SDK再配付条件を確認したproduction/release採用 |
 
-現在のrelease構成は `UnavailableExternalScanner` によるカメラ入力のみです。汎用GATT transportはscanner固有値を持たず、release DI・Manifestへ未接続です。候補Inateck SDKはライセンス、ABI/target SDK、権限、rawログ、scan callbackの評価が未解決で採用保留です（詳細は [`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)）。
+現在のrelease構成は `UnavailableExternalScanner` によるカメラ入力のみです。公式Inateck SDK adapterは、arm64実機向け・非配付・minifiedの`scannerPoc`だけに接続します。SDK binaryは固定commitからchecksum検証付きでローカル取得し、Gitやreleaseへ同梱しません（詳細は [`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)）。
 
 ## パリティ分類の補足
 
@@ -42,6 +42,7 @@ JDK/SDKがない環境ではGradle結果を推測せず、実行不能として�
 
 ## 2026-09-02〜03 統合検証記録
 
+- 2026-09-03の公式Inateck SDK PoC統合では、SDK/FastBle/JNA/nativeを`scannerPoc`だけへ隔離し、設定応答とscan通知を共有するFF01をcommand-awareな単一routerへ置換した。分割通知、最大長、終端、250ms idle flush、oversize quarantine、接続・探索世代、pending接続取消、未知JSON破棄、area/name/value codecは自動testで固定した。SDK callback経路と全設定exact readbackは実装済みだが、実通信の証拠は実機ゲートに残す。PoC APKの最小Nearby権限、単一exported launcher、arm64 ABI、vendorログ文字列除去はartifact checkerで確認する。通常releaseにはSDK/native/Nearby権限を入れず、対象scanner実機結果は未記録である。
 - 2026-09-03のBLE設定表示・再接続とcamera terminal close統合後、全moduleのJVM test 252件、lint、debug/release APK、release AABが成功した。release source regressionとAPK/AAB/dependency hardeningも成功し、release構成にFake、Nearby権限、analytics/crash SDKがないことを再確認した。USB接続Pixel 7（Android 16 / API 36）では、通常のdebugアプリ保存領域を消去しないmodule testとして`feature:scan` 18件、`feature:settings` 15件、`scanner:camera` 3件の計36件を実行し、失敗・skip 0だった。これは設定中→Ready→QR案内、raw reason非表示、工程を保持したcamera fallback、明示的な非同期再接続、terminal closeの自動証拠であり、対象scanner通信や実カメラ撮影の証拠ではない。
 - 2026-09-03の追加hardening後、全moduleのJVM test 249件、lint、debug/release APK、release AABが成功した。release dependency/APK/AAB hardeningはFake、Nearby権限、analytics/crash SDKがない状態で成功し、すべてのAndroid CI jobでGradle起動前にWrapper validationを実行する構成にした。USB接続Pixel 7（Android 16 / API 36）では、通常のdebugアプリ保存領域を消去せず、`core:data` 21件、`feature:scan` 15件、`scanner:camera` 3件の計39件を実行し、失敗・skip 0だった。
 - `core:data`の追加testは、ランダムなテスト専用Room DBを各checkpoint段階で閉じて再オープンし、active session、WAITING QR、WAITING Code 128、RESULT、受理済み値、入力元、明示camera選択、箱数を復元する。全設定値と言語もテスト専用DataStore再オープン後に復元する。これらはストレージ復元の証拠であり、OS force-stop/process kill後のアプリ再起動を意味しない。
