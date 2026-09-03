@@ -51,6 +51,103 @@ class InateckAreaNameSettingsContractTest {
                     "{\"area\":\"a\",\"name\":\"n\",\"value\":\"1\"}]",
             ),
         )
+        assertNull(
+            InateckAreaNameSettingsContract.parseCommand(
+                "[{\"area\":\"system\",\"name\":\"volume\",\"value\":\"1\"}]",
+            ),
+        )
+    }
+
+    @Test
+    fun inventoryExtractsOnlySymbologiesAndAllowsGeneralValues() {
+        val inventory = listOf(
+            mapOf("area" to "system", "name" to "volume", "value" to "4"),
+            mapOf("area" to "barcode", "name" to "qrcode_on", "value" to "1"),
+            mapOf("area" to "barcode", "name" to "future_symbol_on", "value" to "not-binary"),
+            mapOf("area" to "barcode", "name" to "code128_on", "value" to "0"),
+        )
+
+        assertEquals(
+            listOf(
+                InateckAreaNameSettingsContract.SettingTriple("barcode", "qrcode_on", "1"),
+                InateckAreaNameSettingsContract.SettingTriple("barcode", "code128_on", "0"),
+            ),
+            InateckAreaNameSettingsContract.extractSymbologies(inventory),
+        )
+        assertEquals(
+            setOf(
+                InateckAreaNameSettingsContract.SettingTriple("barcode", "qrcode_on", "1"),
+                InateckAreaNameSettingsContract.SettingTriple("barcode", "code128_on", "0"),
+            ),
+            InateckAreaNameSettingsContract.normalizeInventory(inventory),
+        )
+        assertTrue(
+            InateckAreaNameSettingsContract.containsRequestedSymbologies(
+                settings = inventory +
+                    mapOf("area" to "system", "name" to "beep", "value" to "1"),
+                requested = setOf(
+                    InateckAreaNameSettingsContract.SettingTriple("barcode", "qrcode_on", "1"),
+                    InateckAreaNameSettingsContract.SettingTriple("barcode", "code128_on", "0"),
+                ),
+            ),
+        )
+        assertTrue(
+            !InateckAreaNameSettingsContract.containsRequestedSymbologies(
+                settings = inventory,
+                requested = setOf(
+                    InateckAreaNameSettingsContract.SettingTriple("barcode", "qrcode_on", "0"),
+                ),
+            ),
+        )
+        assertTrue(
+            !InateckAreaNameSettingsContract.containsRequestedSymbologies(
+                settings = inventory +
+                    mapOf("area" to "barcode", "name" to "qrcode_on", "value" to "0"),
+                requested = setOf(
+                    InateckAreaNameSettingsContract.SettingTriple("barcode", "qrcode_on", "1"),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun malformedOrDuplicateSymbologyFailsClosedWhileUnknownSettingsAreIgnored() {
+        assertNull(
+            InateckAreaNameSettingsContract.normalizeInventory(
+                listOf(
+                    mapOf("area" to "system", "name" to "volume", "value" to "4"),
+                    mapOf("area" to "barcode", "name" to "qrcode_on", "value" to "2"),
+                    mapOf("area" to "barcode", "name" to "code128_on", "value" to "1"),
+                ),
+            ),
+        )
+        assertNull(
+            InateckAreaNameSettingsContract.normalizeInventory(
+                listOf(
+                    mapOf("area" to "barcode", "name" to "qrcode_on", "value" to "1"),
+                    mapOf("area" to "barcode", "name" to "QRCode_On", "value" to "0"),
+                    mapOf("area" to "barcode", "name" to "code128_on", "value" to "1"),
+                ),
+            ),
+        )
+        assertNull(
+            InateckAreaNameSettingsContract.normalizeInventory(
+                listOf(
+                    mapOf("area" to "system", "name" to "volume", "value" to "4"),
+                    mapOf("area" to "barcode", "name" to "qrcode_on"),
+                    mapOf("area" to "barcode", "name" to "code128_on", "value" to "1"),
+                ),
+            ),
+        )
+        assertEquals(
+            emptySet<InateckAreaNameSettingsContract.SettingTriple>(),
+            InateckAreaNameSettingsContract.normalizeInventory(
+                listOf(
+                    mapOf("area" to "system", "name" to "volume", "value" to "4"),
+                    mapOf("area" to "barcode", "name" to "future_symbol_on", "value" to "true"),
+                ),
+            ),
+        )
     }
 
     @Test

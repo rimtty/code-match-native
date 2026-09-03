@@ -7,18 +7,19 @@ import com.google.gson.JsonParser
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import java.util.Locale
 import jp.rimtty.codematch.scanner.ble.BleSymbologyCodec
 import jp.rimtty.codematch.scanner.ble.ScannerSettingItem
 import jp.rimtty.codematch.scanner.ble.SymbologySettingCommand
 import jp.rimtty.codematch.scanner.ble.SymbologySnapshot
 
 /**
- * Exact codec for the area/name/value inventory returned by Android SDK 2.0.0.
+ * Codec for the area/name/value inventory returned by Android SDK 2.0.0.
  *
- * Unlike the iOS compatibility codec, every item returned by the SDK method is
- * retained. The adapter must never silently omit a newly introduced barcode
- * setting because doing so would make exact post-session restoration
- * impossible. Required QR and Code 128 names are validated by the BLE core.
+ * The SDK returns general settings and barcode toggles in one list. The
+ * contract validates the complete list, then this codec keeps only binary
+ * symbology entries for the BLE session. General settings are never emitted
+ * in a command, so values such as `volume=4` remain untouched on the device.
  */
 internal object InateckAreaNameSymbologyCodec : BleSymbologyCodec {
     override fun decodeSnapshot(
@@ -37,17 +38,26 @@ internal object InateckAreaNameSymbologyCodec : BleSymbologyCodec {
             val item = element.takeIf { it.isJsonObject }?.asJsonObject ?: return null
             if (item.keySet() != REQUIRED_KEYS) return null
             REQUIRED_KEYS.associateWith { key ->
-                item[key]?.takeIf { it.isJsonPrimitive }?.asString ?: return null
+                item[key]?.let { value ->
+                    if (!value.isJsonPrimitive) return@let null
+                    when {
+                        value.asJsonPrimitive.isString -> value.asString
+                        value.asJsonPrimitive.isNumber -> value.asNumber.toString()
+                        else -> null
+                    }
+                } ?: return null
             }
         }
-        InateckAreaNameSettingsContract.normalizeInventory(maps) ?: return null
+        val symbologies = InateckAreaNameSettingsContract.extractSymbologies(maps)
+            ?.takeIf { it.isNotEmpty() }
+            ?: return null
         return SymbologySnapshot(
             deviceId = deviceId,
-            settings = maps.map { setting ->
+            settings = symbologies.map { setting ->
                 ScannerSettingItem(
-                    name = setting.getValue("name"),
-                    area = setting.getValue("area"),
-                    value = setting.getValue("value").toInt(),
+                    name = setting.name,
+                    area = setting.area,
+                    value = setting.value.toInt(),
                 )
             },
             capturedAtMillis = capturedAtMillis,
@@ -63,7 +73,10 @@ internal object InateckAreaNameSymbologyCodec : BleSymbologyCodec {
             require(command.area.isNotBlank() && command.name.isNotBlank()) {
                 "setting identity must not be blank"
             }
-            require(identities.add(command.area to command.name)) {
+            require(InateckAreaNameSettingsContract.isSymbologyCommandName(command.name)) {
+                "general settings must not be written by the symbology adapter"
+            }
+            require(identities.add(command.area to command.name.lowercase(Locale.ROOT))) {
                 "duplicate setting identity"
             }
             array.add(JsonObject().apply {

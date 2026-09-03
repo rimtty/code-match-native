@@ -274,15 +274,20 @@ internal class AndroidInateckSdkGateway(
                         return@dispatch
                     }
                     // The SDK's public write performs get/set/get but returns
-                    // no final inventory. Read once more and require an exact
-                    // area/name/value match before publishing Ready.
+                    // no final inventory. Read once more and require every
+                    // requested symbology identity/value to be present before
+                    // publishing Ready. The SDK also reports general settings
+                    // (for example volume), which are intentionally ignored.
                     device.messager.getSettingInfo { verification ->
                         dispatch {
                             if (!isCurrentOperation(device, attempt, operation)) return@dispatch
                             finishOperation(operation)
                             val actual = verification.getOrNull()?.map { it.toMap() }
                             if (actual != null &&
-                                InateckAreaNameSettingsContract.normalizeInventory(actual) == requested
+                                InateckAreaNameSettingsContract.containsRequestedSymbologies(
+                                    settings = actual,
+                                    requested = requested,
+                                )
                             ) {
                                 completion(Result.success(Unit))
                             } else {
