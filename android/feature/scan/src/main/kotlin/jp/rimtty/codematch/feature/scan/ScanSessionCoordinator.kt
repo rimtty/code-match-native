@@ -104,7 +104,10 @@ class ScanSessionCoordinator(
             // accepted QR/barcode or re-trigger the countdown. If the saved
             // Bluetooth source is no longer available, retain the logical step
             // and fall back to camera input.
-            if (inputSource == InputSource.BLUETOOTH && !scanner.isReadyToStartSession) {
+            if (inputSource == InputSource.BLUETOOTH &&
+                !scanner.isReadyToStartSession &&
+                !scanner.connectionState.isConnectionPending
+            ) {
                 setInputSource(InputSource.CAMERA)
             }
             val reduction = ScanReduction(
@@ -287,7 +290,9 @@ class ScanSessionCoordinator(
             ConfigurationState.Ready -> handleConnectionState(scanner.connectionState)
             is ConfigurationState.Failed -> fallbackToCameraIfBluetooth()
             ConfigurationState.Unavailable -> {
-                if (scanner.connectionState.connectedDevice == null) {
+                if (scanner.connectionState.connectedDevice == null &&
+                    !scanner.connectionState.isConnectionPending
+                ) {
                     fallbackToCameraIfBluetooth()
                 }
             }
@@ -313,8 +318,18 @@ class ScanSessionCoordinator(
             return
         }
 
+        // A process recreation can restore the logical BLE source before the
+        // known device has finished reconnecting. Keep that source selected
+        // while discovery/connection is genuinely in flight; otherwise the
+        // initial Connecting + Unavailable pair would immediately switch the
+        // restored session to camera and hide the recovery state from UI.
+        if (connectionState.isConnectionPending) return
+
         fallbackToCameraIfBluetooth()
     }
+
+    private val ConnectionState.isConnectionPending: Boolean
+        get() = this is ConnectionState.Searching || this is ConnectionState.Connecting
 
     private fun fallbackToCameraIfBluetooth() {
         if (inputSource != InputSource.BLUETOOTH) return
