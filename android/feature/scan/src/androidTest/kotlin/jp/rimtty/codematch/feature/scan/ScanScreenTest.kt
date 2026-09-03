@@ -2,6 +2,7 @@ package jp.rimtty.codematch.feature.scan
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -11,6 +12,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import jp.rimtty.codematch.core.model.AppLanguage
@@ -165,6 +169,38 @@ class ScanScreenTest {
         composeRule.runOnIdle {
             assertTrue(hiddenActions.contains(ScanUiAction.DemoMatch))
         }
+    }
+
+    @Test
+    fun dynamicScanGuidanceAndResultUsePoliteLiveRegions() {
+        val state = mutableStateOf(
+            ScanUiState.fromSession(
+                session = ScanSessionState(scan = ScanState.WaitingQr()),
+                sessionActive = true,
+                message = "Ready to scan",
+            ),
+        )
+        composeRule.setContent {
+            ScanScreen(state = state.value, onAction = {})
+        }
+
+        composeRule.onNodeWithTag("scan_message")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+
+        composeRule.runOnIdle {
+            state.value = ScanUiState.fromSession(
+                session = ScanSessionState(
+                    scan = ScanState.Result(
+                        qrPayload = "QR",
+                        barcodePayload = "BARCODE",
+                        result = MatchResult.MISMATCH,
+                    ),
+                ),
+                sessionActive = true,
+            )
+        }
+        composeRule.onNodeWithTag("scan_result_card")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
     }
 
     @Test

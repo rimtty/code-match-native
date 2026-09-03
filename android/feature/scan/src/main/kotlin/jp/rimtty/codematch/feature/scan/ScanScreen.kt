@@ -57,6 +57,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -872,6 +874,13 @@ private fun ScanResultCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .semantics {
+                // Scan feedback is replaced in place while focus remains on
+                // the camera controls. A polite live region lets TalkBack
+                // announce the new guidance without interrupting a spoken
+                // instruction or moving accessibility focus.
+                liveRegion = LiveRegionMode.Polite
+            }
             .testTag("scan_result_card"),
         colors = CardDefaults.cardColors(
             containerColor = if (isMatch) {
@@ -1118,6 +1127,11 @@ private fun ScanMessage(state: ScanUiState) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .semantics {
+                // Invalid/recoverable scan guidance is dynamic content. Keep
+                // it discoverable to screen readers without stealing focus.
+                liveRegion = LiveRegionMode.Polite
+            }
             .testTag("scan_message"),
         colors = CardDefaults.cardColors(
             containerColor = if (invalid != null) {
