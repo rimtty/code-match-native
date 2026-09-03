@@ -96,10 +96,16 @@ class ScanReducer(
                 reject(current, ScanFormat.QR, InvalidScanReason.WRONG_ORDER)
             } else {
                 val value = normalizeTransportTerminators(payload.value)
+                val invalidReason = invalidPayloadReason(payload, value)
                 if (value.isEmpty()) {
                     reject(current, ScanFormat.QR, InvalidScanReason.EMPTY_PAYLOAD)
-                } else if (!isValidPayload(payload, value)) {
-                    reject(current, ScanFormat.QR, InvalidScanReason.INVALID_PAYLOAD)
+                } else if (invalidReason != null) {
+                    reject(
+                        current,
+                        ScanFormat.QR,
+                        invalidReason,
+                        observedLength = value.trim().length,
+                    )
                 } else {
                     ScanReduction(
                         state = current.copy(
@@ -123,10 +129,16 @@ class ScanReducer(
                 reject(current, ScanFormat.CODE_128, InvalidScanReason.WRONG_ORDER)
             } else {
                 val value = normalizeTransportTerminators(payload.value)
+                val invalidReason = invalidPayloadReason(payload, value)
                 if (value.isEmpty()) {
                     reject(current, ScanFormat.CODE_128, InvalidScanReason.EMPTY_PAYLOAD)
-                } else if (!isValidPayload(payload, value)) {
-                    reject(current, ScanFormat.CODE_128, InvalidScanReason.INVALID_PAYLOAD)
+                } else if (invalidReason != null) {
+                    reject(
+                        current,
+                        ScanFormat.CODE_128,
+                        invalidReason,
+                        observedLength = value.trim().length,
+                    )
                 } else {
                     completeComparison(current, scan.qrPayload, value)
                 }
@@ -348,22 +360,36 @@ class ScanReducer(
         current: ScanSessionState,
         expectedFormat: ScanFormat?,
         reason: InvalidScanReason,
+        observedLength: Int? = null,
     ): ScanReduction = ScanReduction(
         state = current,
-        effects = listOf(ScanEffect.InvalidScan(expectedFormat, reason)),
+        effects = listOf(ScanEffect.InvalidScan(expectedFormat, reason, observedLength)),
     )
 
-    private fun isValidPayload(payload: ScanPayload, value: String): Boolean {
+    private fun invalidPayloadReason(
+        payload: ScanPayload,
+        value: String,
+    ): InvalidScanReason? {
         // Bluetooth has no reliable symbol-type field in its callback, so its
         // strict business formats prevent QR/Code 128 reverse-order mistakes.
         // CameraX/ML Kit already supplies the symbol type; non-standard QR
         // values remain eligible for CodeMatcher's conservative fallback.
         return when {
-            payload.source == InputSource.BLUETOOTH && payload.format == ScanFormat.QR ->
-                KanbanQrRecord.isValidScanPayload(value)
+            payload.source == InputSource.BLUETOOTH && payload.format == ScanFormat.QR -> {
+                val length = value.trim().length
+                when {
+                    length < KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH ->
+                        InvalidScanReason.INCOMPLETE_QR_PAYLOAD
+                    length > KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH ->
+                        InvalidScanReason.OVERLONG_QR_PAYLOAD
+                    !KanbanQrRecord.isValidScanPayload(value) -> InvalidScanReason.INVALID_PAYLOAD
+                    else -> null
+                }
+            }
             payload.source == InputSource.BLUETOOTH && payload.format == ScanFormat.CODE_128 ->
-                TagBarcodeRecord.isValidScanPayload(value)
-            else -> value.isNotBlank()
+                if (TagBarcodeRecord.isValidScanPayload(value)) null else InvalidScanReason.INVALID_PAYLOAD
+            value.isBlank() -> InvalidScanReason.INVALID_PAYLOAD
+            else -> null
         }
     }
 

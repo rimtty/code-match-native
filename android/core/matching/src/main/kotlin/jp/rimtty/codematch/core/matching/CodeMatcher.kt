@@ -124,13 +124,15 @@ data class KanbanQrRecord(
     val supplyPointCode: String?
 ) {
     companion object {
+        const val REQUIRED_SCAN_PAYLOAD_LENGTH = 66
+
         private val cardNumberPattern = Regex("[A-Z]{4}[0-9]{6}")
         private val partNumberPattern = Regex("[A-Z0-9]{10}")
 
         /** Accept only a complete standard QR record at a scanner boundary. */
         fun isValidScanPayload(payload: String): Boolean {
             val record = payload.trim()
-            return record.length == RECORD_LENGTH && parse(record) != null
+            return record.length == REQUIRED_SCAN_PAYLOAD_LENGTH && parse(record) != null
         }
 
         /** Parse the fixed-position fields from a QR payload. */
@@ -164,7 +166,6 @@ data class KanbanQrRecord(
             )
         }
 
-        private const val RECORD_LENGTH = 66
         private const val MINIMUM_PARSE_LENGTH = 20
     }
 }

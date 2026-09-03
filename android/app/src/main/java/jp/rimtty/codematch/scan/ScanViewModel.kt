@@ -642,12 +642,14 @@ class ScanViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     message = null,
                     lastInvalidReason = invalid.reason,
+                    lastInvalidPayloadLength = invalid.observedLength,
                 )
             }
             effects.any { it === ScanEffect.ScanAccepted } -> {
                 _state.value = _state.value.copy(
                     message = null,
                     lastInvalidReason = null,
+                    lastInvalidPayloadLength = null,
                 )
             }
         }
@@ -806,7 +808,10 @@ class ScanViewModel @Inject constructor(
             sessionNameDraft = sessionNameDraft,
             sessionName = activeSessionName,
             session = session,
-            bluetoothReady = scanner.isReadyForScanning,
+            // Baseline-ready scanners must be selectable before the physical
+            // QR/Code 128 restriction is applied. Payload-ready remains the
+            // stricter adapter state used to forward scan callbacks.
+            bluetoothReady = scanner.isReadyToStartSession,
             bluetoothDeviceName = scanner.connectedDevice?.name,
             bluetoothConfigurationState = scanner.configurationState,
             bluetoothIssue = projectedBluetoothIssue,

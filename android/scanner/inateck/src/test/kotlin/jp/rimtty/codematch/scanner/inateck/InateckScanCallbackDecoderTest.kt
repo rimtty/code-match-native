@@ -6,6 +6,12 @@ import org.junit.Test
 
 class InateckScanCallbackDecoderTest {
     @Test
+    fun singleCharacterCommandResidueIsRejected() {
+        assertNull(InateckScanCallbackDecoder.decode("\u0006"))
+        assertNull(InateckScanCallbackDecoder.decode("1"))
+    }
+
+    @Test
     fun plainTextAndKnownSuccessfulEnvelopeAreAccepted() {
         assertEquals("plain-code", InateckScanCallbackDecoder.decode("plain-code\r"))
         assertEquals(

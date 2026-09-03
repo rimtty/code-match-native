@@ -41,6 +41,7 @@ import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -812,15 +813,29 @@ private fun ScannerCard(
                 text = stringResource(R.string.settings_scanner_description),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text(
-                text = connectionStatusText(state.connectionState),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag(SettingsTestTags.SCANNER_STATUS)
-                    .semantics(mergeDescendants = true) {},
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (state.connectionState is ConnectionState.Connecting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .testTag(SettingsTestTags.SCANNER_PROGRESS),
+                        strokeWidth = 3.dp,
+                    )
+                }
+                Text(
+                    text = connectionStatusText(state.connectionState),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag(SettingsTestTags.SCANNER_STATUS)
+                        .semantics(mergeDescendants = true) {},
+                )
+            }
             Text(
                 text = configurationStatusText(state.configurationState),
                 style = MaterialTheme.typography.bodyMedium,

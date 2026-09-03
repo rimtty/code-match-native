@@ -133,6 +133,17 @@ adb install -r app/build/outputs/apk/scannerPoc/app-scannerPoc.apk
 
 これらの実機結果がすべて保存されるまで、M4/full parity/BLE成功とは扱いません。
 
+### 2026-09-04 部分実施記録
+
+- 端末: Google Pixel 7、Android 16 / API 36、USB接続
+- scanner: Inateck BCST-36、GATT mode
+- build: 非配付`scannerPoc`、通常releaseとは別application ID
+- 成功: SDK検索・接続、全barcode symbology inventory取得、QR+Code 128 session制限とfresh readback、分割QR通知、分割Code 128通知、同一品番の一致、背景移行時の開始前設定復元とReady復帰
+- privacy: 段階ログにpayload、raw frame、設定値、device IDが含まれないことを確認
+- 未実施: 不一致、同一箱重複、異なる箱の連続照合、手動/予期しない切断、scanner再起動、アプリ強制終了、timeout/fallback、firmware revision記録、Samsung
+
+この記録はPixel 7 / BCST-36の上記項目だけの実機証拠です。未実施項目とSDK再配付条件が残るため、M4/full parity/production BLE完了とは扱いません。
+
 ## 6. 証跡テンプレート
 
 ```text

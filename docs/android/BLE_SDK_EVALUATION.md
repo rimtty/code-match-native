@@ -2,7 +2,7 @@
 
 ## 判定
 
-2026-09-03時点で、ユーザー指定により公式Inateck Android SDK 2.0.0を非配付PoCへ採用しました。`scanner:inateck`を`scannerPoc` build typeだけへ接続し、通常のdebugはFake、releaseはカメラ専用を維持します。この採用は実機評価を始める判断であり、対象スキャナーの通信成功やM4完了を示しません。
+2026-09-04時点で、ユーザー指定により公式Inateck Android SDK 2.0.0を非配付PoCへ採用しました。`scanner:inateck`を`scannerPoc` build typeだけへ接続し、通常のdebugはFake、releaseはカメラ専用を維持します。Pixel 7 / Android 16とBCST-36では検索・接続・設定制限・QR→Code 128一致・背景時復元を実通信で確認しましたが、Samsung、予期しない切断、強制終了、配付条件を含むM4全体は未完了です。
 
 ## 確認した候補
 
@@ -11,6 +11,7 @@
 - リポジトリの最新code commit: 2025-01-09（`8ce0fd5d25d1`）
 - 配布物: `inateck-scanner-ble-2-0-0.jar`
 - 付随依存: FastBle 2.4.0、Gson 2.8.9、JNA、`libscanner_cmd.so`
+- 通知parser: 公式`scanner_lib` commit `6d8fc093656c`の`libinateck_scanner_cmd.so`
 - native ABI: `arm64-v8a` のみ
 - JARのImplementation-Version: `2-0-0`
 - 公開APIの候補: scan、connect、`getSettingInfo`、`setSettingInfo`、`setRestart`
@@ -35,7 +36,9 @@ PoC ManifestはAPI 31以降の`BLUETOOTH_SCAN`と`BLUETOOTH_CONNECT`だけを許
 
 ### scan通知の受け渡し
 
-公式サイトの[接続手順](https://docs.inateck.com/scanner-sdk-en/ble/desktop_connect/)にある`set_code_callback`は公開Android 2.0.0 JARにはありません。PoC adapterはSDK接続完了後のFF01 notifyを1本だけ所有し、SDK command実行中は`BleTaskManager.receiveData`へ、アイドル中は最大4096 bytesのscan frame assemblerへ振り分けます。CR/LF/NUL終端と短いidle flushを扱い、切断・command開始・overflowでは断片を破棄します。実機観測が終わるまでproduction経路にはしません。
+公式サイトの[接続手順](https://docs.inateck.com/scanner-sdk-en/ble/desktop_connect/)にある`set_code_callback`は公開Android 2.0.0 JARにはありません。PoC adapterはSDK接続完了後のFF01 notifyを1本だけ所有し、SDK command実行中は`BleTaskManager.receiveData`へ、アイドル中は公式`scanner_lib`の`inateck_scanner_cmd_notify_data_result`へ振り分けます。status 0で返る断片だけを次回入力へ保持し、status 1まで再構成します。
+
+BCST-36のscanはtype 1で返り、Android command libraryは通知再構成までで、公式iOS SDKにある最終notify-code APIを公開していません。adapterは公式iOS SDK commit `03aa36d0e204`と実機挙動に合わせ、末尾の加算checksumを検証し、先頭2 byteとchecksumを除いた本文だけをstrict UTF-8へ渡します。checksum不一致、短すぎるframe、invalid UTF-8、4096 byte超過はfail closedです。payload、raw frame、byte数は診断・Logcatへ出しません。
 
 ### 公式flag/value形式の先行実装境界
 
@@ -45,13 +48,20 @@ PoC ManifestはAPI 31以降の`BLUETOOTH_SCAN`と`BLUETOOTH_CONNECT`だけを許
 
 このJSONはGATTへ直接書くwire形式として公開されていません。そのためcodecはrelease DIや`AndroidBleTransport`へ接続せず、将来SDK-backed transportが実機応答との一致を確認した場合だけ明示選択します。実機未確認のままproduction adapter完成とは扱いません。
 
+## 2026-09-04に確認した実機範囲
+
+- Pixel 7（Android 16 / API 36）とBCST-36（GATT mode）でSDK検索・接続に成功した。
+- `getSettingInfo`の実機inventoryからQR/Code 128を識別し、全barcode symbologyをsession用に制限してfresh readbackが一致した後だけReadyになった。
+- 分割されたQR通知とCode 128通知を公式native parserで再構成し、QR→Code 128の順で同一品番の一致まで完了した。
+- バックグラウンド移行後、保存した開始前symbologyを復元し、fresh readback後に接続済み・設定済みへ戻った。
+- 安全な段階ログは`incomplete` / `scan` / `delivered`だけで、payload、raw frame、設定値、device IDを含まなかった。
+
 ## 残る実機ゲート
 
-1. 対象scannerの型番・firmwareを記録し、Pixelで検索・接続・認証を確認する。
-2. SDKの`getSettingInfo`が返す全`area/name/value`を読み、QR/Code 128だけを有効にした後、exact readbackが一致することを確認する。
-3. QR→Code 128、分割通知、重複抑止、切断・既知端末再接続を確認する。
-4. 終了・背景・予期しない切断・再起動で変更前の全設定が復元され、完了前はReadyにならないことを確認する。
-5. payload、raw frame、設定値がLogcatや診断へ出ないことを値を表示せず監査する。
-6. Samsung系で同じ受け入れを実施する。配付へ進む場合は、その前に正式な再配布条件と対応ABIを確認する。
+1. 同一QRの重複抑止、不一致、異なる箱QRの連続照合をBCST-36で確認する。
+2. 手動切断・予期しない切断・scanner再起動・アプリ強制終了後の既知端末再接続と完全復元を確認する。
+3. 復元中の電源断やtimeoutでReadyにならず、カメラへ安全にfallbackすることを確認する。
+4. scanner型番に加えてfirmware revisionを記録する。
+5. Samsung系で同じ受け入れを実施する。配付へ進む場合は、その前に正式な再配布条件と対応ABIを確認する。
 
-これらが完了するまで、通常のreleaseはカメラ入力のみです。`scannerPoc`はローカル実機評価専用で、実機BLEの受け入れ証拠はまだありません。
+これらが完了するまで、通常のreleaseはカメラ入力のみです。`scannerPoc`はローカル実機評価専用で、上記のPixel/BCST-36部分合格をproduction採用やM4完了へ読み替えません。

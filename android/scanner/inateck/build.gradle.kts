@@ -8,6 +8,7 @@ android {
 
     defaultConfig {
         minSdk = 31
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
     }
 
@@ -28,6 +29,7 @@ val inateckSdkArtifacts = files(
     "libs/jna-min.jar",
     "src/main/jniLibs/arm64-v8a/libjnidispatch.so",
     "src/main/jniLibs/arm64-v8a/libscanner_cmd.so",
+    "src/main/jniLibs/arm64-v8a/libinateck_scanner_cmd.so",
 )
 
 val verifyInateckSdkArtifacts by tasks.registering {
@@ -54,4 +56,7 @@ dependencies {
     implementation(files("libs/jna-min.jar"))
 
     testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.core.ktx)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }

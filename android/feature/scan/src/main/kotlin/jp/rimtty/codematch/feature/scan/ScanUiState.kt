@@ -30,6 +30,8 @@ data class ScanUiState(
     val isCameraStarting: Boolean = false,
     val message: String? = null,
     val lastInvalidReason: InvalidScanReason? = null,
+    /** Safe scan metadata for actionable validation feedback; never the payload. */
+    val lastInvalidPayloadLength: Int? = null,
     /** Demo controls are never shown unless both this and the composable flag are true. */
     val debugDemoEnabled: Boolean = false,
     /** Canonical permission state; [cameraPermissionDenied] remains for API compatibility. */
@@ -73,6 +75,7 @@ data class ScanUiState(
             isCameraStarting: Boolean = false,
             message: String? = null,
             lastInvalidReason: InvalidScanReason? = null,
+            lastInvalidPayloadLength: Int? = null,
             debugDemoEnabled: Boolean = false,
             cameraPermissionState: CameraPermissionState = if (cameraPermissionDenied) {
                 CameraPermissionState.DENIED
@@ -100,6 +103,7 @@ data class ScanUiState(
             bluetoothFallbackActive = bluetoothFallbackActive,
             message = message,
             lastInvalidReason = lastInvalidReason,
+            lastInvalidPayloadLength = lastInvalidPayloadLength,
             debugDemoEnabled = debugDemoEnabled,
         )
     }

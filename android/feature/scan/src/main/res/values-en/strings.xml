@@ -81,6 +81,10 @@
     <string name="scan_invalid_session">Start a session before scanning.</string>
     <string name="scan_invalid_order">Wrong scan order. Scan the format shown on screen.</string>
     <string name="scan_invalid_empty">An empty scan cannot be used.</string>
+    <string name="scan_invalid_qr_incomplete">The QR scan ended before all data was received. Scan it again.</string>
+    <string name="scan_invalid_qr_incomplete_length">The QR scan ended before all data was received (%1$d/%2$d characters). Scan it again.</string>
+    <string name="scan_invalid_qr_overlong">The QR scan contains extra scanner data. Check the scanner settings.</string>
+    <string name="scan_invalid_qr_overlong_length">The QR scan contains extra scanner data (%1$d/%2$d characters). Check the scanner settings.</string>
     <string name="scan_invalid_payload">This scan cannot be used for the current format.</string>
     <string name="scan_demo_title">Developer demo</string>
     <string name="scan_demo_match">Show match</string>

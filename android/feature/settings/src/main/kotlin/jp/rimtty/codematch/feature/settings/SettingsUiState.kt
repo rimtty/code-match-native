@@ -48,6 +48,7 @@ object SettingsTestTags {
     const val SETUP_NEXT = "settings_setup_next"
     const val SCANNER_SECTION = "settings_scanner_section"
     const val SCANNER_STATUS = "settings_scanner_status"
+    const val SCANNER_PROGRESS = "settings_scanner_progress"
     const val SCANNER_CONFIGURATION_STATUS = "settings_scanner_configuration_status"
     const val DISCOVERY = "settings_scanner_discovery"
     const val DEVICE_ROW = "settings_scanner_device"

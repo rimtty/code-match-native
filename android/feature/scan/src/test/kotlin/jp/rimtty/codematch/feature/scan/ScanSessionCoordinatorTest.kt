@@ -35,6 +35,24 @@ class ScanSessionCoordinatorTest {
     }
 
     @Test
+    fun baselineReadyBluetoothStartsRestrictionBeforePayloadReady() {
+        val scanner = TestScanner().apply {
+            requireExpectedFormatForPayloadReadiness = true
+            markReady()
+        }
+        val coordinator = ScanSessionCoordinator(scanner)
+
+        assertTrue(scanner.isReadyToStartSession)
+        assertTrue(!scanner.isReadyForScanning)
+
+        coordinator.startSession()
+
+        assertEquals(InputSource.BLUETOOTH, coordinator.inputSource)
+        assertEquals(ScanFormat.QR, scanner.expectedFormat)
+        assertTrue(scanner.isReadyForScanning)
+    }
+
+    @Test
     fun coordinatorUsesFanOutWithoutReplacingAnExistingScannerObserver() {
         val scanner = TestScanner().apply { markReady() }
         val legacyStates = mutableListOf<ConnectionState>()
@@ -403,6 +421,10 @@ class ScanSessionCoordinatorTest {
         override var expectedFormat: ScanFormat? = null
         override var listener: ExternalScannerListener? = null
         var reconnectSynchronously: Boolean = true
+        var requireExpectedFormatForPayloadReadiness: Boolean = false
+        override val isReadyForScanning: Boolean
+            get() = super.isReadyForScanning &&
+                (!requireExpectedFormatForPayloadReadiness || expectedFormat != null)
 
         override fun startDiscovery(): Boolean = true
         override fun stopDiscovery(): Boolean = true

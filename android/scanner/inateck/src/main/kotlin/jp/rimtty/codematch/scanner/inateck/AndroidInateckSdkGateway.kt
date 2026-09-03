@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import com.clj.fastble.BleManager
 import com.clj.fastble.data.BleDevice
 import com.inateck.scanner.ble.BleListManager
@@ -21,7 +22,11 @@ import jp.rimtty.codematch.scanner.ble.BleTransportReadiness
 internal class AndroidInateckSdkGateway(
     context: Context,
     private val mainHandler: Handler = Handler(Looper.getMainLooper()),
-    private val scanIdleFlushMillis: Long = DEFAULT_SCAN_IDLE_FLUSH_MILLIS,
+    private val notificationAccumulator: InateckNotificationAccumulator =
+        InateckNotificationAccumulator(InateckJnaNotificationNativeParser()),
+    private val hidOutputCommandProvider: InateckJnaHidOutputCommandProvider =
+        InateckJnaHidOutputCommandProvider(),
+    private val notificationObserver: (InateckNotificationKind) -> Unit = {},
 ) : InateckSdkGateway {
     private val application = context.applicationContext as Application
     private val bluetoothManager =
@@ -35,14 +40,9 @@ internal class AndroidInateckSdkGateway(
     private var connectionAttempt = 0L
     private val operationGate = InateckOperationGate()
     private var disconnectingDevice: BleScannerDevice? = null
-    private val frameAssembler = InateckScanFrameAssembler()
-    private val flushPendingFrame = Runnable {
-        frameAssembler.flushPending()?.let(::dispatchScanFrame)
-    }
     private var closed = false
 
     init {
-        require(scanIdleFlushMillis > 0L) { "scanIdleFlushMillis must be positive" }
         BleListManager.init(application)
         // The SDK demo enables FastBle logging. Disable it immediately; the
         // scanner PoC also strips android.util.Log calls with R8.
@@ -111,13 +111,61 @@ internal class AndroidInateckSdkGateway(
         val device = findDevice(deviceId) ?: return false
         val attempt = ++connectionAttempt
         pendingDevice = device
-        frameAssembler.reset()
-        mainHandler.removeCallbacks(flushPendingFrame)
+        notificationAccumulator.reset()
         activeScanBytes = onScanBytes
         activeDisconnect = onDisconnected
         installDisconnectHandler(device, attempt, completion)
         var sdkConnectCallbackHandled = false
         var connectCompletionDelivered = false
+        var outputSetupStarted = false
+        var outputWriteSucceeded = false
+        var outputResponseAccepted = false
+        var outputSettleElapsed = false
+        var earlyOutputResponse: ByteArray? = null
+        var outputHandshakeHandled = false
+        var outputHandshakeTimeout: Runnable? = null
+
+        fun finishOutputHandshakeIfReady() {
+            if (outputHandshakeHandled || !outputWriteSucceeded ||
+                !outputResponseAccepted || !outputSettleElapsed ||
+                !isCurrentAttempt(device, attempt)
+            ) {
+                return
+            }
+            outputHandshakeHandled = true
+            outputHandshakeTimeout?.let { mainHandler.removeCallbacks(it) }
+            pendingDevice = null
+            activeDevice = device
+            if (!connectCompletionDelivered) {
+                connectCompletionDelivered = true
+                completion(Result.success(Unit))
+            }
+        }
+
+        fun acceptOutputResponse(bytes: ByteArray) {
+            if (outputHandshakeHandled || !isCurrentAttempt(device, attempt)) return
+            if (!outputWriteSucceeded) {
+                earlyOutputResponse = bytes.clone()
+                return
+            }
+            if (!hidOutputCommandProvider.isSuccessfulResponse(bytes)) {
+                safeProtocolLog("sdk-output-response=rejected")
+                outputHandshakeHandled = true
+                outputHandshakeTimeout?.let { mainHandler.removeCallbacks(it) }
+                failPendingConnection(
+                    device = device,
+                    attempt = attempt,
+                    connectCompletionDelivered = connectCompletionDelivered,
+                    completion = completion,
+                    reason = "Inateck SDK output configuration was rejected",
+                ) { connectCompletionDelivered = true }
+                return
+            }
+            safeProtocolLog("sdk-output-response=accepted")
+            outputResponseAccepted = true
+            finishOutputHandshakeIfReady()
+        }
+
         return runCatching {
             device.connect { result ->
                 dispatch {
@@ -135,13 +183,93 @@ internal class AndroidInateckSdkGateway(
                         object : InateckNotificationBridge.Callback {
                             override fun onReady() {
                                 dispatch {
-                                    if (isCurrentAttempt(device, attempt)) {
-                                        pendingDevice = null
-                                        activeDevice = device
-                                        if (!connectCompletionDelivered) {
-                                            connectCompletionDelivered = true
-                                            completion(Result.success(Unit))
+                                    if (isCurrentAttempt(device, attempt) && !outputSetupStarted) {
+                                        outputSetupStarted = true
+                                        val command = hidOutputCommandProvider.commandForSdkOutput()
+                                        if (command == null) {
+                                            failPendingConnection(
+                                                device = device,
+                                                attempt = attempt,
+                                                connectCompletionDelivered = connectCompletionDelivered,
+                                                completion = completion,
+                                                reason = "Inateck SDK output command unavailable",
+                                            ) { connectCompletionDelivered = true }
+                                            return@dispatch
                                         }
+                                        val outputWriteTimeout = Runnable {
+                                            if (!outputHandshakeHandled &&
+                                                isCurrentAttempt(device, attempt) &&
+                                                !connectCompletionDelivered
+                                            ) {
+                                                outputHandshakeHandled = true
+                                                failPendingConnection(
+                                                    device = device,
+                                                    attempt = attempt,
+                                                    connectCompletionDelivered = false,
+                                                    completion = completion,
+                                                    reason = "Inateck SDK output configuration timed out",
+                                                ) { connectCompletionDelivered = true }
+                                            }
+                                        }
+                                        outputHandshakeTimeout = outputWriteTimeout
+                                        mainHandler.postDelayed(
+                                            outputWriteTimeout,
+                                            SDK_OUTPUT_WRITE_TIMEOUT_MILLIS,
+                                        )
+                                        InateckNotificationBridge.writeSdkOutputCommand(
+                                            device,
+                                            command,
+                                            object : InateckNotificationBridge.WriteCallback {
+                                                override fun onSuccess() {
+                                                    dispatch {
+                                                        if (outputHandshakeHandled ||
+                                                            !isCurrentAttempt(device, attempt)
+                                                        ) {
+                                                            return@dispatch
+                                                        }
+                                                        outputWriteSucceeded = true
+                                                        // The iOS adapter for this scanner family
+                                                        // deliberately waits one second after the
+                                                        // write-only SDK-output command. FF01 may
+                                                        // deliver a late control response during
+                                                        // this interval; keep it out of the first
+                                                        // getSettingInfo task.
+                                                        mainHandler.postDelayed(
+                                                            {
+                                                                outputSettleElapsed = true
+                                                                finishOutputHandshakeIfReady()
+                                                            },
+                                                            SDK_OUTPUT_SETTLE_MILLIS,
+                                                        )
+                                                        earlyOutputResponse?.let { response ->
+                                                            earlyOutputResponse = null
+                                                            acceptOutputResponse(response)
+                                                        }
+                                                    }
+                                                }
+
+                                                override fun onFailure() {
+                                                    dispatch {
+                                                        if (outputHandshakeHandled ||
+                                                            !isCurrentAttempt(device, attempt)
+                                                        ) {
+                                                            return@dispatch
+                                                        }
+                                                        outputHandshakeHandled = true
+                                                        mainHandler.removeCallbacks(outputWriteTimeout)
+                                                        failPendingConnection(
+                                                            device = device,
+                                                            attempt = attempt,
+                                                            connectCompletionDelivered =
+                                                                connectCompletionDelivered,
+                                                            completion = completion,
+                                                            reason =
+                                                                "Inateck SDK output configuration failed",
+                                                        ) { connectCompletionDelivered = true }
+                                                    }
+                                                }
+                                            },
+                                        )
                                     }
                                 }
                             }
@@ -150,13 +278,13 @@ internal class AndroidInateckSdkGateway(
                                 dispatch {
                                     if (!isCurrentAttempt(device, attempt)) return@dispatch
                                     if (connectCompletionDelivered) return@dispatch
-                                    runCatching { InateckNotificationBridge.stop(device) }
-                                    invalidateConnectionAttempt(attempt)
-                                    runCatching { device.disconnect { _ -> } }
-                                    connectCompletionDelivered = true
-                                    completion(Result.failure(
-                                        IllegalStateException("Inateck notification setup failed"),
-                                    ))
+                                    failPendingConnection(
+                                        device = device,
+                                        attempt = attempt,
+                                        connectCompletionDelivered = false,
+                                        completion = completion,
+                                        reason = "Inateck notification setup failed",
+                                    ) { connectCompletionDelivered = true }
                                 }
                             }
 
@@ -167,7 +295,11 @@ internal class AndroidInateckSdkGateway(
                             override fun onBytes(value: ByteArray) {
                                 val copy = value.clone()
                                 dispatch {
-                                    if (!isCurrentAttempt(device, attempt) || activeDevice == null) {
+                                    if (!isCurrentAttempt(device, attempt)) {
+                                        return@dispatch
+                                    }
+                                    if (outputSetupStarted && !outputHandshakeHandled) {
+                                        acceptOutputResponse(copy)
                                         return@dispatch
                                     }
                                     acceptScanChunk(copy)
@@ -274,15 +406,20 @@ internal class AndroidInateckSdkGateway(
                         return@dispatch
                     }
                     // The SDK's public write performs get/set/get but returns
-                    // no final inventory. Read once more and require an exact
-                    // area/name/value match before publishing Ready.
+                    // no final inventory. Read once more and require every
+                    // requested symbology identity/value to be present before
+                    // publishing Ready. The SDK also reports general settings
+                    // (for example volume), which are intentionally ignored.
                     device.messager.getSettingInfo { verification ->
                         dispatch {
                             if (!isCurrentOperation(device, attempt, operation)) return@dispatch
                             finishOperation(operation)
                             val actual = verification.getOrNull()?.map { it.toMap() }
                             if (actual != null &&
-                                InateckAreaNameSettingsContract.normalizeInventory(actual) == requested
+                                InateckAreaNameSettingsContract.containsRequestedSymbologies(
+                                    settings = actual,
+                                    requested = requested,
+                                )
                             ) {
                                 completion(Result.success(Unit))
                             } else {
@@ -403,6 +540,81 @@ internal class AndroidInateckSdkGateway(
         }
     }
 
+    private fun failPendingConnection(
+        device: BleScannerDevice,
+        attempt: Long,
+        connectCompletionDelivered: Boolean,
+        completion: (Result<Unit>) -> Unit,
+        reason: String,
+        markCompletionDelivered: () -> Unit,
+    ) {
+        if (connectCompletionDelivered || !isCurrentAttempt(device, attempt)) return
+        manualDisconnectInFlight = true
+        invalidateOperations()
+        disconnectingDevice = device
+        runCatching { InateckNotificationBridge.stop(device) }
+        var disconnectHandled = false
+        val forceReset = Runnable {
+            if (disconnectHandled || attempt != connectionAttempt ||
+                disconnectingDevice?.mac != device.mac
+            ) {
+                return@Runnable
+            }
+            disconnectHandled = true
+            runCatching {
+                BleListManager.disconnectHandler = null
+                BleManager.getInstance().destroy()
+                BleListManager.scannerDevices = mutableListOf()
+                BleListManager.init(application)
+                InateckNotificationBridge.disableVendorLogging()
+            }
+            finishFailedConnection(
+                attempt = attempt,
+                completion = completion,
+                reason = reason,
+                markCompletionDelivered = markCompletionDelivered,
+            )
+        }
+        mainHandler.postDelayed(forceReset, FAILED_CONNECTION_DISCONNECT_TIMEOUT_MILLIS)
+        val disconnectStarted = runCatching {
+            device.disconnect {
+                dispatch {
+                    if (disconnectHandled || attempt != connectionAttempt ||
+                        disconnectingDevice?.mac != device.mac
+                    ) {
+                        return@dispatch
+                    }
+                    disconnectHandled = true
+                    mainHandler.removeCallbacks(forceReset)
+                    finishFailedConnection(
+                        attempt = attempt,
+                        completion = completion,
+                        reason = reason,
+                        markCompletionDelivered = markCompletionDelivered,
+                    )
+                }
+            }
+            true
+        }.getOrDefault(false)
+        if (!disconnectStarted) {
+            mainHandler.removeCallbacks(forceReset)
+            forceReset.run()
+        }
+    }
+
+    private fun finishFailedConnection(
+        attempt: Long,
+        completion: (Result<Unit>) -> Unit,
+        reason: String,
+        markCompletionDelivered: () -> Unit,
+    ) {
+        manualDisconnectInFlight = false
+        disconnectingDevice = null
+        invalidateConnectionAttempt(attempt)
+        markCompletionDelivered()
+        completion(Result.failure(IllegalStateException(reason)))
+    }
+
     private fun BleScannerDevice.asGatewayDevice(): InateckSdkDevice? =
         mac?.takeIf(String::isNotBlank)?.let { stableId ->
             InateckSdkDevice(
@@ -465,12 +677,32 @@ internal class AndroidInateckSdkGateway(
         operationGate.invalidate()
     }
 
-    private fun acceptScanChunk(bytes: ByteArray) {
-        mainHandler.removeCallbacks(flushPendingFrame)
-        frameAssembler.append(bytes).forEach(::dispatchScanFrame)
-        if (frameAssembler.hasPendingBytes) {
-            mainHandler.postDelayed(flushPendingFrame, scanIdleFlushMillis)
+    private fun acceptScanChunk(bytes: ByteArray): InateckNotificationOutcome {
+        val outcome = notificationAccumulator.append(bytes)
+        notificationObserver(outcome.toSafeKind())
+        safeProtocolLog("notification=${outcome.toSafeKind().name.lowercase()}")
+        when (outcome) {
+            is InateckNotificationOutcome.Scan -> dispatchScanFrame(outcome.bytes)
+            InateckNotificationOutcome.Error,
+            InateckNotificationOutcome.Incomplete,
+            -> Unit
         }
+        return outcome
+    }
+
+    private fun InateckNotificationOutcome.toSafeKind(): InateckNotificationKind = when (this) {
+        InateckNotificationOutcome.Incomplete -> InateckNotificationKind.INCOMPLETE
+        is InateckNotificationOutcome.Scan -> InateckNotificationKind.SCAN
+        InateckNotificationOutcome.Error -> InateckNotificationKind.ERROR
+    }
+
+    /**
+     * Payload-free PoC trace. Scanner payloads, byte counts, device identities,
+     * setting names/values, and native error text are deliberately excluded.
+     * `Log.println` remains available while R8 removes vendor Log.d payloads.
+     */
+    private fun safeProtocolLog(message: String) {
+        Log.println(Log.INFO, SAFE_PROTOCOL_LOG_TAG, message)
     }
 
     private fun dispatchScanFrame(frame: ByteArray) {
@@ -478,12 +710,14 @@ internal class AndroidInateckSdkGateway(
     }
 
     private fun clearPendingScanFrame() {
-        mainHandler.removeCallbacks(flushPendingFrame)
-        frameAssembler.reset()
+        notificationAccumulator.reset()
     }
 
     private companion object {
-        const val DEFAULT_SCAN_IDLE_FLUSH_MILLIS = 250L
+        const val SAFE_PROTOCOL_LOG_TAG = "CodeMatchInateck"
+        const val SDK_OUTPUT_WRITE_TIMEOUT_MILLIS = 5_000L
+        const val SDK_OUTPUT_SETTLE_MILLIS = 1_000L
+        const val FAILED_CONNECTION_DISCONNECT_TIMEOUT_MILLIS = 5_000L
     }
 
     private fun dispatch(block: () -> Unit) {

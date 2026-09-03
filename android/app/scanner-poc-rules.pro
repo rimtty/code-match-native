@@ -21,6 +21,7 @@
 -keep,allowoptimization class com.inateck.scanner.** { *; }
 -keep,allowoptimization class com.clj.fastble.** { *; }
 -keep class com.sun.jna.** { *; }
+-keep interface jp.rimtty.codematch.scanner.inateck.InateckScannerCmdJna$Api { *; }
 -keepclasseswithmembernames class * {
     native <methods>;
 }
