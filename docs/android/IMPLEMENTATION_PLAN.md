@@ -504,7 +504,7 @@ BLE以外は約31〜49人日、BLEはSDKとfirmwareの不確実性を除き約8�
 - 日英、音設定、auto-advance、PDF
 - Fake camera/BLEで状態遷移とCompose UI test
 
-M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触覚、release Fake境界はこのcheckoutに含まれる。app E2Eでは0件破棄、履歴名称変更・詳細・削除、履歴選択のActivity再生成/画面往復/back stackを確認し、PDFは複数ページ実renderとSAF/FileProvider契約、一般化した失敗通知と再試行を自動検査する。scan checkpointはRoom schema v2で工程、受理済み値、結果、件数、入力元を保持し、MATCH記録と同一transactionで更新する。`core:data`のinstrumentationはテスト専用ランダムDBを各段階で閉じて再オープンし、active sessionとWAITING QR、WAITING Code 128、RESULTのcheckpoint、全設定値と言語が復元されることを検査する。これは永続ストレージ契約の証拠であり、OSのforce-stop/process kill後のアプリ再起動を実行した証拠ではない。320dp/840dpとfont scale 1.3/2.0の主要操作到達、per-app language同期も自動化した。ローカル `origin/master` に見えるPR #14を含むM2 merge commitと、現在のM3/M4開発ブランチの結果を混同しない。OS process kill/relaunchの実操作、実DocumentProvider/共有先、TalkBack、Switch Access、複数OEMの人手確認は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)の未完了ゲートとして残る。
+M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触覚、release Fake境界はこのcheckoutに含まれる。app E2Eでは0件破棄、履歴名称変更・詳細・削除、履歴選択のActivity再生成/画面往復/back stackを確認し、PDFは複数ページ実renderとSAF/FileProvider契約、一般化した失敗通知と再試行を自動検査する。scan checkpointはRoom schema v2で工程、受理済み値、結果、件数、入力元を保持し、MATCH記録と同一transactionで更新する。`core:data`のinstrumentationはテスト専用ランダムDBを各段階で閉じて再オープンし、active sessionとWAITING QR、WAITING Code 128、RESULTのcheckpoint、全設定値と言語が復元されることを検査する。さらにapp-level instrumentationはUUID付きの分離Room/DataStoreを使い、公開UI actionからWAITING Code 128を保存してDB再オープン後の新しい`ScanViewModel`へ復元し、MATCH済みRESULTが履歴entryを二重登録しないことを検査する。これらは永続ストレージとapp復元契約の証拠であり、OSのforce-stop/process kill後のアプリ再起動を実行した証拠ではない。320dp/840dpとfont scale 1.3/2.0の主要操作到達、per-app language同期も自動化した。ローカル `origin/master` に見えるPR #14を含むM2 merge commitと、現在のM3/M4開発ブランチの結果を混同しない。OS process kill/relaunchの実操作、実DocumentProvider/共有先、TalkBack、Switch Access、複数OEMの人手確認は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)の未完了ゲートとして残る。
 
 ### M3: Camera production ready
 
@@ -514,7 +514,7 @@ M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触�
 
 実装済み: CameraX 1.6.2 Preview/ImageAnalysis、端末同梱ML Kit 17.3.0、QR/Code 128の工程別限定、`KEEP_ONLY_LATEST`とin-flight frame drop、表示枠と共通のROI、変換後四隅判定、elapsed realtime timestamp、AF/AE tap focus、権限状態、lifecycle停止、解析世代による停止後callback破棄、処理中ML Kit taskをdrainしてから論理sessionを終了する境界、同一hostでのQR読み直し後rebind。release APKから`INTERNET` / `ACCESS_NETWORK_STATE`権限が除外されることも確認済み。AABを含む継続的な検査はrelease hardening checkerで行う。
 
-コード、CameraX/ML Kit境界、権限状態、ROI、lifecycle、semantics focus action、instrumentation testは存在する。実Android端末でのQR → Code 128実読取、タップfocus、連続箱、回転・背景復帰の受け入れ記録が揃うまでM3完了とは扱わない。実施時は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)へ端末情報と証跡を残す。
+コード、CameraX/ML Kit境界、権限状態、ROI、lifecycle、semantics focus action、instrumentation testは存在する。2026-09-04にPixel 7の縦画面で、工程別ガイド枠内だけを解析する実装により実ラベルのQR → Code 128一致まで確認した。タップfocus、不一致・連続箱、回転・背景復帰、Samsungの受け入れ記録が揃うまではM3完了とは扱わない。実施時は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)へ端末情報と証跡を残す。
 
 ### M4: Full parity
 
@@ -522,7 +522,7 @@ M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触�
 - Pixel系/Samsung系で実機回帰
 - Swift版との機能対応表に未完了がない
 
-準備済み: SDK非依存のBLE safety core、1 command直列化、timeout後のtransport reset、QR+Code 128固定mode、全reported item snapshot、復元完了前Ready禁止、payload parser、750ms重複境界。公式Inateck Android SDK 2.0.0は非配付`scannerPoc`だけへ接続し、SDKのarea/name/value inventoryを全件保存・書込・再読込照合する。SDK command応答とscan通知を共有するFF01は単一routerで分離し、公式native parserの分割再構成とBCST-36 type-1 checksum/header処理、最大長、世代取消を検査する。PoCだけがNearby最小権限を持ち、minified artifactからvendorのLog/System.out呼び出しを除去する。通常releaseはカメラ専用のまま、SDK/native/Nearby権限を拒否する。2026-09-04にPixel 7 / BCST-36で検索・接続・設定readback・QR→Code 128一致・背景復元まで成功したが、重複/不一致/連続箱、切断/再起動/強制終了/timeout、Samsung、配付条件が未完了なので、M4完了とは扱わない。
+準備済み: SDK非依存のBLE safety core、1 command直列化、timeout後のtransport reset、QR+Code 128固定mode、全reported item snapshot、復元完了前Ready禁止、payload parser、750ms重複境界。公式Inateck Android SDK 2.0.0は非配付`scannerPoc`だけへ接続し、SDKのarea/name/value inventoryを全件保存・書込・再読込照合する。SDK command応答とscan通知を共有するFF01は単一routerで分離し、公式native parserの分割再構成とBCST-36 type-1 checksum/header処理、最大長、世代取消を検査する。PoCだけがNearby最小権限を持ち、minified artifactからvendorのLog/System.out呼び出しを除去する。通常releaseはカメラ専用のまま、SDK/native/Nearby権限を拒否する。2026-09-04にPixel 7 / BCST-36で検索・接続・設定readback・QR→Code 128一致・背景復元・QR待機中のapp force-stop後自動再接続と、その後のQR→Code 128一致まで成功したが、重複/不一致/連続箱、手動/予期しない切断、scanner再起動、QR待機以外のforce-stop、timeout、Samsung、配付条件が未完了なので、M4完了とは扱わない。
 
 SDK公開元には再配付ライセンスが明示されていないためbinaryをGitへ含めず、固定commitからchecksum検証付きでローカル取得する。`scannerPoc`はarm64のローカル実機評価専用で、配付やproduction採用はしない。詳細は[`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)に記録し、対象scanner実機と正式な供給条件が確定するまでBLE成功やfull parityを宣言しない。
 

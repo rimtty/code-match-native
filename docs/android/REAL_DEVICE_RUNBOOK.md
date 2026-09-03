@@ -138,11 +138,21 @@ adb install -r app/build/outputs/apk/scannerPoc/app-scannerPoc.apk
 - 端末: Google Pixel 7、Android 16 / API 36、USB接続
 - scanner: Inateck BCST-36、GATT mode
 - build: 非配付`scannerPoc`、通常releaseとは別application ID
-- 成功: SDK検索・接続、全barcode symbology inventory取得、QR+Code 128 session制限とfresh readback、分割QR通知、分割Code 128通知、同一品番の一致、背景移行時の開始前設定復元とReady復帰
+- 成功: SDK検索・接続、全barcode symbology inventory取得、QR+Code 128 session制限とfresh readback、分割QR通知、分割Code 128通知、同一品番の一致、背景移行時の開始前設定復元とReady復帰、QR待機中のOS force-stop→再起動後の既知端末自動再接続とReady復帰、その後のQR→Code 128一致と次のQR待機への遷移
 - privacy: 段階ログにpayload、raw frame、設定値、device IDが含まれないことを確認
-- 未実施: 不一致、同一箱重複、異なる箱の連続照合、手動/予期しない切断、scanner再起動、アプリ強制終了、timeout/fallback、firmware revision記録、Samsung
+- 未実施: 不一致、同一箱重複、異なる箱の連続照合、手動/予期しない切断、scanner再起動、Code 128待機/結果表示中のforce-stop、timeout/fallback、firmware revision記録、Samsung
 
 この記録はPixel 7 / BCST-36の上記項目だけの実機証拠です。未実施項目とSDK再配付条件が残るため、M4/full parity/production BLE完了とは扱いません。
+
+### 2026-09-04 カメラ部分実施記録
+
+- 端末: Google Pixel 7、Android 16 / API 36、縦画面
+- build: 通常AndroidアプリのCameraX / bundled ML Kit経路
+- 成功: 実際に使われるラベルのQRを正方形ガイド内で読み、続いて同じラベルのCode 128を横長ガイド内で読み、一致まで完了
+- 調整: preview全体ではなく白いガイド枠内だけを工程別ROIとして解析し、縦画面で不要な上下画素を入力へ含めない構成へ変更後に合格
+- 未実施: 不一致、連続箱、QR読み直し、手動/自動次工程、tap focus、回転、背景復帰、Samsung
+
+この記録は上記のQR→Code 128一致だけの実カメラ証拠です。未実施項目が残るためM3全体の完了とは扱いません。
 
 ## 6. 証跡テンプレート
 
