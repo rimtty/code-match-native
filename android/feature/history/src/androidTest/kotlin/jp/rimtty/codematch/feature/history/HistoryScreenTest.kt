@@ -116,6 +116,37 @@ class HistoryScreenTest {
     }
 
     @Test
+    fun expandedSessionListExposesSelectionStateToAccessibilityServices() {
+        val selected = MatchSession(
+            id = "selected-session",
+            startedAt = 2_000L,
+            name = "Selected session",
+        )
+        val other = MatchSession(
+            id = "other-session",
+            startedAt = 1_000L,
+            name = "Other session",
+        )
+        composeRule.setContent {
+            HistoryContent(
+                sessions = listOf(other, selected),
+                selectedSessionId = selected.id,
+                layoutMode = HistoryLayoutMode.EXPANDED,
+                language = AppLanguage.ENGLISH,
+            )
+        }
+
+        composeRule.onAllNodesWithTag(HistoryTestTags.SESSION_ROW)
+            .get(0)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Selected"))
+        composeRule.onAllNodesWithTag(HistoryTestTags.SESSION_ROW)
+            .get(1)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, false))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Not selected"))
+    }
+
+    @Test
     fun englishBoxCountsUseSingularAndPluralAndRedrawInJapanese() {
         val language = mutableStateOf(AppLanguage.ENGLISH)
         val session = MatchSession(

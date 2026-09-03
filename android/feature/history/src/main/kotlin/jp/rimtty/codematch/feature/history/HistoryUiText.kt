@@ -12,6 +12,8 @@ data class HistoryUiLabels(
     val emptyTitle: String,
     val emptyDescription: String,
     val delete: String,
+    val sessionSelected: String,
+    val sessionNotSelected: String,
     val sessionInProgress: String,
     val sessionEnded: String,
     val sessionName: String,

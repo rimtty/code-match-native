@@ -4,6 +4,8 @@
     <string name="history_empty_title">No history yet</string>
     <string name="history_empty_description">Start a match on the scan tab to save matched codes by session.</string>
     <string name="history_delete">Delete</string>
+    <string name="history_session_selected">Selected</string>
+    <string name="history_session_not_selected">Not selected</string>
     <string name="history_session_in_progress">Session in progress</string>
     <string name="history_session_ended">Finished</string>
     <string name="history_session_name">Session name</string>
