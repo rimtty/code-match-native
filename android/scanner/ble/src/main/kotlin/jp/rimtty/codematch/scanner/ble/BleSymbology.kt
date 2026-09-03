@@ -40,7 +40,7 @@ data class SymbologySnapshot(
     val deviceID: String get() = deviceId
 
     fun hasRequiredSessionSymbols(): Boolean =
-        find(QR_NAME) != null && find(CODE_128_NAME) != null
+        settings.any(::isQrSymbol) && settings.any(::isCode128Symbol)
 
     fun find(name: String): ScannerSettingItem? = settings.firstOrNull {
         it.name.equals(name, ignoreCase = true)
@@ -52,13 +52,13 @@ data class SymbologySnapshot(
         return when (mode) {
             BleSymbologyMode.UNRESTRICTED -> settings
             BleSymbologyMode.SESSION_CODES -> settings.map { item ->
-                item.copy(value = if (isSessionSymbol(item.name)) 1 else 0)
+                item.copy(value = if (isSessionSymbol(item)) 1 else 0)
             }
             BleSymbologyMode.QR_ONLY -> settings.map { item ->
-                item.copy(value = if (item.name.equals(QR_NAME, ignoreCase = true)) 1 else 0)
+                item.copy(value = if (isQrSymbol(item)) 1 else 0)
             }
             BleSymbologyMode.CODE_128_ONLY -> settings.map { item ->
-                item.copy(value = if (item.name.equals(CODE_128_NAME, ignoreCase = true)) 1 else 0)
+                item.copy(value = if (isCode128Symbol(item)) 1 else 0)
             }
         }
     }
@@ -66,10 +66,17 @@ data class SymbologySnapshot(
     private companion object {
         const val QR_NAME = "qrcode_on"
         const val CODE_128_NAME = "code128_on"
+        const val QR_FLAG = 2022
+        const val CODE_128_FLAG = 2008
 
-        fun isSessionSymbol(name: String): Boolean =
-            name.equals(QR_NAME, ignoreCase = true) ||
-                name.equals(CODE_128_NAME, ignoreCase = true)
+        fun isQrSymbol(item: ScannerSettingItem): Boolean =
+            item.flag == QR_FLAG || item.name.equals(QR_NAME, ignoreCase = true)
+
+        fun isCode128Symbol(item: ScannerSettingItem): Boolean =
+            item.flag == CODE_128_FLAG || item.name.equals(CODE_128_NAME, ignoreCase = true)
+
+        fun isSessionSymbol(item: ScannerSettingItem): Boolean =
+            isQrSymbol(item) || isCode128Symbol(item)
     }
 }
 

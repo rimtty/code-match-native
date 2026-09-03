@@ -150,6 +150,104 @@ class BleSymbologyTest {
     }
 
     @Test
+    fun documentedFlagValueCodecRestrictsAndRestoresTheCompleteReportedInventory() {
+        val response = """
+            {"status":0,"error":"","info":[
+              {"name":"volume","flag":1001,"value":0},
+              {"name":"Code 39","flag":2006,"value":1,"device_note":"keep"},
+              {"name":"Code 128","flag":2008,"value":0},
+              {"name":"QR Code","flag":2022,"value":0},
+              {"name":"GS1 DataBar","flag":2028,"value":1}
+            ]}
+        """.trimIndent()
+
+        val snapshot = InateckDocumentedFlagValueCodec.decodeSnapshot(
+            deviceId = "scanner-flag",
+            payload = response.toByteArray(),
+            capturedAtMillis = 789L,
+        )
+
+        assertNotNull(snapshot)
+        snapshot!!
+        assertEquals(4, snapshot.settings.size)
+        assertEquals("flag:2008", snapshot.settings.first { it.flag == 2008 }.area)
+        assertEquals("\"keep\"", snapshot.settings.first { it.flag == 2006 }
+            .extraFields["device_note"])
+        assertTrue(snapshot.hasRequiredSessionSymbols())
+
+        val restricted = requireNotNull(
+            SymbologySettings.commandsFor(snapshot, BleSymbologyMode.SESSION_CODES),
+        )
+        assertEquals(1, restricted.first { it.flag == 2008 }.value)
+        assertEquals(1, restricted.first { it.flag == 2022 }.value)
+        assertEquals(0, restricted.first { it.flag == 2006 }.value)
+        assertEquals(0, restricted.first { it.flag == 2028 }.value)
+
+        val encodedRestriction = JsonParser.parseString(
+            String(InateckDocumentedFlagValueCodec.encodeCommands(restricted), Charsets.UTF_8),
+        ).asJsonArray
+        assertEquals(4, encodedRestriction.size())
+        assertTrue(encodedRestriction.all { it.asJsonObject.entrySet().map { field -> field.key }
+            .toSet() == setOf("flag", "value") })
+        assertTrue(encodedRestriction.all { it.asJsonObject.get("value").asJsonPrimitive.isNumber })
+
+        val restore = requireNotNull(
+            SymbologySettings.commandsFor(snapshot, BleSymbologyMode.UNRESTRICTED),
+        )
+        val encodedRestore = JsonParser.parseString(
+            String(InateckDocumentedFlagValueCodec.encodeCommands(restore), Charsets.UTF_8),
+        ).asJsonArray
+        assertEquals(
+            listOf(1, 0, 0, 1),
+            encodedRestore.map { it.asJsonObject.get("value").asInt },
+        )
+    }
+
+    @Test
+    fun documentedFlagValueCodecRejectsFailedIncompleteOrAmbiguousResponses() {
+        val failed = """{"status":1,"error":"private transport detail","info":[]}"""
+        val malformedItem = """{"status":0,"info":[{"name":"QR Code","flag":2022}]}"""
+        val fractionalValue =
+            """{"status":0,"info":[{"name":"QR Code","flag":2022,"value":0.5}]}"""
+        val duplicateFlag = """
+            {"status":0,"info":[
+              {"name":"QR Code","flag":2022,"value":1},
+              {"name":"QR alias","flag":2022,"value":0}
+            ]}
+        """.trimIndent()
+        val noSymbologies = """
+            {"status":0,"info":[{"name":"volume","flag":1001,"value":0}]}
+        """.trimIndent()
+
+        assertNull(decodeDocumented(failed))
+        assertNull(decodeDocumented(malformedItem))
+        assertNull(decodeDocumented(fractionalValue))
+        assertNull(decodeDocumented(duplicateFlag))
+        assertNull(decodeDocumented(noSymbologies))
+        assertNull(
+            InateckDocumentedFlagValueCodec.decodeSnapshot(
+                deviceId = "scanner",
+                payload = byteArrayOf(0xC3.toByte(), 0x28),
+                capturedAtMillis = 0L,
+            ),
+        )
+    }
+
+    @Test
+    fun documentedFlagValueCodecRequiresBothSessionFlagsBeforeRestriction() {
+        val qrOnly = """
+            {"status":0,"info":[
+              {"name":"Code 39","flag":2006,"value":1},
+              {"name":"QR Code","flag":2022,"value":1}
+            ]}
+        """.trimIndent()
+        val snapshot = requireNotNull(decodeDocumented(qrOnly))
+
+        assertFalse(snapshot.hasRequiredSessionSymbols())
+        assertNull(SymbologySettings.commandsFor(snapshot, BleSymbologyMode.SESSION_CODES))
+    }
+
+    @Test
     fun arbitraryTwentyNineItemInventoryRoundTripsWithoutDroppingUnknowns() {
         val rawItems = JsonArray().apply {
             add(settingJson("qrcode_on", "area-qr", 0, 2022, "qr"))
@@ -203,4 +301,11 @@ class BleSymbologyTest {
           {"area":"99","value":"1","name":"future_symbol","flag":2028,"vendor":"keep"}
         ]}
     """.trimIndent()
+
+    private fun decodeDocumented(response: String): SymbologySnapshot? =
+        InateckDocumentedFlagValueCodec.decodeSnapshot(
+            deviceId = "scanner",
+            payload = response.toByteArray(),
+            capturedAtMillis = 0L,
+        )
 }

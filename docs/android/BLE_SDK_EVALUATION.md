@@ -2,12 +2,13 @@
 
 ## 判定
 
-2026-09-02時点では、InateckのAndroid SDK候補をCode Matchへ採用しません。`scanner:ble` には安全コアと、UUID・endpoint・通知decoderを注入する汎用Android `BluetoothGatt` transportまで実装しました。対象scanner固有profile、vendor SDK、Nearby権限、release接続は保留します。このメモは公開SDKの静的評価であり、対象スキャナー実機の通信成功を示すものではありません。
+2026-09-03時点では、InateckのAndroid SDK候補をCode Matchへ採用しません。`scanner:ble` には安全コアと、UUID・endpoint・通知decoderを注入する汎用Android `BluetoothGatt` transport、および公式文書のSDK-level `flag`/`value`形式を厳格に扱うcodecまで実装しました。対象scanner固有profile、vendor SDK、Nearby権限、release接続は保留します。このメモは公開SDKの静的評価であり、対象スキャナー実機の通信成功を示すものではありません。
 
 ## 確認した候補
 
 - 公開元: [Inateck-Technology-Inc/android_sdk](https://github.com/Inateck-Technology-Inc/android_sdk)
-- 確認日: 2026-09-02
+- 確認日: 2026-09-03
+- リポジトリの最新code commit: 2025-01-09（`8ce0fd5d25d1`）
 - 配布物: `inateck-scanner-ble-2-0-0.jar`
 - 付随依存: FastBle 2.4.0、Gson 2.8.9、JNA、`libscanner_cmd.so`
 - native ABI: `arm64-v8a` のみ
@@ -34,7 +35,15 @@
 
 ### scan通知の受け渡し
 
-静的評価では、`BleTaskManager.receiveData` が実行中taskなしの場合に即時returnし、公開クラス/API一覧にもunsolicited scan payloadをアプリへ渡す確定callbackが見当たりません。対象scanner実機で、接続・通知・payload decoder・重複抑止を一連で観測できるまで、scan入力のproduction経路として使用しません。
+公式サイトの[接続手順](https://docs.inateck.com/scanner-sdk-en/ble/desktop_connect/)は`set_code_callback`を記載しています。しかし、公開リポジトリ同梱のAndroid 2.0.0 JARを`javap -public`で確認しても、`BleMessager`、`BleScannerDevice`、`BleListManager`にその登録APIはありません。さらに`BleTaskManager.receiveData`は実行中taskがない場合に即時returnします。Web文書と配布Android artifactのversioned contractが一致しないため、対象scanner実機で接続・通知・payload decoder・重複抑止を一連で観測できるまで、scan入力のproduction経路として使用しません。
+
+### 公式flag/value形式の先行実装境界
+
+公式の[General Configuration](https://docs.inateck.com/scanner-sdk-en/ble/desktop_setting/)は、成功応答を`status=0`と`info`配列（`name`、`flag`、`value`）、書込commandを数値の`flag`/`value`配列として定義しています。また[General Configuration List](https://docs.inateck.com/scanner-sdk-en/ble/desktop_setting_list/)はCode 128をflag 2008、QR Codeをflag 2022としています。
+
+`InateckDocumentedFlagValueCodec`はこのSDK-level形式だけを対象にし、UTF-8、成功status、全itemのname/flag/value、flag一意性、0/1値を検証します。2xxxの全reported symbologyを順序付きで保持し、2008/2022をsession対象として識別し、書込時はflag/value以外を送出しません。`area`はiOS形式との変換を仮定せず、内部でのみ`flag:<number>`というprofile-local identityを使います。
+
+このJSONはGATTへ直接書くwire形式として公開されていません。そのためcodecはrelease DIや`AndroidBleTransport`へ接続せず、将来SDK-backed transportが実機応答との一致を確認した場合だけ明示選択します。実機未確認のままproduction adapter完成とは扱いません。
 
 ## 次の調査ゲート
 

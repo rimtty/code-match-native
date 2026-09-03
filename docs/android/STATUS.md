@@ -11,7 +11,7 @@
 | History / settings / PDF | Room/DataStore、日英リソース、0件破棄・名称変更・詳細・削除のapp E2E、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test、保存/共有失敗の一般化メッセージと再試行 | 実際の保存先・viewer・共有先アプリを含む実端末の業務受け入れ |
 | Camera | CameraX/ML Kit adapter、ROI、権限・lifecycle・focus、非同期provider/format切替/古いcallback破棄、処理中frameをdrainしてからsession終了・terminal closeする自動test | Pixel/SamsungでQR→Code 128実読取、連続箱、focus結果の完了記録 |
 | Privacy / release | Manifest、backup規則、FileProvider、source/APK/AAB checker、すべてのAndroid Gradle CI jobでのWrapper validation | 通信観測、ストア提出回答、署名済み配布物の運用承認 |
-| BLE | SDK/UUID非依存の安全コア、`ExternalScanner` facade、注入profile方式の汎用Android GATT transport、複数listener、Fake/Unavailable境界、型付き設定失敗・camera fallback・明示再接続UI、snapshot/queue/lifecycle JVM test、backup除外DataStoreでのsnapshot/既知端末identity再オープンと復元前Ready禁止test | 実測protocol profile、release接続とNearby権限要求、対象scanner通信、実機の全symbology復元、Pixel/Samsung受け入れ |
+| BLE | SDK/UUID非依存の安全コア、`ExternalScanner` facade、注入profile方式の汎用Android GATT transport、公式SDK-level flag/value形式のstrict codec、複数listener、Fake/Unavailable境界、型付き設定失敗・camera fallback・明示再接続UI、snapshot/queue/lifecycle JVM test、backup除外DataStoreでのsnapshot/既知端末identity再オープンと復元前Ready禁止test | 実測protocol profile、versioned SDK契約、release接続とNearby権限要求、対象scanner通信、実機の全symbology復元、Pixel/Samsung受け入れ |
 
 現在のrelease構成は `UnavailableExternalScanner` によるカメラ入力のみです。汎用GATT transportはscanner固有値を持たず、release DI・Manifestへ未接続です。候補Inateck SDKはライセンス、ABI/target SDK、権限、rawログ、scan callbackの評価が未解決で採用保留です（詳細は [`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)）。
 
