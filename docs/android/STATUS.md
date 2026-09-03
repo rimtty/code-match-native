@@ -6,7 +6,7 @@
 
 | 領域 | このcheckoutで確認できるもの | まだ完了扱いにしないもの |
 |---|---|---|
-| Domain / matching | 純Kotlin matcher/parser、shared fixture、JVM test、Swift unit 68本/UI 5本との意図対応表 | Swift/Kotlinの全ケースを同一CI実行で確認した記録 |
+| Domain / matching | 純Kotlin matcher/parser、shared fixture、JVM test、Swift unit 71本/UI 5本との意図対応表 | Swift/Kotlinの全ケースを同一CI実行で確認した記録 |
 | UI / navigation | Composeの照合・履歴・設定、3 destination、system/predictive back境界、保存可能なdestination/履歴選択、expanded履歴選択のselected/stateDescription semantics、履歴のActivity再生成・destination往復・compact back stack自動test、320dp/840dp・font scale 1.3/2.0の主要操作到達test、debug Fake境界 | predictive gestureの視覚遷移、WAITING Code 128・RESULTを含むOS process kill/relaunchの実操作、TalkBack、Switch Access、複数OEMの人手確認 |
 | History / settings / PDF | Room/DataStore、日英リソース、0件破棄・名称変更・詳細・削除のapp E2E、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test、保存/共有失敗の一般化メッセージと再試行 | 実際の保存先・viewer・共有先アプリを含む実端末の業務受け入れ |
 | Camera | CameraX/ML Kit adapter、ROI、権限・lifecycle・focus、非同期provider/format切替/古いcallback破棄、処理中frameをdrainしてからsession終了・terminal closeする自動test、Pixel 7縦画面でガイド内に限定した実ラベルQR→Code 128一致 | Pixelで不一致・連続箱・focus・回転・背景復帰、Samsungで同じ実カメラ受け入れを完了した記録 |
@@ -64,7 +64,7 @@ JDK/SDKがない環境ではGradle結果を推測せず、実行不能として�
 - `feature:scan` / `feature:history` / `feature:settings`は320dpのfont scale 1.3/2.0、Historyは840dp expandedでも主要操作の表示、スクロール到達、48dpタッチ領域を検査した。配色は実際に使うsemantic foreground/backgroundの組を4.5:1以上で固定した。TalkBack、Switch Access、OEM固有描画は引き続き手動ゲートである。
 - アプリ内言語とAndroid per-app languageは共通synchronizerで双方向に揃え、同値時は再設定しない。OS設定画面からの実変更はまだ手動ゲートである。
 - Apple SiliconのAndroid 17/API 37.1・16KB page-size Pixel 6 emulatorでも、同じ自動instrumentation 63件がすべて成功した。英語端末設定で見つかったHistoryテストのlocale依存を修正済みで、検証後はemulatorだけを正常停止した。
-- Swift unit 68本/UI 5本とAndroid証拠の全対応・未対応境界は[`TEST_PARITY.md`](TEST_PARITY.md)に記録した。
+- Swift unit 71本/UI 5本とAndroid証拠の全対応・未対応境界は[`TEST_PARITY.md`](TEST_PARITY.md)に記録した。
 
 この節のうち2026-09-04のCameraX実ラベル読取とBCST-36項目は部分的な実機証拠で、それ以外のPixel件数は自動testの証拠です。未記録のtap focus、TalkBack、切断・timeout等を、確認済みの実撮影・BLE通信から推測して完了扱いにはしません。
 

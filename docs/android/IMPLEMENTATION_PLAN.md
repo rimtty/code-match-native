@@ -532,7 +532,7 @@ Androidポーティング全体は、次をすべて満たした時だけ完了�
 
 - パリティ表の全適用行に、テストまたは実機記録の証拠がある。`N/A`行（現行は#6、#38、#42）は、対応不要の根拠リンクを持つ。
 - `matching-cases.json`をSwift/Kotlin双方が通過する。
-- 現行Swift単体テスト68本とUIテスト5本の意図がAndroid testへ対応付けられている。ただし、[`TEST_PARITY.md`](TEST_PARITY.md)で根拠を示したiOS固有・旧版互換の`N/A`（#6、#38、#42）はAndroid testの対象外とする。
+- 現行Swift単体テスト71本とUIテスト5本の意図がAndroid testへ対応付けられている。ただし、[`TEST_PARITY.md`](TEST_PARITY.md)で根拠を示したiOS固有・旧版互換の`N/A`（#6、#38、#42）はAndroid testの対象外とする。
 - 日本語・英語、compact/expanded、通常/大フォントで主要フローが完走する。
 - CameraXの照合を実Android端末で確認している。
 - BLEの9.4を対象scanner実機で確認している。

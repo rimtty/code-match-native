@@ -154,6 +154,16 @@ adb install -r app/build/outputs/apk/scannerPoc/app-scannerPoc.apk
 
 この記録は上記のQR→Code 128一致だけの実カメラ証拠です。未実施項目が残るためM3全体の完了とは扱いません。
 
+### 2026-09-04 PDF保存・共有の部分実施記録
+
+- 端末: Google Pixel 7、Android 16 / API 36、USB接続
+- build: 非配付`scannerPoc`の履歴詳細画面（PDF経路は通常アプリと共通）
+- 成功: 履歴1件から「PDFで保存」を選び、Android DocumentsUIでDownloadsへ保存してアプリへ復帰。保存されたファイルは空ではなく、PDF headerを持つことを確認した
+- 共有: 「共有する」からAndroidの共有先選択画面が開くことを確認した
+- 未実施: 保存PDFを外部viewerで開いて内容・複数ページを確認、実際の共有先アプリへ受け渡し、通常debug/release buildでの再確認
+
+この記録はDocumentProvider保存と共有画面起動の部分証拠です。外部viewerと共有先の受入が未実施のため、PDF実機受入完了とは扱いません。
+
 ## 6. 証跡テンプレート
 
 ```text
