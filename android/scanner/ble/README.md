@@ -20,6 +20,14 @@ canonical iOS-observed JSON representation. An Android adapter must inject
 another codec/profile when its bytes or flag format differs; no Android flag
 range is fixed by the session.
 
+`InateckDocumentedFlagValueCodec` covers the vendor's published SDK-level
+`status`/`info` response and numeric `flag`/`value` command format. It preserves
+every reported 2xxx symbology in order, identifies Code 128 and QR by their
+documented flags, and rejects failed, malformed, duplicate, or incomplete
+inventories. This JSON is not a documented raw GATT wire format. The codec is
+therefore reserved for a future SDK-backed transport after the target device
+has been observed; it is not selected by `AndroidBleTransport` or release DI.
+
 The core guarantees:
 
 - one GATT setting command in flight at a time;
@@ -82,8 +90,9 @@ decoder and never to diagnostics.
 
 ## M4 adapter audit (2026-09-02)
 
-The upstream `Inateck-Technology-Inc/android_sdk` repository was inspected as
-an investigation input only. Its current demo contains an
+The upstream `Inateck-Technology-Inc/android_sdk` repository and official SDK
+documentation were rechecked on 2026-09-03 as investigation inputs only. The
+repository's latest code commit remains 2025-01-09. Its current demo contains an
 `inateck-scanner-ble-2-0-0.jar` (with FastBle, Gson, JNA, and an arm64 native
 library) and exposes `BleListManager`, `BleScannerDevice`, and `BleMessager`
 entry points. The repository currently does not provide a license file or
@@ -96,9 +105,16 @@ prints raw notification bytes before dispatch, and an unsolicited barcode
 callback contract was not established from the public API. That behavior is
 not suitable for this app's payload privacy or scan-delivery requirements.
 
-The demo's service/characteristic constants and command examples are useful
-leads for a physical investigation only. They are not protocol guarantees and
-must not be moved into this module. A future adapter must discover and record
+The current documentation describes `set_code_callback` and an SDK-level
+`flag`/`value` settings API. Static inspection of the repository's bundled
+2.0.0 JAR finds no public barcode callback registration method, and its
+`BleTaskManager.receiveData` returns immediately when no command task is
+running. The website contract and downloadable Android artifact therefore do
+not yet form one usable, versioned integration contract.
+
+The demo's service/characteristic constants and command examples remain useful
+leads for a physical investigation only. They are not protocol guarantees. A
+future adapter must discover and record
 the target scanner's UUIDs, notification framing, scan callback semantics,
 setting inventory, and restoration behavior, then inject those observations
 through `BleTransport`, `BleSymbologyProfile`, and the adapter-selected codec.
