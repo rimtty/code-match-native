@@ -17,6 +17,23 @@ import org.junit.Test
 
 class InateckSdkTransportTest {
     @Test
+    fun discoveryDoesNotReachSdkUntilExistingLinkIsFullyDisconnected() {
+        val gateway = FakeGateway()
+        val transport = InateckSdkTransport(gateway)
+        val device = ScannerDevice("test-link", "Scanner")
+        assertTrue(transport.connect(device))
+        assertFalse(transport.startDiscovery())
+        gateway.connectCompletion?.invoke(Result.success(Unit))
+        assertFalse(transport.startDiscovery())
+        assertTrue(transport.disconnect(device))
+        assertFalse(transport.startDiscovery())
+        assertEquals(0, gateway.discoveryCalls)
+        gateway.disconnectCompletion?.invoke(Result.success(Unit))
+        assertTrue(transport.startDiscovery())
+        assertEquals(1, gateway.discoveryCalls)
+    }
+
+    @Test
     fun discoveryConnectSettingsAndScanMapThroughNarrowGateway() {
         val gateway = FakeGateway()
         val deliveries = mutableListOf<InateckScanDeliveryKind>()
@@ -647,6 +664,7 @@ class InateckSdkTransportTest {
         var discoveryDevice: ((InateckSdkDevice) -> Unit)? = null
         var discoveryFinished: (() -> Unit)? = null
         var stopDiscoveryCalls = 0
+        var discoveryCalls = 0
         var scanBytes: ((ByteArray) -> Unit)? = null
         var disconnectCallback: ((Boolean) -> Unit)? = null
         var connectCompletion: ((Result<Unit>) -> Unit)? = null
@@ -663,6 +681,7 @@ class InateckSdkTransportTest {
             onDevice: (InateckSdkDevice) -> Unit,
             onFinished: () -> Unit,
         ): Boolean {
+            discoveryCalls++
             discoveryDevice = onDevice
             discoveryFinished = onFinished
             return true

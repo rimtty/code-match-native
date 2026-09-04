@@ -123,7 +123,7 @@ internal class InateckSdkTransport(
 
     override fun startDiscovery(): Boolean {
         refreshReadiness()
-        if (closed || discovering || readiness.failureReason(forConnection = false) != null) {
+        if (closed || discovering || isLinkActive || readiness.failureReason(forConnection = false) != null) {
             return false
         }
         discovering = true

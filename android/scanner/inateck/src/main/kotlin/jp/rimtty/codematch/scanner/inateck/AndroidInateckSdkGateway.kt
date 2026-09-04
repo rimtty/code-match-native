@@ -65,7 +65,9 @@ internal class AndroidInateckSdkGateway(
         onDevice: (InateckSdkDevice) -> Unit,
         onFinished: () -> Unit,
     ): Boolean {
-        if (closed || readiness.failureReason(forConnection = false) != null) return false
+        if (closed || activeDevice != null || pendingDevice != null || disconnectingDevice != null ||
+            readiness.failureReason(forConnection = false) != null
+        ) return false
         return runCatching {
             BleListManager.scan(
                 object : BleScanResultCallBack {
