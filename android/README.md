@@ -39,7 +39,8 @@ scanner/inateck/      # 公式SDK adapter（scannerPoc専用、binaryはロー�
 ./gradlew assembleDebug
 ./gradlew lintDebug testDebugUnitTest
 bash scripts/run-connected-tests.sh
-./gradlew assembleRelease bundleRelease
+./gradlew :app:assembleRelease :app:verifyReleaseLanguageDelivery
+./gradlew :app:testBundleLanguageVerifier
 mkdir -p tmp
 ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > tmp/release-dependencies.txt
 bash scripts/test-release-hardening.sh
@@ -68,6 +69,8 @@ checkerは依存ライブラリを追加せず、lockfile、SBOM、その他の�
 作りません。Gradle dependency verificationとSBOM／ライセンス出力は、依存artifactの
 供給元と署名ポリシーを固定してから別途導入します。現時点の再現可能なゲートは
 Gradle Wrapper validation、release依存グラフ検査、checkerによるsource/APK/AAB検査です。
+
+日英のアプリ内切り替えはオフラインで使えるよう、AABの言語splitだけを無効にし、両言語を常に同梱します。ABI・画面密度の最適化は維持します。`verifyReleaseLanguageDelivery`はrelease AABを生成してから、実際の`BundleConfig.pb`と`base/resources.pb`を型付きで解析し、言語split無効化と主要画面の日本語デフォルト・英語リソースを検査します。検査用コードは既存のAndroidビルドツールを使用し、アプリへの依存や言語ダウンロード機能は追加しません。ストア経由の配布・OS設定画面・OEMごとの受け入れを代替するものではありません。
 
 エミュレーターは状態遷移とCompose UIの継続検証に使います。カメラの読み取り完了判定はPixelなどの実Android端末で行います。実端末で行う確認項目、証跡、未実施の扱いは [実機確認ランブック](../docs/android/REAL_DEVICE_RUNBOOK.md) に従ってください。現時点では、このREADMEや自動テストの結果だけでQR/Code 128の実読取、focus、連続箱、BLE通信の成功を宣言しません。
 

@@ -79,6 +79,9 @@ jobs:
       - name: Verify process recovery runner refuses unsafe targets
         run: bash scripts/test-process-recovery-runner.sh
 
+      - name: Verify app bundle language checker rejects invalid artifacts
+        run: ./gradlew :app:testBundleLanguageVerifier --stacktrace
+
   android-emulator-test:
     name: Android emulator tests
     runs-on: ubuntu-latest
@@ -178,10 +181,10 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Assemble release APK and app bundle
+      - name: Assemble release APK and verify offline app bundle languages
         # Qualify the app tasks so this camera-only job never tries to build
         # the separately provisioned, non-distributed scanner PoC module.
-        run: ./gradlew :app:assembleRelease :app:bundleRelease --stacktrace
+        run: ./gradlew :app:assembleRelease :app:verifyReleaseLanguageDelivery --stacktrace
 
       - name: Verify release hardening and dependency graph
         shell: bash

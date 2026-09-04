@@ -334,7 +334,12 @@ class ScanViewModel @Inject constructor(
 
         activeSessionId = active?.id
         activeSessionName = active?.name
-        sessionNameDraft = active?.name.orEmpty()
+        // The screen can accept edits before repository initialization ends.
+        // Keep that draft for a new session; an existing session still owns
+        // its persisted name and must win over stale startup input.
+        if (active != null) {
+            sessionNameDraft = active.name.orEmpty()
+        }
 
         val created = ScanSessionCoordinator(
             scanner = scanner,
