@@ -3,7 +3,16 @@ name: iOS CI
 on:
   push:
     branches: [master]
+    paths:
+      - 'ios/**'
+      - 'shared/**'
+      - '.github/workflows/ios-ci.yml'
   pull_request:
+    paths:
+      - 'ios/**'
+      - 'shared/**'
+      - '.github/workflows/ios-ci.yml'
+  workflow_dispatch:
 
 concurrency:
   group: ios-ci-${{ github.ref }}

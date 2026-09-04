@@ -151,6 +151,10 @@ Swift UI 5本の直接対応とは別に、`NavigationTest`は履歴のsession�
 
 ## この監査で追加した純 JVM 証拠
 
+`ScanViewModelSessionNameTest`は、DataStoreの初回通知を意図的に止め、初期化前に公開UI actionから作業名の編集・開始を行う。最新の入力をtrimして保存すること、空欄への編集を優先すること、保存済みactive sessionの名前を復元して複数回の開始でも増殖しないことを、製品データと分離したin-memory Roomで検査する。修正前の初期化処理では最新名のtestが`expected newest / actual null`で失敗することも確認した。実端末の操作速度やストレージ性能の計測ではない。
+
+日英切り替えの配布境界は、`:app:verifyReleaseLanguageDelivery`で生成済みAABの`BundleConfig.pb`と言語リソース表を解析し、言語splitを無効にしたうえで主要画面の日本語デフォルト・英語を同梱する契約を検査する。`:app:testBundleLanguageVerifier`は壊れたprotobuf・言語欠落・誤ったsplit設定等の負例を拒否する。これはオフライン用artifactの自動証拠であり、ストア経由の配信やOS設定画面の実操作の証拠ではない。
+
 `android/core/model/src/test/kotlin/jp/rimtty/codematch/core/model/SettingsModelsTest.kt::unknownPreferenceValuesUseSafeDefaults` に `AppLanguage.fromCode(null) == JAPANESE` を追加した。これは Swift の「保存値なし」fallback を Android の framework-free model 層で直接固定するもので、production code や BLE/camera/navigation は変更していない。#6/#38/#42は根拠付きN/Aであり、AVCapture lifetimeや旧iOS migrationを推測するテストは追加していない。
 
 今回のBLE UI監査では、`ScanSessionCoordinator`が設定失敗をbaseline復元で上書きする前に`ScannerIssue`を渡す境界を追加し、明示的な非同期再接続後のReadyだけがBluetoothへ再昇格できるようにした。`ScanScreenTest::bluetoothConfigurationStatusReturnsToSessionRestrictionAfterReady`と`SettingsScreenTest::configurationStatusIsLocalizedAndFailureReasonStaysHidden`は日英の設定中・session restriction・失敗文言を検査し、adapter由来のraw reasonを表示しない。いずれも`ExternalScanner`の安全境界を使う状態/UI証拠であり、release camera-onlyのNearby permission、GATT/UUID/protocol、対象scanner実通信は追加していない。

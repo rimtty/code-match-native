@@ -1,3 +1,7 @@
+import org.gradle.api.tasks.JavaExec
+import org.gradle.api.tasks.compile.JavaCompile
+import java.io.File
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
@@ -78,6 +82,14 @@ android {
         }
     }
 
+    // The app changes its locale locally and must carry both supported
+    // languages in every base APK. Keep the default ABI and density splits.
+    bundle {
+        language {
+            enableSplit = false
+        }
+    }
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
@@ -86,6 +98,79 @@ android {
         sourceSets.getByName("debug").manifest.srcFile("src/processRecovery/AndroidManifest.xml")
         sourceSets.getByName("androidTest").kotlin.directories.add("src/processRecoveryAndroidTest/java")
     }
+}
+
+// Verify the published AAB rather than only trusting the Gradle DSL. AGP's
+// bundletool and aapt2-proto classes are already available through the Android
+// plugin classloader; the verifier task resolves their code-source locations
+// lazily so ordinary app tasks do not depend on Gradle cache paths or new
+// dependency coordinates.
+val bundleLanguageVerifierRuntimeClasspath = providers.provider {
+    val classLoaders = listOf(
+        android.javaClass.classLoader,
+        Thread.currentThread().contextClassLoader,
+        ClassLoader.getSystemClassLoader(),
+    ).filterNotNull().distinct()
+
+    fun codeSourceFor(className: String): File {
+        val loadedClass = classLoaders.asSequence()
+            .mapNotNull { loader ->
+                runCatching { Class.forName(className, false, loader) }.getOrNull()
+            }
+            .firstOrNull()
+            ?: throw GradleException("Unable to load $className from the AGP plugin classpath")
+        val location = loadedClass.protectionDomain?.codeSource?.location
+            ?: throw GradleException("No code source for $className")
+        return File(location.toURI())
+    }
+
+    files(
+        codeSourceFor("com.android.bundle.Config"),
+        codeSourceFor("com.android.aapt.Resources"),
+        codeSourceFor("com.google.protobuf.Message"),
+    )
+}
+
+val bundleLanguageVerifierClasses = layout.buildDirectory.dir(
+    "generated/bundle-language-verifier/classes",
+)
+val bundleLanguageVerifierCompile = tasks.register<JavaCompile>(
+    "compileBundleLanguageVerifier",
+) {
+    group = "verification"
+    description = "Compiles the typed AAB language-delivery verifier."
+    source(
+        rootProject.file("scripts/BundleLanguageVerifier.java"),
+        rootProject.file("scripts/BundleLanguageVerifierTest.java"),
+    )
+    destinationDirectory.set(bundleLanguageVerifierClasses)
+    classpath = files(bundleLanguageVerifierRuntimeClasspath)
+    options.release.set(17)
+    options.encoding = "UTF-8"
+}
+
+val bundleLanguageVerifierClasspath = files(
+    bundleLanguageVerifierClasses,
+    bundleLanguageVerifierRuntimeClasspath,
+)
+
+tasks.register<JavaExec>("testBundleLanguageVerifier") {
+    group = "verification"
+    description = "Runs positive and negative typed AAB verifier fixtures."
+    dependsOn(bundleLanguageVerifierCompile)
+    classpath = bundleLanguageVerifierClasspath
+    mainClass.set("BundleLanguageVerifierTest")
+}
+
+tasks.register<JavaExec>("verifyReleaseLanguageDelivery") {
+    group = "verification"
+    description = "Verifies the release AAB language split and resources."
+    dependsOn(bundleLanguageVerifierCompile, "bundleRelease")
+    classpath = bundleLanguageVerifierClasspath
+    mainClass.set("BundleLanguageVerifier")
+    val releaseBundle = layout.buildDirectory.file("outputs/bundle/release/app-release.aab")
+    inputs.file(releaseBundle)
+    args(releaseBundle.get().asFile.absolutePath)
 }
 
 dependencies {
@@ -129,6 +214,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.datastore.preferences)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
