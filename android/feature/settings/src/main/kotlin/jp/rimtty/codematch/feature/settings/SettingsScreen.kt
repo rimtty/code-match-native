@@ -852,15 +852,23 @@ private fun ScannerCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(lampLabel, modifier = Modifier.weight(1f))
-                    Switch(
-                        checked = state.illuminationState == IlluminationState.ON,
-                        onCheckedChange = { onAction(SettingsUiAction.SetIllumination(it)) },
-                        enabled = connected != null && state.illuminationState in setOf(
-                            IlluminationState.ON, IlluminationState.OFF, IlluminationState.FAILED,
-                        ),
-                        modifier = Modifier.testTag("settings_illumination")
-                            .semantics { contentDescription = lampLabel },
-                    )
+                    when (state.illuminationState) {
+                        IlluminationState.ON, IlluminationState.OFF -> Switch(
+                            checked = state.illuminationState == IlluminationState.ON,
+                            onCheckedChange = { onAction(SettingsUiAction.SetIllumination(it)) },
+                            enabled = connected != null,
+                            modifier = Modifier.testTag("settings_illumination")
+                                .semantics { contentDescription = lampLabel },
+                        )
+                        IlluminationState.FAILED -> TextButton(
+                            enabled = connected != null,
+                            onClick = { onAction(SettingsUiAction.SetIllumination(false)) },
+                            modifier = Modifier.testTag("settings_illumination_retry"),
+                        ) { Text(stringResource(R.string.settings_illumination_retry_off)) }
+                        else -> if (connected != null) CircularProgressIndicator(
+                            modifier = Modifier.testTag("settings_illumination_pending"),
+                        )
+                    }
                 }
                 Text(stringResource(when (state.illuminationState) {
                     IlluminationState.APPLYING -> R.string.settings_illumination_applying

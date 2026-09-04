@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_illumination">Scanner illumination</string>
+    <string name="settings_illumination_retry_off">Retry turning off</string>
     <string name="settings_illumination_description">When enabled, the light turns on during reading. Off by default.</string>
     <string name="settings_illumination_applying">Checking the illumination setting…</string>
     <string name="settings_illumination_failed">Could not confirm illumination. Try again.</string>

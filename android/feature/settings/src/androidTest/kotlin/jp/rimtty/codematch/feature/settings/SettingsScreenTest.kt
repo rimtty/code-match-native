@@ -42,19 +42,29 @@ class SettingsScreenTest {
         val actions = mutableListOf<SettingsUiAction>()
         val state = mutableStateOf(SettingsUiState(
             connectionState = ConnectionState.Connected(ScannerDevice("lamp-test", "Test scanner")),
-            illuminationState = IlluminationState.OFF,
+            illuminationState = IlluminationState.UNKNOWN,
             setupGuideVisible = false,
         ))
         composeRule.setContent {
             MaterialTheme { SettingsScreen(state.value, onAction = actions::add) }
         }
         val lamp = composeRule.onNodeWithTag("settings_illumination")
+        composeRule.onAllNodesWithTag("settings_illumination").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("settings_illumination_pending").assertCountEquals(1)
+        composeRule.runOnIdle { state.value = state.value.copy(illuminationState = IlluminationState.OFF) }
         lamp.performScrollTo().assertIsEnabled().assertIsOff().performClick()
         composeRule.runOnIdle {
             assertEquals(listOf(SettingsUiAction.SetIllumination(true)), actions)
             state.value = state.value.copy(illuminationState = IlluminationState.APPLYING)
         }
-        lamp.assertIsNotEnabled()
+        composeRule.onAllNodesWithTag("settings_illumination").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("settings_illumination_pending").assertCountEquals(1)
+        composeRule.runOnIdle { state.value = state.value.copy(illuminationState = IlluminationState.FAILED) }
+        composeRule.onAllNodesWithTag("settings_illumination").assertCountEquals(0)
+        composeRule.onNodeWithTag("settings_illumination_retry").performScrollTo().performClick()
+        composeRule.runOnIdle {
+            assertEquals(SettingsUiAction.SetIllumination(false), actions.last())
+        }
         composeRule.runOnIdle { state.value = state.value.copy(illuminationState = IlluminationState.ON) }
         lamp.assertIsEnabled().assertIsOn()
         composeRule.runOnIdle { state.value = state.value.copy(connectionState = ConnectionState.Idle) }
