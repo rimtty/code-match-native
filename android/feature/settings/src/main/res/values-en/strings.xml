@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="settings_illumination">Scanner illumination</string>
+    <string name="settings_illumination_retry_off">Retry turning off</string>
+    <string name="settings_illumination_description">When enabled, the light turns on during reading. Turned off on connection. This setting is saved on the scanner and is not restored on disconnect.</string>
+    <string name="settings_illumination_applying">Checking the illumination setting…</string>
+    <string name="settings_illumination_failed">Could not confirm illumination. Try again.</string>
+    <string name="settings_illumination_unknown">Illumination will be checked after connection.</string>
     <string name="settings_accessibility_description">App settings for the Bluetooth scanner, automatic next comparison, audio, and display language.</string>
     <string name="settings_title">Settings</string>
     <string name="settings_eyebrow">SETTINGS</string>

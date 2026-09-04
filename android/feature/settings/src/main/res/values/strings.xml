@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="settings_illumination">スキャナー照明</string>
+    <string name="settings_illumination_retry_off">OFFを再適用</string>
+    <string name="settings_illumination_description">ONにすると読取中に点灯します。接続時はOFFにします。設定はスキャナー本体に保存され、切断しても元に戻りません。</string>
+    <string name="settings_illumination_applying">照明設定を確認しています…</string>
+    <string name="settings_illumination_failed">照明設定を確認できませんでした。再操作してください。</string>
+    <string name="settings_illumination_unknown">接続後に照明設定を確認します。</string>
     <string name="settings_accessibility_description">アプリの設定。Bluetoothスキャナ、自動次工程、音量、効果音、表示言語を変更できます。</string>
     <string name="settings_title">設定</string>
     <string name="settings_eyebrow">SETTINGS</string>

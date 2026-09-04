@@ -13,6 +13,7 @@ import jp.rimtty.codematch.scanner.api.DiagnosticEvent
 import jp.rimtty.codematch.scanner.api.ExternalScanner
 import jp.rimtty.codematch.scanner.api.ExternalScannerListener
 import jp.rimtty.codematch.scanner.api.ScanFormat
+import jp.rimtty.codematch.scanner.api.IlluminationState
 import jp.rimtty.codematch.scanner.api.ScannerDevice
 import jp.rimtty.codematch.scanner.ble.BleConnectionCoordinator
 import jp.rimtty.codematch.scanner.ble.BleKnownDeviceStore
@@ -43,7 +44,97 @@ class InateckExternalScanner private constructor(
     private val transport: InateckSdkTransport,
     private val handler: Handler,
     private val nowMillis: () -> Long,
+    private val gateway: InateckSdkGateway,
 ) : ExternalScanner, DefaultLifecycleObserver {
+    private val illuminationObservers = mutableSetOf<ExternalScannerListener>()
+    private var illuminationDeviceId: String? = null
+    private var illuminationGeneration = 0L
+    private var illuminationDeadline = 0L
+    private var illuminationWaitingForDisconnect = false
+    private var applicationForeground = false
+    private val deferredSettings = InateckDeferredSettings()
+
+    private fun drainDeferredSettings() {
+        if (illuminationWaitingForDisconnect && transport.isLinkActive) return
+        deferredSettings.drain().forEach { action ->
+            when (action) {
+                is InateckDeferredSettings.Action.Format -> delegate.setExpectedFormat(action.value)
+                is InateckDeferredSettings.Action.ApplicationActive ->
+                    delegate.setApplicationActive(action.value, nowMillis())
+            }
+        }
+    }
+    override var illuminationState = IlluminationState.UNKNOWN
+        private set
+    private val illuminationConnectionObserver = object : ExternalScannerListener {
+        override fun onConnectionStateChanged(state: ConnectionState) {
+            // Invalidate immediately, even if disconnect/reconnect occurs
+            // entirely between two timer ticks for the same device ID.
+            if (!state.isConnected) {
+                illuminationGeneration++
+                illuminationDeviceId = null
+                publishIllumination(IlluminationState.UNKNOWN)
+                handler.post { if (!closed) drainDeferredSettings() }
+            }
+        }
+    }
+
+    private fun publishIllumination(state: IlluminationState) {
+        if (illuminationState == state) return
+        illuminationState = state
+        (illuminationObservers.toList() + listOfNotNull(listener)).distinct().forEach {
+            it.onIlluminationStateChanged(state)
+        }
+    }
+
+    private fun refreshIllumination() {
+        if (illuminationWaitingForDisconnect) {
+            if (transport.isLinkActive) return
+            illuminationWaitingForDisconnect = false
+            drainDeferredSettings()
+        }
+        val deviceId = connectedDevice?.id
+        if (deviceId != illuminationDeviceId) {
+            illuminationDeviceId = deviceId
+            illuminationGeneration++
+            publishIllumination(IlluminationState.UNKNOWN)
+        }
+        if (deviceId == null) return
+        if (illuminationState == IlluminationState.APPLYING && nowMillis() >= illuminationDeadline) {
+            illuminationGeneration++
+            illuminationWaitingForDisconnect = true
+            publishIllumination(IlluminationState.FAILED)
+            delegate.disconnect()
+            drainDeferredSettings()
+            return
+        }
+        if (applicationForeground && illuminationState == IlluminationState.UNKNOWN && configurationState.isReady) {
+            setIllumination(false)
+        }
+    }
+
+    override fun setIllumination(enabled: Boolean): Boolean {
+        if (closed || illuminationWaitingForDisconnect || !applicationForeground || !configurationState.isReady || illuminationState == IlluminationState.APPLYING) return false
+        val deviceId = connectedDevice?.id ?: return false
+        illuminationDeviceId = deviceId
+        val previous = illuminationState
+        val generation = ++illuminationGeneration
+        illuminationDeadline = nowMillis() + 30_000L
+        publishIllumination(IlluminationState.APPLYING)
+        val accepted = gateway.setIllumination(deviceId, enabled) { result ->
+            if (!closed && generation == illuminationGeneration && connectedDevice?.id == deviceId) {
+                publishIllumination(if (result.isSuccess) {
+                    if (enabled) IlluminationState.ON else IlluminationState.OFF
+                } else IlluminationState.FAILED)
+                drainDeferredSettings()
+            }
+        }
+        if (!accepted && generation == illuminationGeneration) {
+            publishIllumination(previous)
+            drainDeferredSettings()
+        }
+        return accepted
+    }
     private var closed = false
     private var resetAcknowledged = false
     private var reconnectScheduled = false
@@ -58,11 +149,13 @@ class InateckExternalScanner private constructor(
             if (closed) return
             delegate.tick(nowMillis())
             reconcileTransportReset()
+            refreshIllumination()
             handler.postDelayed(this, TICK_INTERVAL_MILLIS)
         }
     }
 
     init {
+        delegate.addListener(illuminationConnectionObserver)
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
         handler.post(ticker)
     }
@@ -91,11 +184,15 @@ class InateckExternalScanner private constructor(
             delegate.listener = value
         }
 
-    override fun addListener(listener: ExternalScannerListener): Boolean =
-        delegate.addListener(listener)
+    override fun addListener(listener: ExternalScannerListener): Boolean {
+        illuminationObservers.add(listener)
+        return delegate.addListener(listener)
+    }
 
-    override fun removeListener(listener: ExternalScannerListener): Boolean =
-        delegate.removeListener(listener)
+    override fun removeListener(listener: ExternalScannerListener): Boolean {
+        illuminationObservers.remove(listener)
+        return delegate.removeListener(listener)
+    }
 
     override fun startDiscovery(): Boolean {
         transport.refreshReadiness()
@@ -124,13 +221,20 @@ class InateckExternalScanner private constructor(
 
     override fun setExpectedFormat(format: ScanFormat?): Boolean {
         transport.refreshReadiness()
+        if (!closed && (illuminationWaitingForDisconnect || illuminationState == IlluminationState.APPLYING)) {
+            deferredSettings.offer(InateckDeferredSettings.Action.Format(format))
+            return true
+        }
         return if (closed) false else delegate.setExpectedFormat(format)
     }
 
     override fun onStart(owner: LifecycleOwner) {
+        applicationForeground = true
         transport.refreshReadiness()
         if (closed) return
-        delegate.setApplicationActive(true, nowMillis())
+        if (illuminationWaitingForDisconnect || illuminationState == IlluminationState.APPLYING) {
+            deferredSettings.offer(InateckDeferredSettings.Action.ApplicationActive(true))
+        } else delegate.setApplicationActive(true, nowMillis())
         // A process recreation restores the known identity synchronously, but
         // it must still explicitly start the connection. Retry on a later
         // foreground if the first attempt was blocked by Bluetooth or
@@ -139,13 +243,20 @@ class InateckExternalScanner private constructor(
     }
 
     override fun onStop(owner: LifecycleOwner) {
+        applicationForeground = false
         startupRecovery.onBackground()
-        delegate.setApplicationActive(false, nowMillis())
+        if (illuminationWaitingForDisconnect || illuminationState == IlluminationState.APPLYING) {
+            deferredSettings.offer(InateckDeferredSettings.Action.ApplicationActive(false))
+        } else delegate.setApplicationActive(false, nowMillis())
     }
 
     fun close() {
         if (closed) return
         closed = true
+        illuminationGeneration++
+        illuminationObservers.clear()
+        deferredSettings.clear()
+        delegate.removeListener(illuminationConnectionObserver)
         ProcessLifecycleOwner.get().lifecycle.removeObserver(this)
         handler.removeCallbacks(ticker)
         delegate.close()
@@ -230,7 +341,7 @@ class InateckExternalScanner private constructor(
                     )
                 },
             )
-            return InateckExternalScanner(delegate, transport, handler, nowMillis)
+            return InateckExternalScanner(delegate, transport, handler, nowMillis, gateway)
         }
     }
 }

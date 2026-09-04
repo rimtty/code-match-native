@@ -26,6 +26,9 @@ import jp.rimtty.codematch.scanner.api.ConnectionState
 import jp.rimtty.codematch.scanner.api.DiagnosticCategory
 import jp.rimtty.codematch.scanner.api.DiagnosticEvent
 import jp.rimtty.codematch.scanner.api.ScannerDevice
+import jp.rimtty.codematch.scanner.api.IlluminationState
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsOff
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -34,6 +37,40 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SettingsScreenTest {
+    @Test
+    fun illuminationWaitsForConfirmationAndDisablesDuringWrite() {
+        val actions = mutableListOf<SettingsUiAction>()
+        val state = mutableStateOf(SettingsUiState(
+            connectionState = ConnectionState.Connected(ScannerDevice("lamp-test", "Test scanner")),
+            illuminationState = IlluminationState.UNKNOWN,
+            setupGuideVisible = false,
+        ))
+        composeRule.setContent {
+            MaterialTheme { SettingsScreen(state.value, onAction = actions::add) }
+        }
+        val lamp = composeRule.onNodeWithTag("settings_illumination")
+        composeRule.onAllNodesWithTag("settings_illumination").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("settings_illumination_pending").assertCountEquals(1)
+        composeRule.runOnIdle { state.value = state.value.copy(illuminationState = IlluminationState.OFF) }
+        lamp.performScrollTo().assertIsEnabled().assertIsOff().performClick()
+        composeRule.runOnIdle {
+            assertEquals(listOf(SettingsUiAction.SetIllumination(true)), actions)
+            state.value = state.value.copy(illuminationState = IlluminationState.APPLYING)
+        }
+        composeRule.onAllNodesWithTag("settings_illumination").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("settings_illumination_pending").assertCountEquals(1)
+        composeRule.runOnIdle { state.value = state.value.copy(illuminationState = IlluminationState.FAILED) }
+        composeRule.onAllNodesWithTag("settings_illumination").assertCountEquals(0)
+        composeRule.onNodeWithTag("settings_illumination_retry").performScrollTo().performClick()
+        composeRule.runOnIdle {
+            assertEquals(SettingsUiAction.SetIllumination(false), actions.last())
+        }
+        composeRule.runOnIdle { state.value = state.value.copy(illuminationState = IlluminationState.ON) }
+        lamp.assertIsEnabled().assertIsOn()
+        composeRule.runOnIdle { state.value = state.value.copy(connectionState = ConnectionState.Idle) }
+        lamp.assertIsNotEnabled()
+    }
+
     @get:Rule
     val composeRule = createComposeRule()
 

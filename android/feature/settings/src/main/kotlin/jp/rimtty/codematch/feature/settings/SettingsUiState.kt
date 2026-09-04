@@ -105,6 +105,8 @@ data class SettingsUiState(
     val presentation: SettingsPresentationState = SettingsPresentationState.FAKE_BLE,
     /** Typed scanner issue; raw adapter reason strings never reach the UI. */
     val scannerIssue: ScannerIssue = ScannerIssue.NONE,
+    val illuminationState: jp.rimtty.codematch.scanner.api.IlluminationState =
+        jp.rimtty.codematch.scanner.api.IlluminationState.UNSUPPORTED,
 ) {
     /** Compatibility/readability aliases for hosts that name these values explicitly. */
     val appSettings: AppSettings get() = settings
@@ -140,6 +142,7 @@ data class SettingsUiState(
 
 /** One-way intents emitted by the stateless settings UI. */
 sealed interface SettingsUiAction {
+    data class SetIllumination(val enabled: Boolean) : SettingsUiAction
     data object OpenSetupGuide : SettingsUiAction
     data object CloseSetupGuide : SettingsUiAction
 

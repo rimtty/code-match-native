@@ -5,7 +5,11 @@ interface ExternalScannerListener {
     fun onConnectionStateChanged(state: ConnectionState) {}
     fun onConfigurationStateChanged(state: ConfigurationState) {}
     fun onScanPayload(payload: ScanPayload) {}
+    fun onIlluminationStateChanged(state: IlluminationState) {}
 }
+
+/** Confirmed lamp state; UNKNOWN must not be presented as a successful OFF. */
+enum class IlluminationState { UNSUPPORTED, UNKNOWN, APPLYING, OFF, ON, FAILED }
 
 typealias ScannerListener = ExternalScannerListener
 
@@ -49,6 +53,11 @@ interface ExternalScanner {
     val supportsConnectionControls: Boolean
         get() = true
     val expectedFormat: ScanFormat?
+    val illuminationState: IlluminationState
+        get() = IlluminationState.UNSUPPORTED
+
+    /** Returns whether the asynchronous request was accepted. */
+    fun setIllumination(enabled: Boolean): Boolean = false
 
     var listener: ExternalScannerListener?
 
@@ -149,6 +158,10 @@ private object ExternalScannerListenerMultiplexer {
 
             override fun onScanPayload(payload: ScanPayload) {
                 snapshot(entry).forEach { it.onScanPayload(payload) }
+            }
+
+            override fun onIlluminationStateChanged(state: IlluminationState) {
+                snapshot(entry).forEach { it.onIlluminationStateChanged(state) }
             }
         }
 

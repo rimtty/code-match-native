@@ -34,6 +34,9 @@ class SettingsViewModel @Inject constructor(
      * silently stop scan payload delivery.
      */
     private val scannerListener = object : ExternalScannerListener {
+        override fun onIlluminationStateChanged(state: jp.rimtty.codematch.scanner.api.IlluminationState) {
+            refreshScannerState()
+        }
         override fun onConnectionStateChanged(state: ConnectionState) {
             refreshScannerState()
         }
@@ -66,6 +69,10 @@ class SettingsViewModel @Inject constructor(
 
     fun onAction(action: SettingsUiAction) {
         when (action) {
+            is SettingsUiAction.SetIllumination -> {
+                scanner.setIllumination(action.enabled)
+                refreshScannerState()
+            }
             SettingsUiAction.OpenSetupGuide ->
                 _state.update { it.copy(setupGuideVisible = true) }
             SettingsUiAction.CloseSetupGuide ->
@@ -120,6 +127,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun scannerState(current: SettingsUiState): SettingsUiState = current.copy(
+        illuminationState = scanner.illuminationState,
         devices = scanner.devices,
         connectionState = scanner.connectionState,
         configurationState = scanner.configurationState,
