@@ -438,6 +438,65 @@ internal class AndroidInateckSdkGateway(
         }
     }
 
+    override fun setIllumination(
+        deviceId: String,
+        enabled: Boolean,
+        completion: (Result<Unit>) -> Unit,
+    ): Boolean {
+        val device = activeDevice?.takeIf { it.mac == deviceId } ?: return false
+        val attempt = connectionAttempt
+        val operation = beginOperation(device, attempt) ?: return false
+        fun finish(success: Boolean) {
+            if (!isCurrentOperation(device, attempt, operation)) return
+            finishOperation(operation)
+            completion(if (success) Result.success(Unit) else Result.failure(
+                IllegalStateException("Inateck illumination verification failed"),
+            ))
+        }
+        // Retain the partial notification accumulator: changing the lamp must
+        // not discard an already received portion of a scan.
+        return runCatching {
+            device.messager.getSettingInfo { result ->
+                dispatch {
+                    if (!isCurrentOperation(device, attempt, operation)) return@dispatch
+                    val inventory = result.getOrNull()?.map { it.toMap() }.orEmpty()
+                    val setting = InateckIlluminationSettings.read(inventory)
+                    val command = InateckIlluminationSettings.command(inventory, enabled)
+                    if (setting == null || command == null) {
+                        finish(false)
+                        return@dispatch
+                    }
+                    runCatching {
+                        device.messager.setSettingInfo(command) { written ->
+                            dispatch {
+                                if (!isCurrentOperation(device, attempt, operation)) return@dispatch
+                                if (written.isFailure) {
+                                    finish(false)
+                                    return@dispatch
+                                }
+                                runCatching {
+                                    device.messager.getSettingInfo { verified ->
+                                        dispatch {
+                                            finish(InateckIlluminationSettings.confirmed(
+                                                verified.getOrNull()?.map { it.toMap() }.orEmpty(),
+                                                setting.area,
+                                                enabled,
+                                            ))
+                                        }
+                                    }
+                                }.onFailure { finish(false) }
+                            }
+                        }
+                    }.onFailure { finish(false) }
+                }
+            }
+            true
+        }.getOrElse {
+            finishOperation(operation)
+            false
+        }
+    }
+
     override fun close() {
         if (closed) return
         closed = true

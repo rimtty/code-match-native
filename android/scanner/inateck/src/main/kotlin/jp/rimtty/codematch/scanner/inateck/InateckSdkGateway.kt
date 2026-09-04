@@ -45,5 +45,12 @@ internal interface InateckSdkGateway {
         completion: (Result<Unit>) -> Unit,
     ): Boolean
 
+    /** Reads the live identity, changes only illumination, then verifies it. */
+    fun setIllumination(
+        deviceId: String,
+        enabled: Boolean,
+        completion: (Result<Unit>) -> Unit,
+    ): Boolean = false
+
     fun close()
 }

@@ -1,6 +1,7 @@
 package jp.rimtty.codematch.feature.settings
 
 import android.content.res.Configuration
+import jp.rimtty.codematch.scanner.api.IlluminationState
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -844,6 +845,30 @@ private fun ScannerCard(
                     .fillMaxWidth()
                     .testTag(SettingsTestTags.SCANNER_CONFIGURATION_STATUS),
             )
+            if (state.illuminationState != IlluminationState.UNSUPPORTED) {
+                val lampLabel = stringResource(R.string.settings_illumination)
+                Row(
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(lampLabel, modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = state.illuminationState == IlluminationState.ON,
+                        onCheckedChange = { onAction(SettingsUiAction.SetIllumination(it)) },
+                        enabled = connected != null && state.illuminationState in setOf(
+                            IlluminationState.ON, IlluminationState.OFF, IlluminationState.FAILED,
+                        ),
+                        modifier = Modifier.testTag("settings_illumination")
+                            .semantics { contentDescription = lampLabel },
+                    )
+                }
+                Text(stringResource(when (state.illuminationState) {
+                    IlluminationState.APPLYING -> R.string.settings_illumination_applying
+                    IlluminationState.FAILED -> R.string.settings_illumination_failed
+                    IlluminationState.UNKNOWN -> R.string.settings_illumination_unknown
+                    else -> R.string.settings_illumination_description
+                }))
+            }
             if (scannerIssue.isActionable) {
                 ScannerIssueCard(
                     issue = scannerIssue,
