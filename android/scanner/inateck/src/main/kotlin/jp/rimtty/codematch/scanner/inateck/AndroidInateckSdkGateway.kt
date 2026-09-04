@@ -289,7 +289,11 @@ internal class AndroidInateckSdkGateway(
                             }
 
                             override fun onCommandTraffic() {
-                                dispatch { clearPendingScanFrame() }
+                                dispatch {
+                                    if (isCurrentAttempt(device, attempt)) {
+                                        clearPendingScanFrame()
+                                    }
+                                }
                             }
 
                             override fun onBytes(value: ByteArray) {
@@ -453,8 +457,9 @@ internal class AndroidInateckSdkGateway(
                 IllegalStateException("Inateck illumination verification failed"),
             ))
         }
-        // Retain the partial notification accumulator: changing the lamp must
-        // not discard an already received portion of a scan.
+        // Do not reset merely on submission. The bridge still clears partial
+        // scans when command traffic arrives: it cannot yet distinguish
+        // interleaved scan chunks from SDK replies while a task is running.
         return runCatching {
             device.messager.getSettingInfo { result ->
                 dispatch {
