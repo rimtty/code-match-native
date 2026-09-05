@@ -81,7 +81,9 @@ PoC hostは既存の250ms tickerと前景復帰・利用者操作の境界でSDK
 - active sessionのQR待機中に`scannerPoc`をOSからforce-stopして再起動し、checkpointの工程を維持したまま保存済みBCST-36へ自動再接続して、設定処理後に接続済み・Readyへ戻った。その状態からQR→Code 128を読み取り、照合件数が1件増えて次のQR待機へ進んだ。
 - 安全な段階ログは`incomplete` / `scan` / `delivered`だけで、payload、raw frame、設定値、device IDを含まなかった。
 
-## 残る実機ゲート
+## 過去の実機ゲートと受入範囲
+
+以下は初期評価時点の一覧です。最新の個別結果はIssue #19と[`STATUS.md`](STATUS.md)を参照してください。2026-09-05、ユーザーは残る追加確認を省略し、非配布ローカルPoCとしての受入完了を指定しました。未実施の復旧途中Ready境界・正常アプリUIを含む実SDK異常系・保持基準再接続probeの実機実行を成功扱いにはしません。通常releaseのcamera-onlyとSDK対応機種を固定しない契約は維持します。
 
 1. 同一QRの重複抑止、不一致、異なる箱QRの連続照合をBCST-36で確認する。
 2. 手動切断・予期しない切断・scanner再起動後の既知端末再接続と完全復元を確認する。アプリ強制終了はQR待機で合格済みだが、Code 128待機・結果表示中の工程復元は別途確認する。
@@ -89,4 +91,4 @@ PoC hostは既存の250ms tickerと前景復帰・利用者操作の境界でSDK
 4. scanner型番に加えてfirmware revisionを記録する。
 5. Samsung系で同じ受け入れを実施する。配付へ進む場合は、その前に正式な再配布条件と対応ABIを確認する。
 
-これらが完了するまで、通常のreleaseはカメラ入力のみです。`scannerPoc`はローカル実機評価専用で、上記のPixel/BCST-36部分合格をproduction採用やM4完了へ読み替えません。
+通常のreleaseは引き続きカメラ入力のみです。`scannerPoc`はローカル運用専用で、今回の受入完了をproduction採用・他機種での実機検証成功・再配布許諾へ読み替えません。

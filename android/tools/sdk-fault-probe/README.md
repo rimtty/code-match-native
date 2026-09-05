@@ -96,8 +96,8 @@ prohibited.
 This additional path builds and passes lint. A ninth replay JVM test verifies
 the new session uses the old store until acknowledged recovery succeeds, then
 clears it and publishes Ready. Physical execution of this new reconnect path
-is pending: the normal app is currently being left untouched for its independent
-auto-sleep acceptance observation.
+was not performed. On 2026-09-05 the user waived the remaining additional checks
+and accepted the local, non-distributed PoC. This waiver is not a hardware pass.
 
 ## Evidence boundary
 
@@ -125,4 +125,6 @@ automatic reconnect coordinator. The exact replay mode proves an application-sid
 completion loss after a successful real set/readback, not a device failure partway
 through a write. Do not infer camera-fallback UI or successful recovery of physically
 partially modified settings from these probes.
-Issue #19 remains open until those applicable acceptance conditions are resolved.
+On 2026-09-05 the user accepted completion of Issue #19 with these remaining
+additional acceptance checks waived. The unverified boundaries above remain
+unverified; closing the issue does not expand the hardware evidence or distribution scope.
