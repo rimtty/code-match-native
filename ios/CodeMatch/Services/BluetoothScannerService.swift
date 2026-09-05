@@ -118,6 +118,9 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     /// `.failed` になった後に、設定の再取得から自動でやり直す間隔と回数。
     static let configurationRecoveryDelay: Duration = .seconds(5)
     static let configurationRecoveryLimit = 3
+    /// SDK出力設定（FF04書込）用の補助接続が完了するまでの上限。
+    /// 超過してもこの設定は読取そのものに必須ではないため、先へ進む。
+    static let sdkOutputConfigurationTimeout: Duration = .seconds(8)
 
     @Published private(set) var devices: [BluetoothScannerDevice] = []
     @Published private(set) var state: BluetoothScannerConnectionState = .idle
@@ -148,6 +151,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     private var gattModeChangeInProgress = false
     private var sdkOutputConfigurationPeripheral: CBPeripheral?
     private var sdkOutputConfigurationInProgress = false
+    private var sdkOutputConfigurationTimeoutTask: Task<Void, Never>?
     private var sdkOutputConfigurationCompleted = false
     private var connectedScannerSettings: String?
     private var connectedSymbologyValues: [String: Int]?
@@ -1108,7 +1112,31 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         sdkOutputConfigurationPeripheral = peripheral
         peripheral.delegate = self
         trace("SDK-output configuration connecting: \(deviceID)")
+        // Core Bluetoothのconnect/discoverには期限がない。補助リンクの各段階の
+        // コールバックが来なくても読取設定へ進めるよう、全体に上限を置く。
+        scheduleSDKOutputConfigurationTimeout(for: peripheral)
         availabilityMonitor.connect(peripheral)
+    }
+
+    private func scheduleSDKOutputConfigurationTimeout(for peripheral: CBPeripheral) {
+        sdkOutputConfigurationTimeoutTask?.cancel()
+        sdkOutputConfigurationTimeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: Self.sdkOutputConfigurationTimeout)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, let self,
+                  self.sdkOutputConfigurationInProgress,
+                  self.sdkOutputConfigurationPeripheral?.identifier == peripheral.identifier else {
+                return
+            }
+            self.sdkOutputConfigurationTimeoutTask = nil
+            self.finishSDKOutputConfiguration(
+                peripheral,
+                message: "SDK-output configuration timed out; continuing with the current output setting"
+            )
+        }
     }
 
     private func handleSDKOutputConfigurationConnect(_ peripheral: CBPeripheral) {
@@ -1163,22 +1191,34 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     }
 
     private func finishSDKOutputConfiguration(_ peripheral: CBPeripheral, message: String) {
+        guard sdkOutputConfigurationInProgress,
+              sdkOutputConfigurationPeripheral?.identifier == peripheral.identifier else { return }
         trace(message)
+        sdkOutputConfigurationTimeoutTask?.cancel()
+        sdkOutputConfigurationTimeoutTask = nil
         sdkOutputConfigurationInProgress = false
         sdkOutputConfigurationCompleted = true
         sdkOutputConfigurationPeripheral = nil
-        availabilityMonitor?.cancelPeripheralConnection(peripheral)
+        peripheral.delegate = nil
+        if peripheral.state != .disconnected {
+            availabilityMonitor?.cancelPeripheralConnection(peripheral)
+        }
         applyExpectedCodeConfiguration(revision: symbologyConfigurationRevision)
     }
 
     private func cancelSDKOutputConfiguration() {
+        sdkOutputConfigurationTimeoutTask?.cancel()
+        sdkOutputConfigurationTimeoutTask = nil
         guard let peripheral = sdkOutputConfigurationPeripheral else {
             sdkOutputConfigurationInProgress = false
             return
         }
         sdkOutputConfigurationInProgress = false
         sdkOutputConfigurationPeripheral = nil
-        availabilityMonitor?.cancelPeripheralConnection(peripheral)
+        peripheral.delegate = nil
+        if peripheral.state != .disconnected {
+            availabilityMonitor?.cancelPeripheralConnection(peripheral)
+        }
     }
 
     private func restoreSafeBaselineBeforeDisconnect(_ sdkDevice: BLEDevice) {
@@ -1783,6 +1823,27 @@ extension BluetoothScannerService: CBCentralManagerDelegate {
                 peripheral,
                 message: "SDK-output configuration connection failed: "
                     + (error?.localizedDescription ?? "unknown error")
+            )
+        }
+    }
+
+    /// 補助リンクが途中で閉じた場合も、SDK側のリンク状態とは別に完了扱いにして
+    /// 読取設定へ進む。SDK側も切断していれば`handleSDKDisconnect`が状態を片付ける。
+    nonisolated func centralManager(
+        _ central: CBCentralManager,
+        didDisconnectPeripheral peripheral: CBPeripheral,
+        error: Error?
+    ) {
+        Task { @MainActor [weak self] in
+            guard let self,
+                  self.sdkOutputConfigurationInProgress,
+                  self.sdkOutputConfigurationPeripheral?.identifier == peripheral.identifier else {
+                return
+            }
+            self.finishSDKOutputConfiguration(
+                peripheral,
+                message: "SDK-output configuration link closed before completion: "
+                    + (error?.localizedDescription ?? "no error")
             )
         }
     }
