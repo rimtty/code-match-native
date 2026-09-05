@@ -900,6 +900,67 @@ final class BluetoothScannerServiceTests: XCTestCase {
         XCTAssertEqual(service.illuminationState, .unknown)
     }
 
+    func testTuningProfileWritesOnlyDifferingItemsUsingReportedAreas() throws {
+        let inventory = """
+        {"status":0,"data":[
+          {"area":"7","name":"code128_on","value":"1"},
+          {"area":"40","name":"qrcode_read_more_code","value":"0"},
+          {"area":"41","name":"datamatrix_read_multi","value":"1"},
+          {"area":"42","name":"read_inverse_color","value":"0"},
+          {"area":"43","name":"time_auto_off","value":"10"},
+          {"area":"44","name":"auto_close_mode","value":"10"},
+          {"area":"33","name":"lighting_lamp_control","value":"2"}
+        ]}
+        """
+        let present = try XCTUnwrap(BluetoothScannerService.tuningItemsPresent(in: inventory))
+        XCTAssertEqual(
+            present.map(\.name),
+            ["qrcode_read_more_code", "datamatrix_read_multi", "read_inverse_color", "auto_close_mode"]
+        )
+
+        let differences = BluetoothScannerService.tuningDifferences(settings: inventory)
+        XCTAssertEqual(
+            differences,
+            [
+                BluetoothScannerService.TuningItem(name: "datamatrix_read_multi", value: 0),
+                BluetoothScannerService.TuningItem(name: "auto_close_mode", value: 20)
+            ]
+        )
+
+        let command = try XCTUnwrap(
+            BluetoothScannerService.tuningCommand(settings: inventory, items: differences)
+        )
+        let items = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(command.utf8)) as? [[String: String]]
+        )
+        XCTAssertEqual(items.count, 2)
+        XCTAssertTrue(items.contains(["area": "41", "name": "datamatrix_read_multi", "value": "0"]))
+        XCTAssertTrue(items.contains(["area": "44", "name": "auto_close_mode", "value": "20"]))
+
+        // 既に一致していれば書く項目はない。inventoryに対象項目が無ければ空。
+        let matching = inventory
+            .replacingOccurrences(of: "\"datamatrix_read_multi\",\"value\":\"1\"", with: "\"datamatrix_read_multi\",\"value\":\"0\"")
+            .replacingOccurrences(of: "\"auto_close_mode\",\"value\":\"10\"", with: "\"auto_close_mode\",\"value\":\"20\"")
+        XCTAssertTrue(BluetoothScannerService.tuningDifferences(settings: matching).isEmpty)
+        XCTAssertNil(BluetoothScannerService.tuningCommand(settings: matching, items: []))
+        let none = """
+        {"status":0,"data":[{"area":"7","name":"code128_on","value":"1"}]}
+        """
+        XCTAssertEqual(BluetoothScannerService.tuningItemsPresent(in: none), [])
+        XCTAssertNil(BluetoothScannerService.tuningItemsPresent(in: "not json"))
+    }
+
+    func testSimulatorTuningStateFollowsConnection() {
+        let defaults = isolatedDefaults()
+        let service = BluetoothScannerService(defaults: defaults)
+        XCTAssertEqual(service.tuningState, .unknown)
+        service.startDiscovery()
+        service.connect(service.devices[0])
+        XCTAssertEqual(service.tuningState, .matched(applied: false))
+        service.disconnect()
+        XCTAssertEqual(service.tuningState, .unknown)
+    }
+
     func testDiagnosticLogKeepsRecentEventsAndOmitsPayloads() throws {
         let defaults = isolatedDefaults()
         let service = BluetoothScannerService(defaults: defaults)

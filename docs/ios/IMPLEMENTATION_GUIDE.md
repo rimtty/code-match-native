@@ -114,6 +114,23 @@ Android版と同じ規則で扱います。接続して読み取り設定がRead
 
 実機確認: 接続後にスイッチがOFFで確定表示になる → ONでトリガー中に点灯 → OFFで消灯 → 切断・再接続後に再びOFFへ戻る。
 
+### 読取チューニング（多コード・反転・赤光消灯時間）
+
+照明の確認後、`BluetoothScannerService.tuningProfile`（`qrcode_read_more_code` / `datamatrix_read_multi` / `pdf417_read_more_code` / `read_inverse_color` / `*_read_phase` = 0、`auto_close_mode` = 20）を接続ごとに揃えます。inventoryにある項目だけを対象にし、現在値と異なる項目があるときだけ1コマンドで書いて再取得で確認します（HPRT-4F5Fは多コード・反転が既定でOFFのため、初回は`auto_close_mode`だけが書かれ、以後は書込なし）。値は機器側に保存され、切断時には復元しません。設定画面には「確認済み（変更なし）」「適用済み」「適用しています…」の状態だけを表示します。
+
+HPRT-4F5F（2026-09-05）で確定したinventory nameと汎用flagの対応:
+
+| 目的 | inventory name | 汎用flag | 実測 |
+|---|---|---|---|
+| 赤光消灯までの時間 | `auto_close_mode`（単位0.2秒、既定10） | 1023 | 20で約3.8秒点灯 |
+| 読取モード | `scan_mode`（既定2） | 1006 | 2＝自動クローズモード。変更しない |
+| 多コード認識 | `qrcode_read_more_code` / `datamatrix_read_multi` / `pdf417_read_more_code` | 1049 | 既定0（OFF） |
+| 反転バーコード | `read_inverse_color`、`qrcode_read_phase` など `*_read_phase` | 1020 | 既定0（OFF） |
+| 照明 | `lighting_lamp_control` | 1003 | 0＝読取中点灯、2＝常時消灯 |
+| 電源自動OFF時間 | `time_auto_off`（既定10）、`auto_off`=1 | — | 赤光時間には影響しない。触らない |
+
+`time_auto_off`を試行で20にした個体は、現行プロファイル適用前に10へ戻してあります。
+
 ## 6. 次の拡張候補
 
 必要になった時だけ、設定画面でGS1-128やEANを選べる機能、懐中電灯、履歴の検索・削除、CSVエクスポートを追加します。現時点ではシンプルさと誤操作防止を優先し、実装していません。
