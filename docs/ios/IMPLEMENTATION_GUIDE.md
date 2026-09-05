@@ -66,6 +66,23 @@ App Iconは「Code 128を想起させる白いバーコード＋ライムの照�
 
 Macへの接続後は、XcodeのDevices and Simulatorsで「Connect via network」を有効にすれば、同じネットワーク上でのワイヤレス実行も可能です。初回設定とトラブル時はUSB-C接続を推奨します。
 
+### Bluetoothスキャナーの診断ログを取得する
+
+`BluetoothScannerService.trace(_:)` は接続・設定・読取受理の段階を、payload・設定値・device識別子を含めない形で記録します（1回の読取受理につき1行）。記録先は2つあります。
+
+- **アプリ内**: 直近300件を`UserDefaults`へ保持し、設定画面の「接続診断」に直近20件を表示します。同じ欄の「診断ログを共有」で全件をテキストとして共有シートへ渡せるので、長時間セッションで読取が止まったときは、その場でAirDropやメールで書き出してください。「診断ログを消去」で記録を空にできます。
+- **統合ログ**: `os.Logger`（subsystem `jp.rimtty.CodeMatch`、category `BluetoothScanner`、`privacy: .public`）にも同じ行を出力します。USB接続したMacから次のように取得できます。
+
+```sh
+# 直近30分のログを端末から収集する（端末名はXcodeのDevicesに表示される名前）
+sudo log collect --device-name "端末名" --last 30m --output codematch-ble.logarchive
+# BluetoothScannerの行だけを取り出す
+log show --predicate 'subsystem == "jp.rimtty.CodeMatch" AND category == "BluetoothScanner"' \
+  --info --style compact codematch-ble.logarchive
+```
+
+Console.appで端末を選び、検索欄に `subsystem:jp.rimtty.CodeMatch` を入れると、接続したままリアルタイムに追跡できます。再現時は「読み取らなくなった時刻」「その直前の操作（背景化・通知・切断）」「スキャナーの読取音の有無」を併せて記録してください。
+
 このアプリは一致履歴を端末内へ保存しますが、収集・追跡や外部送信は行わない構成です。将来、クラウド同期や分析SDKを追加した場合は、Privacy ManifestとApp Store Connectの回答を必ず更新してください。
 
 ## 5. 受け入れチェックリスト

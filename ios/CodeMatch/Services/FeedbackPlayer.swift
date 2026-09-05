@@ -95,6 +95,10 @@ final class FeedbackPlayer {
     )!
     /// バンドル音源のプレイヤーキャッシュ(ファイル名 → プレイヤー)
     private var filePlayers: [String: AVAudioPlayer] = [:]
+    /// AVAudioSessionのcategory設定と有効化はmediaserverdへの同期呼び出しで
+    /// 数十ms以上メインスレッドを止めるため、再生ごとではなく必要時にだけ行う。
+    private var audioSessionIsConfigured = false
+    private var sessionObservers: [NSObjectProtocol] = []
 
     /// AVAudioEngineのセットアップは重く、生成のたびにオーディオ通知を発生させて
     /// SwiftUIの再描画ループを誘発しうるため、アプリ全体で1インスタンスを共有する。
@@ -104,6 +108,33 @@ final class FeedbackPlayer {
         audioEngine.attach(audioPlayer)
         audioEngine.connect(audioPlayer, to: audioEngine.mainMixerNode, format: audioFormat)
         audioEngine.prepare()
+
+        // 着信・他アプリの割り込みやメディアサービスのリセット後はセッションが
+        // 無効化されるので、次の再生時に設定と有効化をやり直す。
+        let center = NotificationCenter.default
+        sessionObservers.append(center.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.audioSessionIsConfigured = false }
+        })
+        sessionObservers.append(center.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.audioSessionIsConfigured = false }
+        })
+    }
+
+    private func ensureAudioSession() throws {
+        guard !audioSessionIsConfigured else { return }
+        let session = AVAudioSession.sharedInstance()
+        // 工場現場向け: マナーモード(サイレントスイッチ)でも判定音を再生する
+        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        try session.setActive(true)
+        audioSessionIsConfigured = true
     }
 
     func scanAccepted() {
@@ -214,10 +245,7 @@ final class FeedbackPlayer {
     private func playFile(named name: String) {
         guard let url = Bundle.main.url(forResource: name, withExtension: "mp3") else { return }
         do {
-            let session = AVAudioSession.sharedInstance()
-            // 工場現場向け: マナーモード(サイレントスイッチ)でも判定音を再生する
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-            try session.setActive(true)
+            try ensureAudioSession()
 
             let player: AVAudioPlayer
             if let cached = filePlayers[name] {
@@ -239,10 +267,7 @@ final class FeedbackPlayer {
         guard let buffer = makeBuffer(tones: tones, gap: gap) else { return }
 
         do {
-            let session = AVAudioSession.sharedInstance()
-            // 工場現場向け: マナーモード(サイレントスイッチ)でも判定音を再生する
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-            try session.setActive(true)
+            try ensureAudioSession()
             if !audioEngine.isRunning {
                 try audioEngine.start()
             }

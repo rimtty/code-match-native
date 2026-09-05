@@ -117,6 +117,10 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     static let symbologyCommandTimeout: Duration = .seconds(10)
     /// SDKの切断通知に依存せず、SDKが保持するリンク状態を定期的に確認する間隔。
     static let linkLivenessInterval: Duration = .seconds(30)
+    /// 端末内に保持する診断イベント数。長時間セッションの事後解析に足りる量を残しつつ、
+    /// 設定画面には直近`diagnosticDisplayLimit`件だけを表示する。
+    static let diagnosticEventLimit = 300
+    static let diagnosticDisplayLimit = 20
     static let settingsRetryLimit = 4
     /// 読み取り設定の書込が失敗したときに、同じ要求を再送する回数。
     static let symbologyWriteRetryLimit = 2
@@ -230,7 +234,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                     [BluetoothScannerDiagnosticEvent].self,
                     from: data
                   ) {
-            diagnosticEvents = Array(events.suffix(20))
+            diagnosticEvents = Array(events.suffix(Self.diagnosticEventLimit))
         }
 
         migrateLastKnownDeviceFromDiagnosticsIfNeeded()
@@ -358,15 +362,20 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         // is enough for scanning, but not for the user to approve that dialog
         // and for the SDK to finish service discovery.
         sdkDevice.connect(timeout: timeout) { [weak self] value in
-            Task { @MainActor in
-                guard let self else { return }
-                self.trace("SDK scan callback invoked (\(value.utf8.count) UTF-8 bytes)")
-                guard let payload = Self.decodedSDKScanPayload(value) else {
-                    self.trace("SDK callback ignored because it was not a complete scan payload")
-                    return
+            // 複数の`Task { @MainActor }`は実行順序が保証されないため、QRとCode 128が
+            // 連続して通知されたときの逆転を防ぐ目的で、FIFOのメインキューへ直接積む。
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    guard let payload = Self.decodedSDKScanPayload(value) else {
+                        self.trace(
+                            "SDK callback ignored because it was not a complete scan payload "
+                                + "(\(value.utf8.count) UTF-8 bytes)"
+                        )
+                        return
+                    }
+                    self.receiveCode(payload)
                 }
-                self.trace("SDK scan payload decoded (\(payload.utf8.count) UTF-8 bytes)")
-                self.receiveCode(payload)
             }
         } completion: { [weak self] result in
             Task { @MainActor in
@@ -1814,13 +1823,43 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         "usps_on", "usps_fedex"
     ]
 
+    /// 設定画面の共有シートから書き出す診断ログ。payload・設定値・device識別子は
+    /// `trace`に含めない方針なので、そのまま第三者へ渡せる内容になる。
+    func diagnosticLogText() -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let info = Bundle.main.infoDictionary ?? [:]
+        let version = info["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info["CFBundleVersion"] as? String ?? "?"
+        var lines: [String] = [
+            "CodeMatch Bluetooth diagnostics",
+            "app: \(version) (\(build))",
+            "system: \(ProcessInfo.processInfo.operatingSystemVersionString)",
+            "connection: \(state.statusText)",
+            "configuration: \(String(describing: configurationState))",
+            "symbology mode: \(persistedSymbologyMode.rawValue)",
+            "events: \(diagnosticEvents.count) (limit \(Self.diagnosticEventLimit))",
+            ""
+        ]
+        lines.append(contentsOf: diagnosticEvents.map { event in
+            "\(formatter.string(from: event.date)) \(event.message)"
+        })
+        return lines.joined(separator: "\n")
+    }
+
+    func clearDiagnosticEvents() {
+        diagnosticEvents = []
+        defaults.removeObject(forKey: Self.diagnosticEventsKey)
+        logger.info("Diagnostic events cleared")
+    }
+
     private func trace(_ message: String) {
         logger.info("\(message, privacy: .public)")
         diagnosticEvents.append(
             BluetoothScannerDiagnosticEvent(date: now(), message: message)
         )
-        if diagnosticEvents.count > 20 {
-            diagnosticEvents.removeFirst(diagnosticEvents.count - 20)
+        if diagnosticEvents.count > Self.diagnosticEventLimit {
+            diagnosticEvents.removeFirst(diagnosticEvents.count - Self.diagnosticEventLimit)
         }
         if let data = try? JSONEncoder().encode(diagnosticEvents) {
             defaults.set(data, forKey: Self.diagnosticEventsKey)

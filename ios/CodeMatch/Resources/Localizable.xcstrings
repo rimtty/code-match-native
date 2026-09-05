@@ -4936,6 +4936,54 @@
           }
         }
       }
+    },
+    "診断ログを共有" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share diagnostic log"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "診断ログを共有"
+          }
+        }
+      }
+    },
+    "診断ログを消去" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear diagnostic log"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "診断ログを消去"
+          }
+        }
+      }
+    },
+    "CodeMatch Bluetooth診断ログ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CodeMatch Bluetooth diagnostic log"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CodeMatch Bluetooth診断ログ"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
