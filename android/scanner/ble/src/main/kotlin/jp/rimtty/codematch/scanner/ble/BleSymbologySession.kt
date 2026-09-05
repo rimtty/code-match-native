@@ -4,7 +4,7 @@ import jp.rimtty.codematch.scanner.api.ConfigurationState
 import jp.rimtty.codematch.scanner.api.ScanFormat
 import jp.rimtty.codematch.scanner.api.ScannerDevice
 
-/** State of the setting handshake and the fixed-mode scan session. */
+/** State of the setting handshake and the step-restricted scan session. */
 sealed interface BleSymbologySessionState {
     data object Disconnected : BleSymbologySessionState
     data object LoadingSettings : BleSymbologySessionState
@@ -25,8 +25,7 @@ sealed interface BleSymbologySessionState {
  * to Android BluetoothGatt or a vendor SDK. No scanner UUID, wire encoding,
  * flag range, vendor command, or SDK class is fixed in this module.
  *
- * A session always applies one physical mode with QR and Code 128 enabled.
- * QR→Code128 changes are logical only. Before applying that mode, a fresh full
+ * Each step enables only its expected physical symbology. Before starting, a fresh full
  * device inventory is required and is persisted. The inventory is retained
  * until restoration succeeds, including after a command/read timeout or
  * process interruption.
@@ -223,8 +222,7 @@ class BleSymbologySession(
     }
 
     /**
-     * Begins a session. The first call applies the fixed QR+Code128 mode; any
-     * later QR/Code128 change updates only the logical expected format.
+     * Begins a session with only the expected symbol enabled.
      */
     fun startSession(expectedFormat: ScanFormat): Boolean {
         if (sessionActive) return setExpectedFormat(expectedFormat)
@@ -244,7 +242,7 @@ class BleSymbologySession(
         activeSnapshot = original
         sessionActive = true
         mutableExpectedFormat = expectedFormat
-        val restricted = original.forMode(BleSymbologyMode.SESSION_CODES) ?: run {
+        val restricted = original.forMode(BleSymbologyMode.forExpectedFormat(expectedFormat)) ?: run {
             fail("Scanner settings do not contain QR and Code 128")
             return false
         }
@@ -252,24 +250,24 @@ class BleSymbologySession(
     }
 
     /**
-     * Changes only the logical step while a physical session is active.
-     *
-     * QR and Code 128 remain enabled together on the scanner. This method is
-     * intentionally separate from [startSession] so a feature coordinator can
-     * mirror a reducer's QR -> Code 128 transition without accidentally
-     * emitting another GATT setting command.
+     * Changes the physical restriction, coalescing in-flight requests to the
+     * latest step. Input stays disabled until that setting has succeeded.
      */
     fun setExpectedFormat(expectedFormat: ScanFormat): Boolean {
         if (!sessionActive) return false
         if (mutableState != BleSymbologySessionState.SessionReady &&
             mutableState !is BleSymbologySessionState.ApplyingSession
         ) return false
+        if (mutableExpectedFormat == expectedFormat) return true
         mutableExpectedFormat = expectedFormat
         if (mutableState is BleSymbologySessionState.ApplyingSession) {
             mutableState = BleSymbologySessionState.ApplyingSession(expectedFormat)
+            emit()
+            return true
         }
-        emit()
-        return true
+        val restricted = activeSnapshot?.forMode(BleSymbologyMode.forExpectedFormat(expectedFormat))
+            ?: return false
+        return apply(Operation.START_SESSION, restricted, expectedFormat)
     }
 
     /**
@@ -289,7 +287,7 @@ class BleSymbologySession(
      *
      * The physical scanner is restored to its pre-session inventory. The
      * logical format is retained so a foreground/input-source transition can
-     * start a new fixed QR+Code128 mode without losing the current step.
+     * reapply the current step restriction without losing the current step.
      */
     fun suspendForBackground(): Boolean {
         if (!sessionActive) return false
@@ -479,6 +477,16 @@ class BleSymbologySession(
                                     fail("Saved scanner settings are unavailable")
                                 } else {
                                     beginRestore(original, deferredRestore)
+                                }
+                            } else if (mutableExpectedFormat != expectedFormat) {
+                                val latest = mutableExpectedFormat
+                                val restricted = activeSnapshot?.forMode(
+                                    BleSymbologyMode.forExpectedFormat(latest),
+                                )
+                                if (latest == null || restricted == null) {
+                                    fail("Scanner settings are unavailable")
+                                } else {
+                                    apply(Operation.START_SESSION, restricted, latest)
                                 }
                             } else {
                                 mutableState = BleSymbologySessionState.SessionReady

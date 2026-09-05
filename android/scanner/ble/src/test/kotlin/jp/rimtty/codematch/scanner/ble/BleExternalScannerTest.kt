@@ -178,9 +178,12 @@ class BleExternalScannerTest {
         assertTrue(scanner.isReadyForScanning)
         assertFalse(bridge.isSuspendedForBackground)
 
-        // The QR -> Code128 transition remains logical and does not write.
+        // The QR -> Code128 transition waits for the physical setting.
         assertTrue(scanner.setExpectedFormat(ScanFormat.CODE_128))
-        assertEquals(3, transport.writes.size)
+        assertEquals(4, transport.writes.size)
+        assertFalse(scanner.isReadyForScanning)
+        transport.completeWrite(3, Result.success(Unit))
+        assertTrue(scanner.isReadyForScanning)
         assertEquals(ScanFormat.CODE_128, scanner.expectedFormat)
     }
 

@@ -79,11 +79,11 @@ class BleSymbologyTest {
             BleSymbologyMode.forExpectedFormat(null),
         )
         assertEquals(
-            BleSymbologyMode.SESSION_CODES,
+            BleSymbologyMode.QR_ONLY,
             BleSymbologyMode.forExpectedFormat(ScanFormat.QR),
         )
         assertEquals(
-            BleSymbologyMode.SESSION_CODES,
+            BleSymbologyMode.CODE_128_ONLY,
             BleSymbologyMode.forExpectedFormat(ScanFormat.CODE_128),
         )
     }

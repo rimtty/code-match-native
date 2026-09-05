@@ -90,7 +90,11 @@ enum class BleSymbologyMode {
 
     companion object {
         fun forExpectedFormat(format: ScanFormat?): BleSymbologyMode =
-            if (format == null) UNRESTRICTED else SESSION_CODES
+            when (format) {
+                ScanFormat.QR -> QR_ONLY
+                ScanFormat.CODE_128 -> CODE_128_ONLY
+                null -> UNRESTRICTED
+            }
     }
 }
 
