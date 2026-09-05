@@ -37,6 +37,9 @@ final class ScannerViewModel: ObservableObject {
     /// 一時的な非アクティブ化（Control Center、通知センター、着信など）で止めたカメラを、
     /// アクティブへ戻ったときに自動で再開するためのフラグ。
     private var cameraWasRunningBeforeInactive = false
+    /// カメラで拒否した業務外QR。同じ値がフレームごとに届くため、一定時間は再通知しない。
+    private var rejectedCameraQR: (value: String, date: Date)?
+    static let cameraRejectionRepeatInterval: TimeInterval = 2
     private var localizedMessageBuilder: (() -> String)?
 
     var expectedCode: ExpectedCode? {
@@ -164,6 +167,7 @@ final class ScannerViewModel: ObservableObject {
         isCameraStarting = false
         scanLocked = false
         barcodeCandidate = nil
+        rejectedCameraQR = nil
         focusPoint = nil
         sessionBoxNumber = 0
         if inputSource == .bluetooth, bluetoothScanner.isConnected {
@@ -475,8 +479,16 @@ final class ScannerViewModel: ObservableObject {
     }
 
     private func handleBluetoothScan(_ value: String) {
-        guard inputSource == .bluetooth, bluetoothScanner.isReadyForScanning,
-              !scanLocked, let expectedCode else { return }
+        guard inputSource == .bluetooth, bluetoothScanner.isReadyForScanning else { return }
+        // 結果表示中のトリガーは無音で捨てず、不一致・重複では確認操作が必要なことを知らせる。
+        // 一致は自動送り／手動送りの流れに任せ、通知しない。
+        if case .result(let result) = step {
+            if result != .match {
+                rejectBluetoothScan("結果を確認して「次のコードを照合」を押してください。")
+            }
+            return
+        }
+        guard !scanLocked, let expectedCode else { return }
         bluetoothConfigurationFailureCount = 0
 
         switch expectedCode {
@@ -506,6 +518,22 @@ final class ScannerViewModel: ObservableObject {
     private func rejectBluetoothScan(_ reason: String.LocalizationValue) {
         setLocalizedMessage {
             "\(AppLocalization.string(reason)) " + AppLocalization.string("読み取った値は照合に使用していません。")
+        }
+        feedback.invalidScan()
+    }
+
+    /// カメラのQRもBLEと同じ業務QR（66桁固定長）の検証を通す。無関係なQRは
+    /// 警告してQR待機と件数を保持し、履歴や診断へ値を残さない。
+    private func rejectCameraQR(_ value: String) {
+        let now = Date()
+        if let rejected = rejectedCameraQR,
+           rejected.value == value,
+           now.timeIntervalSince(rejected.date) < Self.cameraRejectionRepeatInterval {
+            return
+        }
+        rejectedCameraQR = (value, now)
+        setLocalizedMessage {
+            AppLocalization.string("納品書兼現品票のQRコードではありません。正しいQRコードを枠の中央に合わせてください。")
         }
         feedback.invalidScan()
     }
@@ -671,6 +699,10 @@ extension ScannerViewModel: CameraScannerDelegate {
 
         switch (expectedCode, type) {
         case (.qr, .qr):
+            guard KanbanQRRecord.isValidScanPayload(value) else {
+                rejectCameraQR(value)
+                return
+            }
             acceptQR(value)
         case (.barcode, .code128):
             acceptBarcodeCandidate(value)
