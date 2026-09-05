@@ -45,7 +45,7 @@ mkdir -p tmp
 ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > tmp/release-dependencies.txt
 bash scripts/test-release-hardening.sh
 bash scripts/verify-release-hardening.sh \
-  --apk app/build/outputs/apk/release/app-release-unsigned.apk \
+  --apk app/build/outputs/apk/release/app-release.apk \
   --aab app/build/outputs/bundle/release/app-release.aab \
   --dependency-report tmp/release-dependencies.txt
 ```
@@ -82,10 +82,10 @@ GitHub ActionsではAPI 31と、Linux x86_64向けに提供される最新runtim
 
 ## 現在の検証境界
 
-実装と証跡の対応表は [Android版の現在地](../docs/android/STATUS.md) にまとめています。プライバシー・権限・backup・FileProviderの境界は [Android版プライバシー境界](../docs/android/PRIVACY.md) を正本とします。公式SDKの固定version、ABI、権限、rawログ対策、scan callbackの評価は [Android BLE SDK評価メモ](../docs/android/BLE_SDK_EVALUATION.md) に記録しています。ライセンスが明示されていないためbinaryは同梱せず、配付もしません。
+到達点と打ち切った確認項目は [Android版の到達点](../docs/android/STATUS.md) にまとめています。プライバシー・権限・backup・FileProviderの境界は [Android版プライバシー境界](../docs/android/PRIVACY.md) を正本とします。公式SDKの固定version、ABI、権限、rawログ対策、scan callbackの評価は [Android BLE SDK評価メモ](../docs/android/BLE_SDK_EVALUATION.md) に記録しています。ライセンスが明示されていないためbinaryはGitへ含めず、生成したAPKも配付しません。
 
 ## Fake scannerの境界
 
 Fake scannerは`scanner/fake`へ置き、`app`からは`debugImplementation`だけで参照します。`releaseImplementation`や`implementation`では参照しないため、リリース依存グラフとAPKにFake入口を含めない構成です。CIの`android-release-build` jobがこの境界を確認します。
 
-`scanner/ble`には、command直列化、timeout後の停止、完全設定snapshot、復元前Ready禁止、payload正規化と重複抑制を置いています。`scanner/inateck`は公式2.0.0 SDKのscan/connect/getSettingInfo/setSettingInfoと公式native通知parserをこの安全コアへ接続し、FF01の設定応答と分割scan通知を単一ルーターで分離します。`release`は`BLUETOOTH_SCAN`（neverForLocation）と`BLUETOOTH_CONNECT`だけを要求し、legacy Bluetooth・位置情報・広告・ネットワーク権限を`tools:node="remove"`で除外します（`app/src/release/AndroidManifest.xml`）。minified releaseはSDKのLog/System.out呼び出しを除去します。Pixel 7 / BCST-36ではQR→Code 128一致、背景復元、active session中のapp force-stop後の既知端末自動再接続・Ready復帰と、その後のQR→Code 128一致まで実機確認済みですが、残る重複・不一致・連続箱・切断・scanner再起動・timeout・Samsung等のゲートが完了するまでM4/full parityとは扱いません。
+`scanner/ble`には、command直列化、timeout後の停止、完全設定snapshot、復元前Ready禁止、payload正規化と重複抑制を置いています。`scanner/inateck`は公式2.0.0 SDKのscan/connect/getSettingInfo/setSettingInfoと公式native通知parserをこの安全コアへ接続し、FF01の設定応答と分割scan通知を単一ルーターで分離します。`release`は`BLUETOOTH_SCAN`（neverForLocation）と`BLUETOOTH_CONNECT`だけを要求し、legacy Bluetooth・位置情報・広告・ネットワーク権限を`tools:node="remove"`で除外します（`app/src/release/AndroidManifest.xml`）。minified releaseはSDKのLog/System.out呼び出しを除去します。Pixel 7 / BCST-36ではQR→Code 128一致、背景復元、active session中のapp force-stop後の既知端末自動再接続・Ready復帰、手動切断・電源OFF後の再接続、`release` APKでの照合完了まで実機確認済みです。重複・連続箱・予期しない切断・scanner再起動・timeout・Samsung等の残るゲートは手元利用専用の方針（Issue #57）で打ち切りとし、一覧は[`docs/android/STATUS.md`](../docs/android/STATUS.md)にあります。

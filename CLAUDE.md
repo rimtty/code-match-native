@@ -13,7 +13,7 @@ The cross-platform behavior contract lives in [docs/PRODUCT_SPEC.md](docs/PRODUC
 
 ## Project policy (as of 2026-09)
 
-- **Android is for personal, local use only.** APKs are built and side-loaded by the owner; there is no store submission. Do not add store-submission work. The remaining "未完了境界" / BLE physical-device gates listed in `docs/android/` are waived and will not be verified further (see issues #57). Scanner SDK libraries are bundled in the normal `release` build (#56); there is no separate `scannerPoc` build type anymore.
+- **Android is for personal, local use only.** APKs are built and side-loaded by the owner; there is no store submission. Do not add store-submission work. The remaining physical-device / manual gates (Samsung, TalkBack, BLE fault cases, etc.) are waived and will not be verified further; `docs/android/STATUS.md` lists them under 打ち切った確認項目 (see issue #57). Scanner SDK libraries are bundled in the normal `release` build (#56); there is no separate `scannerPoc` build type anymore.
 - **iOS is complete**, but a report exists that the Bluetooth scanner stops reading after continuous use; a code audit is tracked in #58.
 - Scanner SDK setting tuning (areas 2001–2028 symbology, 1003 illumination, 1006/1023 read timeout, 1049 multi-code, 1020 inverse) still has room on both platforms — see #59 and #39.
 - Work items that should be tracked go into GitHub Issues (`gh issue create`).

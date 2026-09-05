@@ -9,7 +9,7 @@ Swift版の全機能をAndroidへ移植し、業務フロー・情報量・結�
 1. カメラ、照合、履歴、PDF、音・触覚、設定、日英表示を含む「BLE以外の完全パリティ」を先に完成させる。
 2. BLEの画面と状態遷移はモックで先行実装し、実機とAndroid向けSDKを入手した後に通信層を実装・検証する。
 
-BLEを除いた中間成果物は開発・評価用として成立するが、Swift版との「全機能パリティ完了」はBLE実機検証が終わるまで宣言しない。
+BLEを除いた中間成果物は開発・評価用として成立する。Swift版との「全機能パリティ完了」は当初BLE実機検証の完了を条件としていたが、2026-09-05の判断（Issue #57）でAndroid版を手元利用専用（Pixel 7 / BCST-36、ストア提出なし）とし、残る実機・手動ゲートは打ち切った。現在の到達点と打ち切り項目は[`STATUS.md`](STATUS.md)を正本とし、本計画の各節にある「未完扱い」「宣言しない」は当時の計画上の条件として残す。
 
 ## 2. 移植の基準
 
@@ -71,8 +71,8 @@ BLEを除いた中間成果物は開発・評価用として成立するが、Sw
 | エラー | カメラ/Bluetooth/保存の状態別案内 | 型付きUiState | 技術的な例外文字列を直接表示せず、回復操作を示す |
 | ライフサイクル | 背景化でカメラ停止、復帰で論理工程を維持 | Lifecycle-aware state | 背景・回転・プロセス再生成で二重解析や工程消失なし |
 | アクセシビリティ | ラベル、結合読み上げ、大きな操作面 | Compose semantics | TalkBack、48dp以上、フォント拡大、色以外の状態表現を確認 |
-| プライバシー | ネット送信なし、履歴をバックアップ対象外 | production BLE未接続段階はINTERNET/Nearby権限なし、backup rules | 通信依存なし、画像を保存しない、DBをクラウドバックアップしない。現行の境界は[`PRIVACY.md`](PRIVACY.md)を正本とする |
-| BLE | 検索・接続・再接続・診断・設定保存復元・カメラfallback | 抽象層とFakeを先行、実通信は最終フェーズ | 実機入手後の専用受け入れ基準をすべて満たすまで未完扱い |
+| プライバシー | ネット送信なし、履歴をバックアップ対象外 | INTERNET/位置情報/legacy Bluetoothなし、Nearby権限はSCAN/CONNECTのみ、backup rules | 通信依存なし、画像を保存しない、DBをクラウドバックアップしない。現行の境界は[`PRIVACY.md`](PRIVACY.md)を正本とする |
+| BLE | 検索・接続・再接続・診断・設定保存復元・カメラfallback | 抽象層とFakeを先行、実通信は公式SDK adapterを`release`へ同梱（#56） | Pixel 7 / BCST-36で受入済みの範囲と打ち切り項目は[`STATUS.md`](STATUS.md) |
 
 Swiftテストには、iOS固有の画面収録防御（`TEST_PARITY.md` #6）と、旧iOS版のUserDefaults/診断データを新しい保存形式へ移す互換処理（同 #38、#42）も含まれる。これらはAndroidの現行共通仕様や新規保存形式への移植対象ではなく、根拠リンク付きの`N/A`としてパリティ完了条件から除外する。Androidの実カメラ、対象BLE、保存・共有先、アクセシビリティの手動ゲートは除外しない。
 
@@ -383,7 +383,7 @@ iOSで観測した`FF00`/`FF01`〜`FF05`やJSON形式は調査の手掛かりに
 
 現行のAndroid固有のデータ・権限境界、検査コマンド、候補SDKの採用保留理由は、それぞれ[`PRIVACY.md`](PRIVACY.md)と[`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)に整理する。以下の要件は、候補SDKを追加しても緩めない。
 
-- production BLE adapter未接続の現段階では、release manifestに`INTERNET`、`ACCESS_NETWORK_STATE`、BLE/Nearby系権限を追加しない。依存ライブラリが宣言しても、アプリ側のmanifest mergeで除外する。M4で実機adapterを接続する時は、必要時の`BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`だけを許可し、位置情報・広告・他のNearby権限は追加しない。
+- release manifestに`INTERNET`、`ACCESS_NETWORK_STATE`、legacy Bluetooth、位置情報、広告権限を追加しない。依存ライブラリが宣言しても、アプリ側のmanifest mergeで除外する。公式SDK adapterを同梱する`release`（#56）は必要時の`BLUETOOTH_SCAN`（neverForLocation）/ `BLUETOOTH_CONNECT`だけを要求する。
 - カメラframeと読み取り画像を保存しない。
 - 履歴、payload、BLE診断をanalytics/crash reportへ送らない。
 - Room DB、DataStore、BLE既知端末情報をAuto Backupとdevice-to-device transferから除外する。
@@ -439,8 +439,8 @@ Swift版の5本のUIテストを少なくとも次のシナリオへ対応させ
 
 - エミュレーターはCIの継続証拠とし、API 31（対応下限）とGitHub Linux x86_64で提供される最新runtime（現時点はAPI 36）の両方で主要フローを確認する。compile/target SDK 37はbuild jobで保証し、API 37 runtimeは提供済みのApple Silicon用imageをローカルで確認する。カメラ完了判定は実Android端末で行う。
 - Pixel 7（Android 16 / API 36）または同等の実Android端末でCameraX/ML Kit、タップフォーカス、回転、背景復帰、音・触覚を確認し、実施端末と結果を記録する。未接続時は未実施とする。
-- 可能ならSamsung系を加え、カメラと省電力/OEM差を確認する。
-- BLE完了判定は対象scanner実機なしでは行わない。
+- Samsung系のカメラと省電力/OEM差はIssue #57で対象外（打ち切り）。
+- BLE完了判定は対象scanner実機なしでは行わない。Pixel 7 / BCST-36での受入範囲と打ち切り項目は[`STATUS.md`](STATUS.md)。
 - 実機の手順、証跡テンプレート、未実施項目の扱いは[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)に従う。エミュレーター・CIの成功をカメラ実読取やBLE成功の証拠へ読み替えない。
 
 ## 13. CI計画
@@ -516,7 +516,7 @@ M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触�
 
 実装済み: CameraX 1.6.2 Preview/ImageAnalysis、端末同梱ML Kit 17.3.0、QR/Code 128の工程別限定、`KEEP_ONLY_LATEST`とin-flight frame drop、表示枠と共通のROI、変換後四隅判定、elapsed realtime timestamp、AF/AE tap focus、権限状態、lifecycle停止、解析世代による停止後callback破棄、処理中ML Kit taskをdrainしてから論理sessionを終了する境界、同一hostでのQR読み直し後rebind。release APKから`INTERNET` / `ACCESS_NETWORK_STATE`権限が除外されることも確認済み。AABを含む継続的な検査はrelease hardening checkerで行う。
 
-コード、CameraX/ML Kit境界、権限状態、ROI、lifecycle、semantics focus action、instrumentation testは存在する。2026-09-04にPixel 7の縦画面で、工程別ガイド枠内だけを解析する実装により実ラベルのQR → Code 128一致まで確認した。タップfocus、不一致・連続箱、回転・背景復帰、Samsungの受け入れ記録が揃うまではM3完了とは扱わない。実施時は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)へ端末情報と証跡を残す。
+コード、CameraX/ML Kit境界、権限状態、ROI、lifecycle、semantics focus action、instrumentation testは存在する。2026-09-04にPixel 7の縦画面で、工程別ガイド枠内だけを解析する実装により実ラベルのQR → Code 128一致まで確認した。その後タップfocus、不一致、背景復帰、権限拒否・再許可をPixel 7でユーザーが承認し、回転・連続箱・SamsungはIssue #57で打ち切った。実施時は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)へ端末情報と証跡を残す。
 
 ### M4: Full parity
 
@@ -528,9 +528,9 @@ M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触�
 - Pixel系/Samsung系で実機回帰
 - Swift版との機能対応表に未完了がない
 
-準備済み: SDK非依存のBLE safety core、1 command直列化、timeout後のtransport reset、QR+Code 128固定mode、全reported item snapshot、復元完了前Ready禁止、payload parser、750ms重複境界。公式Inateck Android SDK 2.0.0は非配付`scannerPoc`だけへ接続し、SDKのarea/name/value inventoryを全件保存・書込・再読込照合する。SDK command応答とscan通知を共有するFF01は単一routerで分離し、公式native parserの分割再構成とBCST-36 type-1 checksum/header処理、最大長、世代取消を検査する。SDKの同期/非同期切断失敗は型付きeventとして安全コアへ渡し、旧linkを保持したままcloseだけを有限再試行し、切断完了確認前のconnectを禁止する。PoCだけがNearby最小権限を持ち、minified artifactからvendorのLog/System.out呼び出しを除去する。通常releaseはカメラ専用のまま、SDK/native/Nearby権限を拒否する。2026-09-04にPixel 7 / BCST-36で検索・接続・設定readback・QR→Code 128一致・背景復元・QR待機中のapp force-stop後自動再接続と、その後のQR→Code 128一致まで成功したが、重複/不一致/連続箱、手動/予期しない切断、scanner再起動、Bluetooth権限変化中のlive link、QR待機以外のforce-stop、timeout、Samsung、配付条件が未完了なので、M4完了とは扱わない。
+準備済み: SDK非依存のBLE safety core、1 command直列化、timeout後のtransport reset、QR+Code 128固定mode、全reported item snapshot、復元完了前Ready禁止、payload parser、750ms重複境界。公式Inateck Android SDK 2.0.0は非配付`scannerPoc`だけへ接続し、SDKのarea/name/value inventoryを全件保存・書込・再読込照合する。SDK command応答とscan通知を共有するFF01は単一routerで分離し、公式native parserの分割再構成とBCST-36 type-1 checksum/header処理、最大長、世代取消を検査する。SDKの同期/非同期切断失敗は型付きeventとして安全コアへ渡し、旧linkを保持したままcloseだけを有限再試行し、切断完了確認前のconnectを禁止する。minified artifactからvendorのLog/System.out呼び出しを除去する（当初は非配付`scannerPoc`だけがSDKとNearby最小権限を持ち、通常releaseはカメラ専用だった）。2026-09-04にPixel 7 / BCST-36で検索・接続・設定readback・QR→Code 128一致・背景復元・QR待機中のapp force-stop後自動再接続と、その後のQR→Code 128一致まで成功し、2026-09-05には手動切断・電源OFF後の再接続と`release` APKでの照合完了をユーザーが確認した。重複/不一致/連続箱、予期しない切断、scanner再起動、Bluetooth権限変化中のlive link、QR待機以外のforce-stop、timeout、Samsung、配付条件はIssue #57で打ち切り、M4は手元利用向けの到達点として扱う。
 
-SDK公開元には再配付ライセンスが明示されていないためbinaryをGitへ含めず、固定commitからchecksum検証付きでローカル取得する。2026-09-05（#56）に`scannerPoc`を廃止し、SDKを通常の`release`へ同梱した。releaseはarm64限定で手元利用専用、配付やストア提出はしない。詳細は[`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)に記録し、対象scanner実機と正式な供給条件が確定するまでBLE成功やfull parityを宣言しない。
+SDK公開元には再配付ライセンスが明示されていないためbinaryをGitへ含めず、固定commitからchecksum検証付きでローカル取得する。2026-09-05（#56）に`scannerPoc`を廃止し、SDKを通常の`release`へ同梱した。releaseはarm64限定で手元利用専用、配付やストア提出はしない。詳細は[`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)に記録する。第三者へ配付する場合は正式な供給条件の確認が別途必要である。
 
 ## 16. Definition of Done
 
@@ -550,7 +550,7 @@ Androidポーティング全体は、次をすべて満たした時だけ完了�
 
 ## 17. 最初に作るissue（計画時の分割）
 
-現在の実装状況と未完了ゲートは[`STATUS.md`](STATUS.md)を正本とする。以下は計画をissueへ分割する際の一覧であり、未着手を意味しない。
+現在の到達点と打ち切った確認項目は[`STATUS.md`](STATUS.md)を正本とする。以下は計画をissueへ分割する際の一覧であり、未着手を意味しない。
 
 1. Android Gradle/Composeプロジェクトと独立CIを追加
 2. Material 3 CodeMatch design tokensと3 destination navigation
