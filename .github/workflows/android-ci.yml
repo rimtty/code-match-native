@@ -73,6 +73,9 @@ jobs:
       - name: Verify Inateck SDK PoC isolation
         run: bash scripts/verify-inateck-sdk-poc.sh
 
+      - name: Build and test opt-in standalone SDK probe
+        run: ./gradlew -PincludeSdkProbe=true :tools:sdk-probe:assembleDebug :tools:sdk-probe:lintDebug :tools:sdk-probe:testDebugUnitTest --stacktrace
+
       - name: Verify release hardening source contract
         run: bash scripts/test-release-hardening.sh
 
