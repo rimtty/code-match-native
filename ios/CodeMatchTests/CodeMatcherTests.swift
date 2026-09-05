@@ -1148,6 +1148,71 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertEqual(context.service.persistedSymbologyMode, .sessionCodes)
     }
 
+    func testInactivePhaseKeepsBluetoothSymbologyRestriction() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.service.expectedCode, .barcode)
+
+        var configurationUpdates: [BluetoothScannerConfigurationState] = []
+        let observation = context.service.$configurationState
+            .dropFirst()
+            .sink { configurationUpdates.append($0) }
+
+        // Control Centerや通知センターなどの一時的な非アクティブ化では、
+        // スキャナーの読み取り設定を復元・再制限しない。
+        context.viewModel.prepareForInactive()
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.service.expectedCode, .barcode)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .sessionCodes)
+
+        context.viewModel.resumeAfterForeground()
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.service.expectedCode, .barcode)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .sessionCodes)
+        XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+        XCTAssertTrue(configurationUpdates.isEmpty)
+        XCTAssertTrue(context.service.isReadyForScanning)
+        withExtendedLifetime(observation) {}
+    }
+
+    func testActivePhaseRestartsCameraStoppedByInactivePhase() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+        context.viewModel.cameraScannerDidStart(context.viewModel.camera)
+        XCTAssertTrue(context.viewModel.isCameraRunning)
+
+        context.viewModel.prepareForInactive()
+        try? await Task.sleep(for: .milliseconds(300))
+        XCTAssertFalse(context.viewModel.isCameraRunning)
+        XCTAssertFalse(context.viewModel.isCameraStarting)
+
+        // 一時的な非アクティブ化で止めたカメラは、アクティブへ戻ったときに再開を要求する。
+        context.viewModel.resumeAfterForeground()
+        XCTAssertTrue(context.viewModel.isCameraStarting)
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+    }
+
+    func testActivePhaseDoesNotRestartCameraStoppedByUser() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.viewModel.cameraScannerDidStart(context.viewModel.camera)
+        context.viewModel.stopCamera(showMessage: true)
+        try? await Task.sleep(for: .milliseconds(300))
+        XCTAssertFalse(context.viewModel.isCameraRunning)
+
+        context.viewModel.prepareForInactive()
+        context.viewModel.resumeAfterForeground()
+
+        XCTAssertFalse(context.viewModel.isCameraStarting)
+        XCTAssertFalse(context.viewModel.isCameraRunning)
+    }
+
     func testEndingBluetoothSessionRestoresUnrestrictedBaseline() async {
         let context = makeContext()
         defer { context.cleanup() }

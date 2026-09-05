@@ -60,11 +60,18 @@ struct ScannerScreen: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
+            switch phase {
+            case .active:
                 viewModel.resumeAfterForeground()
-            } else {
+            case .inactive:
+                // 一時的な非アクティブ化ではカメラだけ止め、スキャナーの
+                // 読み取り設定は書き換えない（復元はバックグラウンド時に限定）。
+                viewModel.prepareForInactive()
+            case .background:
                 // UI状態にかかわらず開始待ちも含めて必ず停止し、Bluetoothは
                 // 強制終了されても困らない安全な読取設定へ戻す。
+                viewModel.prepareForBackground()
+            @unknown default:
                 viewModel.prepareForBackground()
             }
         }
