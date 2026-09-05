@@ -6,10 +6,18 @@ interface ExternalScannerListener {
     fun onConfigurationStateChanged(state: ConfigurationState) {}
     fun onScanPayload(payload: ScanPayload) {}
     fun onIlluminationStateChanged(state: IlluminationState) {}
+    fun onTuningStateChanged(state: TuningState) {}
 }
 
 /** Confirmed lamp state; UNKNOWN must not be presented as a successful OFF. */
 enum class IlluminationState { UNSUPPORTED, UNKNOWN, APPLYING, OFF, ON, FAILED }
+
+/**
+ * Connect-time read tuning (multi-code off, inverse off, red-light time).
+ * MATCHED means the scanner already had the profile; APPLIED means a write
+ * was needed and the readback confirmed it.
+ */
+enum class TuningState { UNSUPPORTED, UNKNOWN, APPLYING, MATCHED, APPLIED, FAILED }
 
 typealias ScannerListener = ExternalScannerListener
 
@@ -58,6 +66,9 @@ interface ExternalScanner {
 
     /** Returns whether the asynchronous request was accepted. */
     fun setIllumination(enabled: Boolean): Boolean = false
+
+    val tuningState: TuningState
+        get() = TuningState.UNSUPPORTED
 
     var listener: ExternalScannerListener?
 
@@ -162,6 +173,10 @@ private object ExternalScannerListenerMultiplexer {
 
             override fun onIlluminationStateChanged(state: IlluminationState) {
                 snapshot(entry).forEach { it.onIlluminationStateChanged(state) }
+            }
+
+            override fun onTuningStateChanged(state: TuningState) {
+                snapshot(entry).forEach { it.onTuningStateChanged(state) }
             }
         }
 

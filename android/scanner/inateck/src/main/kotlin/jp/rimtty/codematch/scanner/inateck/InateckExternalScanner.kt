@@ -14,6 +14,7 @@ import jp.rimtty.codematch.scanner.api.ExternalScanner
 import jp.rimtty.codematch.scanner.api.ExternalScannerListener
 import jp.rimtty.codematch.scanner.api.ScanFormat
 import jp.rimtty.codematch.scanner.api.IlluminationState
+import jp.rimtty.codematch.scanner.api.TuningState
 import jp.rimtty.codematch.scanner.api.ScannerDevice
 import jp.rimtty.codematch.scanner.ble.BleConnectionCoordinator
 import jp.rimtty.codematch.scanner.ble.BleKnownDeviceStore
@@ -31,6 +32,8 @@ const val INATECK_ANDROID_SDK_PROFILE_IDENTITY =
 internal const val INATECK_SETTINGS_ENDPOINT = "inateck-sdk:get-set-setting-info"
 private const val TICK_INTERVAL_MILLIS = 250L
 private const val RESET_RECONNECT_DELAY_MILLIS = 8_000L
+private const val TUNING_RETRY_DELAY_MILLIS = 1_000L
+private const val TUNING_ATTEMPT_LIMIT = 10
 
 /**
  * Official-SDK-backed scanner bound by the `release` app variant.
@@ -51,6 +54,10 @@ class InateckExternalScanner private constructor(
     private var illuminationGeneration = 0L
     private var illuminationDeadline = 0L
     private var illuminationWaitingForDisconnect = false
+    private var tuningGeneration = 0L
+    private var tuningDeadline = 0L
+    private var tuningRetryAt = 0L
+    private var tuningAttempts = 0
     private var applicationForeground = false
     private val deferredSettings = InateckDeferredSettings()
 
@@ -66,6 +73,8 @@ class InateckExternalScanner private constructor(
     }
     override var illuminationState = IlluminationState.UNKNOWN
         private set
+    override var tuningState = TuningState.UNKNOWN
+        private set
     private val illuminationConnectionObserver = object : ExternalScannerListener {
         override fun onConnectionStateChanged(state: ConnectionState) {
             // Invalidate immediately, even if disconnect/reconnect occurs
@@ -74,6 +83,7 @@ class InateckExternalScanner private constructor(
                 illuminationGeneration++
                 illuminationDeviceId = null
                 publishIllumination(IlluminationState.UNKNOWN)
+                resetTuning()
                 handler.post { if (!closed) drainDeferredSettings() }
             }
         }
@@ -84,6 +94,80 @@ class InateckExternalScanner private constructor(
         illuminationState = state
         (illuminationObservers.toList() + listOfNotNull(listener)).distinct().forEach {
             it.onIlluminationStateChanged(state)
+        }
+    }
+
+    private fun publishTuning(state: TuningState) {
+        if (tuningState == state) return
+        tuningState = state
+        (illuminationObservers.toList() + listOfNotNull(listener)).distinct().forEach {
+            it.onTuningStateChanged(state)
+        }
+    }
+
+    private fun resetTuning() {
+        tuningGeneration++
+        tuningAttempts = 0
+        tuningRetryAt = 0L
+        publishTuning(TuningState.UNKNOWN)
+    }
+
+    private val settingsBusy: Boolean
+        get() = illuminationWaitingForDisconnect ||
+            illuminationState == IlluminationState.APPLYING ||
+            tuningState == TuningState.APPLYING
+
+    /**
+     * Read tuning runs once per connection after the illumination check has
+     * settled (ON / OFF / UNSUPPORTED). It uses the same 30 s deadline and
+     * the same wait-for-disconnect fallback as illumination so a stuck SDK
+     * task never stacks another command on the shared characteristic.
+     */
+    private fun refreshTuning() {
+        if (illuminationWaitingForDisconnect) return
+        val deviceId = connectedDevice?.id ?: return
+        if (tuningState == TuningState.APPLYING && nowMillis() >= tuningDeadline) {
+            tuningGeneration++
+            illuminationWaitingForDisconnect = true
+            publishTuning(TuningState.FAILED)
+            delegate.disconnect()
+            drainDeferredSettings()
+            return
+        }
+        val illuminationSettled = illuminationState == IlluminationState.ON ||
+            illuminationState == IlluminationState.OFF ||
+            illuminationState == IlluminationState.UNSUPPORTED
+        if (applicationForeground && tuningState == TuningState.UNKNOWN && illuminationSettled &&
+            configurationState.isReady && nowMillis() >= tuningRetryAt
+        ) {
+            applyTuning(deviceId)
+        }
+    }
+
+    private fun applyTuning(deviceId: String) {
+        val generation = ++tuningGeneration
+        tuningDeadline = nowMillis() + 30_000L
+        publishTuning(TuningState.APPLYING)
+        val accepted = gateway.applyTuning(deviceId) { outcome ->
+            if (!closed && generation == tuningGeneration && connectedDevice?.id == deviceId) {
+                publishTuning(
+                    when (outcome) {
+                        InateckTuningOutcome.UNSUPPORTED -> TuningState.UNSUPPORTED
+                        InateckTuningOutcome.MATCHED -> TuningState.MATCHED
+                        InateckTuningOutcome.APPLIED -> TuningState.APPLIED
+                        InateckTuningOutcome.FAILED -> TuningState.FAILED
+                    },
+                )
+                drainDeferredSettings()
+            }
+        }
+        if (!accepted && generation == tuningGeneration) {
+            // Another SDK operation owns the link right now (or this gateway
+            // cannot tune). Retry on a later tick a bounded number of times.
+            tuningAttempts++
+            tuningRetryAt = nowMillis() + TUNING_RETRY_DELAY_MILLIS
+            publishTuning(if (tuningAttempts >= TUNING_ATTEMPT_LIMIT) TuningState.UNSUPPORTED else TuningState.UNKNOWN)
+            drainDeferredSettings()
         }
     }
 
@@ -98,6 +182,7 @@ class InateckExternalScanner private constructor(
             illuminationDeviceId = deviceId
             illuminationGeneration++
             publishIllumination(IlluminationState.UNKNOWN)
+            resetTuning()
         }
         if (deviceId == null) return
         if (illuminationState == IlluminationState.APPLYING && nowMillis() >= illuminationDeadline) {
@@ -150,6 +235,7 @@ class InateckExternalScanner private constructor(
             delegate.tick(nowMillis())
             reconcileTransportReset()
             refreshIllumination()
+            refreshTuning()
             handler.postDelayed(this, TICK_INTERVAL_MILLIS)
         }
     }
@@ -221,7 +307,7 @@ class InateckExternalScanner private constructor(
 
     override fun setExpectedFormat(format: ScanFormat?): Boolean {
         transport.refreshReadiness()
-        if (!closed && (illuminationWaitingForDisconnect || illuminationState == IlluminationState.APPLYING)) {
+        if (!closed && settingsBusy) {
             deferredSettings.offer(InateckDeferredSettings.Action.Format(format))
             return true
         }
@@ -232,7 +318,7 @@ class InateckExternalScanner private constructor(
         applicationForeground = true
         transport.refreshReadiness()
         if (closed) return
-        if (illuminationWaitingForDisconnect || illuminationState == IlluminationState.APPLYING) {
+        if (settingsBusy) {
             deferredSettings.offer(InateckDeferredSettings.Action.ApplicationActive(true))
         } else delegate.setApplicationActive(true, nowMillis())
         // A process recreation restores the known identity synchronously, but
@@ -245,7 +331,7 @@ class InateckExternalScanner private constructor(
     override fun onStop(owner: LifecycleOwner) {
         applicationForeground = false
         startupRecovery.onBackground()
-        if (illuminationWaitingForDisconnect || illuminationState == IlluminationState.APPLYING) {
+        if (settingsBusy) {
             deferredSettings.offer(InateckDeferredSettings.Action.ApplicationActive(false))
         } else delegate.setApplicationActive(false, nowMillis())
     }
@@ -254,6 +340,7 @@ class InateckExternalScanner private constructor(
         if (closed) return
         closed = true
         illuminationGeneration++
+        tuningGeneration++
         illuminationObservers.clear()
         deferredSettings.clear()
         delegate.removeListener(illuminationConnectionObserver)

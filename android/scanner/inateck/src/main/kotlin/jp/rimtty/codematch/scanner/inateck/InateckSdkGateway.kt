@@ -52,5 +52,14 @@ internal interface InateckSdkGateway {
         completion: (Result<Unit>) -> Unit,
     ): Boolean = false
 
+    /**
+     * Reads the inventory, writes only the tuning items that differ from
+     * [InateckTuningSettings.profile], then reads back to confirm.
+     */
+    fun applyTuning(
+        deviceId: String,
+        completion: (InateckTuningOutcome) -> Unit,
+    ): Boolean = false
+
     fun close()
 }
