@@ -825,6 +825,81 @@ final class BluetoothScannerServiceTests: XCTestCase {
 
     private let suiteName = "BluetoothScannerServiceTests"
 
+    func testIlluminationSettingUsesReportedAreaAndConfirmsReadback() throws {
+        let inventory = """
+        {"status":0,"data":[
+          {"area":"7","name":"code128_on","value":"1","flag":"2008"},
+          {"area":"21","name":"qrcode_on","value":"1","flag":"2022"},
+          {"area":"33","name":"lighting_lamp_control","value":"2","flag":"1003"},
+          {"area":"1","name":"bt_mode_low","value":"0"}
+        ]}
+        """
+        XCTAssertEqual(
+            BluetoothScannerService.illuminationSetting(from: inventory),
+            BluetoothScannerService.IlluminationSetting(area: "33", value: 2)
+        )
+
+        let command = try XCTUnwrap(
+            BluetoothScannerService.illuminationCommand(settings: inventory, enabled: true)
+        )
+        let items = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(command.utf8)) as? [[String: String]]
+        )
+        XCTAssertEqual(items, [["area": "33", "name": "lighting_lamp_control", "value": "0"]])
+
+        let readbackOn = inventory.replacingOccurrences(
+            of: "\"lighting_lamp_control\",\"value\":\"2\"",
+            with: "\"lighting_lamp_control\",\"value\":\"0\""
+        )
+        XCTAssertTrue(
+            BluetoothScannerService.illuminationConfirmed(settings: readbackOn, area: "33", enabled: true)
+        )
+        XCTAssertFalse(
+            BluetoothScannerService.illuminationConfirmed(settings: inventory, area: "33", enabled: true)
+        )
+        XCTAssertFalse(
+            BluetoothScannerService.illuminationConfirmed(settings: readbackOn, area: "34", enabled: true)
+        )
+
+        // 項目が無い・重複・範囲外の値は扱わない。
+        let missing = """
+        {"status":0,"data":[{"area":"7","name":"code128_on","value":"1"}]}
+        """
+        XCTAssertNil(BluetoothScannerService.illuminationSetting(from: missing))
+        XCTAssertNil(BluetoothScannerService.illuminationCommand(settings: missing, enabled: false))
+        let duplicated = """
+        {"status":0,"data":[
+          {"area":"33","name":"lighting_lamp_control","value":"2"},
+          {"area":"34","name":"lighting_lamp_control","value":"2"}
+        ]}
+        """
+        XCTAssertNil(BluetoothScannerService.illuminationSetting(from: duplicated))
+        let outOfRange = """
+        {"status":0,"data":[{"area":"33","name":"lighting_lamp_control","value":"5"}]}
+        """
+        XCTAssertNil(BluetoothScannerService.illuminationSetting(from: outOfRange))
+    }
+
+    func testSimulatorIlluminationStartsOffAndFollowsRequests() {
+        let defaults = isolatedDefaults()
+        let service = BluetoothScannerService(defaults: defaults)
+        XCTAssertEqual(service.illuminationState, .unknown)
+
+        service.startDiscovery()
+        service.connect(service.devices[0])
+        XCTAssertEqual(service.illuminationState, .off)
+
+        service.setIllumination(true)
+        XCTAssertEqual(service.illuminationState, .on)
+        service.setIllumination(false)
+        XCTAssertEqual(service.illuminationState, .off)
+
+        service.disconnect()
+        XCTAssertEqual(service.illuminationState, .unknown)
+        service.setIllumination(true)
+        XCTAssertEqual(service.illuminationState, .unknown)
+    }
+
     func testDiagnosticLogKeepsRecentEventsAndOmitsPayloads() throws {
         let defaults = isolatedDefaults()
         let service = BluetoothScannerService(defaults: defaults)

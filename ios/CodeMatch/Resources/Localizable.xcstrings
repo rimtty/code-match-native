@@ -4984,6 +4984,102 @@
           }
         }
       }
+    },
+    "スキャナー照明" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scanner illumination"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキャナー照明"
+          }
+        }
+      }
+    },
+    "OFFを再適用" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry turning off"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OFFを再適用"
+          }
+        }
+      }
+    },
+    "ONにすると読取中に点灯します。接続時はOFFにします。設定はスキャナー本体に保存され、切断しても元に戻りません。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When enabled, the light turns on during reading. Turned off on connection. This setting is saved on the scanner and is not restored on disconnect."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ONにすると読取中に点灯します。接続時はOFFにします。設定はスキャナー本体に保存され、切断しても元に戻りません。"
+          }
+        }
+      }
+    },
+    "照明設定を確認しています…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checking the illumination setting…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照明設定を確認しています…"
+          }
+        }
+      }
+    },
+    "照明設定を確認できませんでした。再操作してください。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not confirm illumination. Try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照明設定を確認できませんでした。再操作してください。"
+          }
+        }
+      }
+    },
+    "接続後に照明設定を確認します。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Illumination will be checked after connection."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続後に照明設定を確認します。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

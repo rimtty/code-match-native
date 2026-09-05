@@ -57,6 +57,18 @@ enum BluetoothScannerConfigurationState: Equatable {
     case failed(String)
 }
 
+/// スキャナー照明（`lighting_lamp_control`）の確認済み状態。`unknown`をOFF成功として表示しない。
+enum BluetoothScannerIlluminationState: Equatable {
+    /// 接続中のスキャナーのinventoryに照明設定がない
+    case unsupported
+    /// 接続後、まだSDKから現在値を確認していない
+    case unknown
+    case applying
+    case off
+    case on
+    case failed(String)
+}
+
 enum BluetoothScannerSymbologyMode: String, Equatable {
     case unrestricted
     case sessionCodes
@@ -130,11 +142,16 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     /// SDK出力設定（FF04書込）用の補助接続が完了するまでの上限。
     /// 超過してもこの設定は読取そのものに必須ではないため、先へ進む。
     static let sdkOutputConfigurationTimeout: Duration = .seconds(8)
+    /// 照明設定は取得→書込→再取得の3往復なので、読み取り設定より長い上限を置く。
+    static let illuminationCommandTimeout: Duration = .seconds(20)
+    /// 機器のinventoryが報告する照明設定のname。areaは機器の報告値を使い、汎用flag 1003へ置き換えない。
+    static let illuminationSettingName = "lighting_lamp_control"
 
     @Published private(set) var devices: [BluetoothScannerDevice] = []
     @Published private(set) var state: BluetoothScannerConnectionState = .idle
     @Published private(set) var configurationState: BluetoothScannerConfigurationState = .unavailable
     @Published private(set) var diagnosticEvents: [BluetoothScannerDiagnosticEvent] = []
+    @Published private(set) var illuminationState: BluetoothScannerIlluminationState = .unknown
 
     var onCode: ((String) -> Void)?
 
@@ -176,6 +193,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     /// 接続直後にSDKが報告したリンク状態。SDKがこの値を更新しない実装でも
     /// 誤って切断扱いにしないよう、生存確認はこの基準からの変化だけを見る。
     private var connectedLinkBaselineState: BLEDevice.ConnectType?
+    /// 設定コマンド実行中に受けた照明要求。完了後に最新の1件だけを適用する。
+    private var pendingIlluminationRequest: Bool?
 #else
     /// Simulatorテスト用: 設定されている間は`setExpectedCode`が失敗し、
     /// `retryConfiguration()`で解除される。
@@ -254,6 +273,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             devices = [device]
             state = .connected(device)
             configurationState = .ready
+            illuminationState = .off
             clearPersistedSymbologySnapshot()
             recordAppliedSymbologyMode(.unrestricted)
             defaults.set(device.id, forKey: Self.preferredDeviceIDKey)
@@ -401,6 +421,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                     self.state = .connected(device)
                     self.automaticReconnectAttempt = 0
                     self.connectedLinkBaselineState = sdkDevice.connectState
+                    self.illuminationState = .unknown
+                    self.pendingIlluminationRequest = nil
                     self.trace(
                         "Connected: \(device.name) [\(device.id)] "
                             + "(SDK link state \(String(describing: sdkDevice.connectState)))"
@@ -426,6 +448,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         rememberDevice(device)
         state = .connected(device)
         configurationState = .ready
+        // 実機と同じく、接続ごとに照明OFF（常時消灯）を適用した状態から始める。
+        illuminationState = .off
         let mode = BluetoothScannerSymbologyMode(expectedCode: expectedCode)
         if mode == .unrestricted {
             clearPersistedSymbologySnapshot()
@@ -461,6 +485,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         clearPersistedSymbologySnapshot()
         recordAppliedSymbologyMode(.unrestricted)
         configurationState = .unavailable
+        illuminationState = .unknown
         state = .idle
 #endif
     }
@@ -616,6 +641,101 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         }
         recordAppliedSymbologyMode(mode)
         configurationState = .ready
+#endif
+    }
+
+    /// 読取中の照明を点灯（ON=読取中点灯）／消灯（OFF=常時消灯）へ切り替える。
+    /// Android版と同じく、接続ごとに読み取り設定の確認後へOFFを適用し、
+    /// 書込後にSDKから再取得して一致したときだけ確定表示する。値はスキャナー本体に
+    /// 保存され、切断時には復元しない（工程用のシンボロジー復元とは別扱い）。
+    func setIllumination(_ enabled: Bool) {
+        guard isConnected else { return }
+#if INATECK_SDK
+        guard let sdkDevice = connectedSDKDevice, !manualDisconnectInProgress else { return }
+        guard configurationState == .ready, !symbologyCommandInFlight else {
+            pendingIlluminationRequest = enabled
+            trace("Illumination request deferred until the current setting command completes")
+            return
+        }
+        if case .applying = illuminationState {
+            pendingIlluminationRequest = enabled
+            return
+        }
+        pendingIlluminationRequest = nil
+        illuminationState = .applying
+        symbologyCommandGeneration += 1
+        let generation = symbologyCommandGeneration
+        symbologyCommandInFlight = true
+        trace("Applying scanner illumination \(enabled ? "on" : "off") (generation \(generation))")
+        scheduleSettingCommandTimeout(
+            generation: generation,
+            sdkDevice: sdkDevice,
+            label: "illumination",
+            duration: Self.illuminationCommandTimeout
+        )
+
+        let failureMessage = AppLocalization.string("照明設定を確認できませんでした。再操作してください。")
+        // 機器が返した最新のarea/nameで書き、再取得した値が一致するまで確定しない。
+        sdkDevice.messageManager.getSettingInfo { [weak self] result in
+            Task { @MainActor in
+                guard let self, generation == self.symbologyCommandGeneration else { return }
+                guard case .success(let settings) = result else {
+                    self.finishIllumination(
+                        generation,
+                        state: .failed(failureMessage),
+                        message: "Illumination setting query failed"
+                    )
+                    return
+                }
+                guard let setting = Self.illuminationSetting(from: settings),
+                      let command = Self.illuminationCommand(settings: settings, enabled: enabled) else {
+                    self.finishIllumination(
+                        generation,
+                        state: .unsupported,
+                        message: "Scanner inventory has no usable illumination setting"
+                    )
+                    return
+                }
+                sdkDevice.messageManager.setSettingInfo(with: command) { [weak self] written in
+                    Task { @MainActor in
+                        guard let self, generation == self.symbologyCommandGeneration else { return }
+                        if case .failure(let error) = written {
+                            self.finishIllumination(
+                                generation,
+                                state: .failed(failureMessage),
+                                message: "Illumination write failed: \(error.localizedDescription)"
+                            )
+                            return
+                        }
+                        sdkDevice.messageManager.getSettingInfo { [weak self] verified in
+                            Task { @MainActor in
+                                guard let self, generation == self.symbologyCommandGeneration else { return }
+                                guard case .success(let verifiedSettings) = verified,
+                                      Self.illuminationConfirmed(
+                                        settings: verifiedSettings,
+                                        area: setting.area,
+                                        enabled: enabled
+                                      ) else {
+                                    self.finishIllumination(
+                                        generation,
+                                        state: .failed(failureMessage),
+                                        message: "Illumination readback did not confirm the requested value"
+                                    )
+                                    return
+                                }
+                                self.finishIllumination(
+                                    generation,
+                                    state: enabled ? .on : .off,
+                                    message: "Scanner illumination confirmed \(enabled ? "on" : "off")"
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+#else
+        illuminationState = enabled ? .on : .off
 #endif
     }
 
@@ -841,6 +961,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         configurationRecoveryAttempt = 0
         stopLinkLivenessMonitor()
         configurationState = .unavailable
+        illuminationState = .unknown
+        pendingIlluminationRequest = nil
         if manualDisconnectInProgress {
             state = .idle
             trace("Manual disconnect completed")
@@ -954,6 +1076,21 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             "Scanner reported \(connectedSymbologyValues?.count ?? 0) barcode types"
                 + (settingsAreFresh ? "" : " (cached metadata)")
         )
+        // Phase 0（#59）: 機器が報告する設定nameと、読取品質に関わる少数の設定値だけを
+        // 診断へ残す。payload・device識別子・接頭辞/接尾辞などの文字設定は含めない。
+        if let items = Self.scannerSettingItems(from: settings) {
+            let names = items.compactMap { $0["name"] as? String }.sorted().joined(separator: ",")
+            trace("Scanner inventory names: \(names)")
+            let tuning = items.compactMap { item -> String? in
+                guard let name = item["name"] as? String,
+                      Self.tuningSettingNames.contains(name),
+                      let value = Self.integerSettingValue(item["value"]) else { return nil }
+                return "\(name)=\(value)"
+            }
+            if !tuning.isEmpty {
+                trace("Scanner tuning values: \(tuning.sorted().joined(separator: ","))")
+            }
+        }
         let inventoryMode = Self.settingValue(named: "inventory_mode", from: settings)
         let automaticCacheUpload = Self.settingValue(named: "auto_upload_cache", from: settings)
         let clearCacheAtStartup = Self.settingValue(named: "start_up_clean_cache", from: settings)
@@ -1099,6 +1236,39 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         if let string = value as? String { return Int(string) }
         if let number = value as? NSNumber { return number.intValue }
         return nil
+    }
+
+    /// 読み取り設定がReadyになった直後に呼ぶ。接続後まだ確認していない照明は
+    /// OFFへ揃え、設定コマンド中に受けた照明要求があれば最新の1件を適用する。
+    private func settingsBecameReady() {
+        if let pending = pendingIlluminationRequest {
+            pendingIlluminationRequest = nil
+            setIllumination(pending)
+        } else if illuminationState == .unknown {
+            setIllumination(false)
+        }
+    }
+
+    private func finishIllumination(
+        _ generation: Int,
+        state: BluetoothScannerIlluminationState,
+        message: String
+    ) {
+        guard generation == symbologyCommandGeneration else { return }
+        symbologyCommandTimeoutTask?.cancel()
+        symbologyCommandTimeoutTask = nil
+        symbologyCommandInFlight = false
+        illuminationState = state
+        trace(message)
+        // 照明処理中に工程が変わっていれば読み取り設定を先に進め、
+        // その後で残っている照明要求を処理する。
+        if configurationState == .configuring, connectedSDKDevice != nil {
+            applyExpectedCodeConfiguration(revision: symbologyConfigurationRevision)
+        }
+        if !symbologyCommandInFlight, let pending = pendingIlluminationRequest {
+            pendingIlluminationRequest = nil
+            setIllumination(pending)
+        }
     }
 
     private func startLinkLivenessMonitor() {
@@ -1406,6 +1576,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             recordAppliedSymbologyMode(.unrestricted)
             configurationState = .ready
             trace("Scanner barcode settings already match the pre-session state")
+            settingsBecameReady()
             return
         }
 
@@ -1460,10 +1631,11 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                 + "(generation \(commandGeneration), \(values.count) barcode types"
                 + (attempt > 0 ? ", retry \(attempt)" : "") + ")"
         )
-        scheduleSymbologyCommandTimeout(
+        scheduleSettingCommandTimeout(
             generation: commandGeneration,
             sdkDevice: sdkDevice,
-            mode: mode
+            label: mode.rawValue,
+            duration: Self.symbologyCommandTimeout
         )
         sdkDevice.messageManager.setSettingInfo(with: command) { [weak self] result in
             let callbackDelay = ProcessInfo.processInfo.systemUptime - requestedAt
@@ -1502,6 +1674,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                     self.trace(
                         "Scanner configured for \(mode.rawValue) across \(values.count) barcode types"
                     )
+                    self.settingsBecameReady()
                 case .failure(let error):
                     self.trace(
                         "Scanner symbology configuration failed (attempt \(attempt + 1)): "
@@ -1550,15 +1723,16 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     /// SDKが設定完了を返さない場合は新しいコマンドを重ねず、接続を閉じて
     /// 保存済みスナップショットからの再同期へ移る。遅れて届く旧コールバックは
     /// generation不一致で破棄する。
-    private func scheduleSymbologyCommandTimeout(
+    private func scheduleSettingCommandTimeout(
         generation: Int,
         sdkDevice: BLEDevice,
-        mode: BluetoothScannerSymbologyMode
+        label: String,
+        duration: Duration
     ) {
         symbologyCommandTimeoutTask?.cancel()
         symbologyCommandTimeoutTask = Task { [weak self] in
             do {
-                try await Task.sleep(for: Self.symbologyCommandTimeout)
+                try await Task.sleep(for: duration)
             } catch {
                 return
             }
@@ -1584,6 +1758,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
 
             self.cancelSDKOutputConfiguration()
             self.stopLinkLivenessMonitor()
+            self.illuminationState = .unknown
+            self.pendingIlluminationRequest = nil
             self.connectedSDKDevice = nil
             self.sdkOutputConfigurationCompleted = false
             self.connectedScannerSettings = nil
@@ -1594,7 +1770,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                 AppLocalization.string("スキャナーの読み取り設定通信が完了しませんでした。安全のためカメラへ切り替え、再接続します。")
             )
             self.trace(
-                "Scanner mode \(mode.rawValue) timed out "
+                "Setting command \(label) timed out "
                     + "(generation \(generation)); reconnecting"
             )
 
@@ -1720,6 +1896,52 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     }
 #endif
 
+    struct IlluminationSetting: Equatable {
+        let area: String
+        let value: Int
+    }
+
+    /// inventoryの`lighting_lamp_control`をarea付きで読む。項目が1つでない、
+    /// areaが空、値が0〜2以外のときは扱わない（Android版`InateckIlluminationSettings.read`と同じ規則）。
+    static func illuminationSetting(from settings: String) -> IlluminationSetting? {
+        guard let items = scannerSettingItems(from: settings) else { return nil }
+        let entries = items.filter { ($0["name"] as? String) == illuminationSettingName }
+        guard entries.count == 1, let entry = entries.first,
+              let value = integerSettingValue(entry["value"]), (0...2).contains(value) else {
+            return nil
+        }
+        let area: String
+        if let string = entry["area"] as? String {
+            area = string
+        } else if let number = entry["area"] as? NSNumber {
+            area = number.stringValue
+        } else {
+            return nil
+        }
+        guard !area.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return IlluminationSetting(area: area, value: value)
+    }
+
+    /// ON=0（読取中点灯）、OFF=2（常時消灯）。1（常時点灯）は提供しない。
+    static func illuminationValue(enabled: Bool) -> Int { enabled ? 0 : 2 }
+
+    static func illuminationCommand(settings: String, enabled: Bool) -> String? {
+        guard let current = illuminationSetting(from: settings) else { return nil }
+        let command: [[String: String]] = [[
+            "area": current.area,
+            "name": illuminationSettingName,
+            "value": String(illuminationValue(enabled: enabled))
+        ]]
+        guard let data = try? JSONSerialization.data(withJSONObject: command),
+              let string = String(data: data, encoding: .utf8) else { return nil }
+        return string
+    }
+
+    static func illuminationConfirmed(settings: String, area: String, enabled: Bool) -> Bool {
+        illuminationSetting(from: settings)
+            == IlluminationSetting(area: area, value: illuminationValue(enabled: enabled))
+    }
+
     /// 固定している公式iOS SDKは、取得した設定の`area`と`name`を
     /// `setSettingInfo`へ返す形式を使う。機種固有のareaはハードコードしない。
     static func hasRequiredSymbologySettings(_ settings: String) -> Bool {
@@ -1812,6 +2034,17 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         guard let name = item["name"] as? String else { return false }
         return legacySymbologySettingNames.contains(name.lowercased())
     }
+
+    /// #59 の候補（多コード・反転・読取時間・照明・照準・厳格度・重複抑制）。値は0〜数十の整数。
+    static let tuningSettingNames: Set<String> = [
+        "lighting_lamp_control", "positioning_lamp_control", "position_light_twinkle",
+        "qrcode_read_more_code", "datamatrix_read_multi", "pdf417_read_more_code",
+        "read_inverse_color", "qrcode_read_phase", "datamatrix_read_phase",
+        "hanxin_read_phase", "pdf417_read_phase",
+        "scan_mode", "auto_close_mode", "time_auto_off", "time_continuous_mode", "auto_off",
+        "auto_sense_distan", "security_level", "repeat_data_check_on", "ignore_short_bar",
+        "data_transmission_speed", "inventory_mode", "auto_upload_cache", "start_up_clean_cache"
+    ]
 
     private static let legacySymbologySettingNames: Set<String> = [
         "codabar_on", "iata25_on", "interleaved25_on", "matrix25_on", "standard25_on",
