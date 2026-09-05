@@ -166,6 +166,7 @@ struct SettingsScreen: View {
 
             if bluetoothScanner.isConnected {
                 configurationStatus
+                illuminationControls
 
                 Button(role: .destructive) {
                     bluetoothScanner.disconnect()
@@ -426,6 +427,76 @@ struct SettingsScreen: View {
         case .unavailable:
             EmptyView()
         }
+    }
+
+    /// 照明はAndroid版と同じ扱い: 接続ごとにOFFを適用し、SDKから再取得して一致した
+    /// ときだけスイッチを表示する。未確認・適用中は進捗、失敗は再適用ボタンにして
+    /// 「OFFに見えて点灯している」表示を避ける。
+    @ViewBuilder
+    private var illuminationControls: some View {
+        if bluetoothScanner.illuminationState != .unsupported {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    Label(AppLocalization.string("スキャナー照明"), systemImage: "lightbulb")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Spacer()
+                    switch bluetoothScanner.illuminationState {
+                    case .on, .off:
+                        Toggle(
+                            AppLocalization.string("スキャナー照明"),
+                            isOn: Binding(
+                                get: { bluetoothScanner.illuminationState == .on },
+                                set: { bluetoothScanner.setIllumination($0) }
+                            )
+                        )
+                        .labelsHidden()
+                        .tint(AppTheme.green)
+                        .accessibilityIdentifier("scannerIlluminationToggle")
+                    case .applying:
+                        ProgressView()
+                            .tint(AppTheme.green)
+                            .accessibilityIdentifier("scannerIlluminationPending")
+                    case .failed:
+                        Button {
+                            bluetoothScanner.setIllumination(false)
+                        } label: {
+                            Text(AppLocalization.string("OFFを再適用"))
+                                .font(.caption.weight(.bold))
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(AppTheme.amber)
+                        .accessibilityIdentifier("scannerIlluminationRetryButton")
+                    case .unknown, .unsupported:
+                        EmptyView()
+                    }
+                }
+                Text(illuminationDescription)
+                    .font(.caption2)
+                    .foregroundStyle(illuminationDescriptionColor)
+                    .lineSpacing(3)
+                    .accessibilityIdentifier("scannerIlluminationDescription")
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var illuminationDescription: String {
+        switch bluetoothScanner.illuminationState {
+        case .applying:
+            AppLocalization.string("照明設定を確認しています…")
+        case .failed(let message):
+            message
+        case .unknown:
+            AppLocalization.string("接続後に照明設定を確認します。")
+        case .on, .off, .unsupported:
+            AppLocalization.string("ONにすると読取中に点灯します。接続時はOFFにします。設定はスキャナー本体に保存され、切断しても元に戻りません。")
+        }
+    }
+
+    private var illuminationDescriptionColor: Color {
+        if case .failed = bluetoothScanner.illuminationState { return AppTheme.red }
+        return AppTheme.muted
     }
 
     private var isSearching: Bool {
