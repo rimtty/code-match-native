@@ -1229,6 +1229,129 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertNil(weakCamera)
     }
 
+    func testBluetoothConfigurationFailureFallsBackToCameraThenReturnsWhenReady() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+        XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+
+        context.service.simulateConfigurationFailure("設定に失敗しました。")
+        context.viewModel.handleBluetoothConfigurationState(context.service.configurationState)
+
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+        XCTAssertTrue(context.viewModel.message.contains("カメラへ切り替えました"))
+
+        // 設定失敗は利用者の選択ではないので、復旧してReadyへ戻ればBluetoothへ自動で戻る。
+        context.service.retryConfiguration()
+        XCTAssertTrue(context.service.isReadyForScanning)
+        context.viewModel.handleBluetoothConfigurationState(context.service.configurationState)
+
+        XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+        // カメラ停止の完了を待ってから、現在工程がスキャナへ再適用されたことを確認する。
+        try? await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(context.service.expectedCode, .qr)
+        XCTAssertEqual(context.service.persistedSymbologyMode, .sessionCodes)
+    }
+
+    func testSelectingBluetoothWhileConfigurationFailedRequestsRetry() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateConfigurationFailure("設定に失敗しました。")
+        context.viewModel.handleBluetoothConfigurationState(context.service.configurationState)
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+        // 復元書込も失敗したままなら、サービスは失敗状態に留まる。
+        XCTAssertEqual(context.service.configurationState, .failed("設定に失敗しました。"))
+
+        context.viewModel.selectInputSource(.bluetooth)
+
+        XCTAssertTrue(context.viewModel.message.contains("やり直しています"))
+        XCTAssertTrue(context.service.isReadyForScanning)
+        context.viewModel.handleBluetoothConfigurationState(context.service.configurationState)
+        XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+        try? await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(context.service.expectedCode, .qr)
+    }
+
+    func testForegroundResumeRetriesFailedBluetoothConfiguration() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateConfigurationFailure("設定に失敗しました。")
+        context.viewModel.handleBluetoothConfigurationState(context.service.configurationState)
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+        XCTAssertEqual(context.service.configurationState, .failed("設定に失敗しました。"))
+
+        context.viewModel.resumeAfterForeground()
+
+        XCTAssertTrue(context.service.isReadyForScanning)
+        context.viewModel.handleBluetoothConfigurationState(context.service.configurationState)
+        XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+    }
+
+    func testRepeatedBluetoothConfigurationFailuresStopAutomaticReturn() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        for _ in 0..<ScannerViewModel.bluetoothAutomaticReturnFailureLimit {
+            context.viewModel.handleBluetoothConfigurationState(.ready)
+            XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+            context.service.simulateConfigurationFailure("設定に失敗しました。")
+            context.viewModel.handleBluetoothConfigurationState(context.service.configurationState)
+            XCTAssertEqual(context.viewModel.inputSource, .camera)
+            context.service.retryConfiguration()
+        }
+
+        // 連続失敗の上限に達した後は、Readyへ戻ってもカメラのまま維持する。
+        XCTAssertTrue(context.service.isReadyForScanning)
+        context.viewModel.handleBluetoothConfigurationState(context.service.configurationState)
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+
+        // 利用者が明示的に選び直せばBluetoothへ戻れる。
+        context.viewModel.selectInputSource(.bluetooth)
+        XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+    }
+
+    func testAcceptedBluetoothScanResetsConfigurationFailureCount() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateConfigurationFailure("設定に失敗しました。")
+        context.viewModel.handleBluetoothConfigurationState(context.service.configurationState)
+        context.service.retryConfiguration()
+        context.viewModel.handleBluetoothConfigurationState(context.service.configurationState)
+        XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+        try? await Task.sleep(for: .milliseconds(300))
+
+        // 読取が受理されれば失敗回数はリセットされ、次の失敗でも自動復帰する。
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+
+        context.service.simulateConfigurationFailure("設定に失敗しました。")
+        context.viewModel.handleBluetoothConfigurationState(context.service.configurationState)
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        context.service.retryConfiguration()
+        context.viewModel.handleBluetoothConfigurationState(context.service.configurationState)
+        XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+        try? await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(context.service.expectedCode, .barcode)
+    }
+
     func testBluetoothDisconnectKeepsCurrentStepAndFallsBackToCamera() async {
         let context = makeContext()
         defer { context.cleanup() }

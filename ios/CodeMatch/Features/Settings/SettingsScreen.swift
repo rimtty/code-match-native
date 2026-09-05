@@ -372,6 +372,20 @@ struct SettingsScreen: View {
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(AppTheme.red)
+            Button {
+                bluetoothScanner.retryConfiguration()
+            } label: {
+                Label(
+                    AppLocalization.string("読み取り設定をやり直す"),
+                    systemImage: "arrow.clockwise"
+                )
+                    .font(.subheadline.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+            }
+            .buttonStyle(.bordered)
+            .tint(AppTheme.green)
+            .accessibilityIdentifier("retryScannerConfigurationButton")
         case .unavailable:
             EmptyView()
         }
