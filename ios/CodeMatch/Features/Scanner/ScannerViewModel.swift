@@ -34,6 +34,9 @@ final class ScannerViewModel: ObservableObject {
     private var bluetoothConfigurationFailureCount = 0
     /// この回数だけ連続で失敗したら、復旧後もBluetoothへ自動で戻さず利用者の再選択に委ねる。
     static let bluetoothAutomaticReturnFailureLimit = 2
+    /// 一時的な非アクティブ化（Control Center、通知センター、着信など）で止めたカメラを、
+    /// アクティブへ戻ったときに自動で再開するためのフラグ。
+    private var cameraWasRunningBeforeInactive = false
     private var localizedMessageBuilder: (() -> String)?
 
     var expectedCode: ExpectedCode? {
@@ -324,8 +327,21 @@ final class ScannerViewModel: ObservableObject {
         }
     }
 
+    /// `.inactive` はControl Center・通知センター・App Switcher・Face ID・着信など、
+    /// 数秒で戻る一時的な状態でも発生する。ここではカメラだけを止め、
+    /// スキャナーの読み取り設定は書き換えない。全バーコード種別の復元と再制限を
+    /// 毎回往復すると、その間の読取が破棄され、設定通信とトリガー入力の衝突による
+    /// 失敗の契機にもなるため、復元は実際にバックグラウンドへ入ったときに限定する。
+    func prepareForInactive() {
+        cancelAutoAdvanceCountdown()
+        cameraWasRunningBeforeInactive = inputSource == .camera
+            && (isCameraRunning || isCameraStarting)
+        stopCamera()
+    }
+
     func prepareForBackground() {
         cancelAutoAdvanceCountdown()
+        cameraWasRunningBeforeInactive = false
         stopCamera()
         if inputSource == .bluetooth {
             // バックグラウンド中は読取コールバックを扱わないため、強制終了に
@@ -335,8 +351,18 @@ final class ScannerViewModel: ObservableObject {
     }
 
     func resumeAfterForeground() {
+        let shouldRestartCamera = cameraWasRunningBeforeInactive
+        cameraWasRunningBeforeInactive = false
         if step == .result(.match) {
             startAutoAdvanceCountdownIfNeeded()
+            return
+        }
+        if shouldRestartCamera,
+           !isEndingSession,
+           inputSource == .camera,
+           expectedCode != nil,
+           !isCameraRunning, !isCameraStarting {
+            startCamera()
             return
         }
         // 設定失敗でカメラへ退避している間に前景へ戻ったときは、再設定を試みる。
