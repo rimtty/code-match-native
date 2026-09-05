@@ -420,7 +420,12 @@ class ScanViewModel @Inject constructor(
             // idle so its injected count and durable checkpoint are exact.
             if (session != null && current.state.phase == ScanPhase.IDLE) {
                 val checkpoint = historyRepository.getScanCheckpoint(session.id)
-                installCoordinator(latestSettings, session, checkpoint)
+                // The active-session collector can install/start a coordinator
+                // while the database read suspends. Do not replace its live
+                // input state with this older checkpoint.
+                if (coordinator?.state?.phase == ScanPhase.IDLE) {
+                    installCoordinator(latestSettings, session, checkpoint)
+                }
             }
         }
 
@@ -605,7 +610,11 @@ class ScanViewModel @Inject constructor(
         val session = historyRepository.getSession(sessionId) ?: return
         if (activeSessionId == null && coordinator?.state?.phase == ScanPhase.IDLE) {
             val checkpoint = historyRepository.getScanCheckpoint(session.id)
-            installCoordinator(latestSettings, session, checkpoint)
+            // Recheck after suspension: beginSession may already own the
+            // session and may even have accepted the first QR by now.
+            if (activeSessionId == null && coordinator?.state?.phase == ScanPhase.IDLE) {
+                installCoordinator(latestSettings, session, checkpoint)
+            }
         }
     }
 
