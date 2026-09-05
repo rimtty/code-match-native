@@ -57,4 +57,5 @@ include(":scanner:fake")
 // Explicitly opt in to the standalone, local-only SDK diagnostic APK.
 if (providers.gradleProperty("includeSdkProbe").orNull == "true") {
     include(":tools:sdk-probe")
+    include(":tools:sdk-fault-probe")
 }

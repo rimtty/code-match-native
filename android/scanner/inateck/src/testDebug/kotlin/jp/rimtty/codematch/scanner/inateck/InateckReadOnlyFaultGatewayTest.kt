@@ -6,10 +6,40 @@ import jp.rimtty.codematch.scanner.ble.BleSymbologySession
 import jp.rimtty.codematch.scanner.ble.BleSymbologySessionState
 import jp.rimtty.codematch.scanner.ble.BleSymbologyProfile
 import jp.rimtty.codematch.scanner.ble.InMemorySymbologySnapshotStore
+import jp.rimtty.codematch.scanner.ble.SymbologySnapshot
+import jp.rimtty.codematch.scanner.ble.ScannerSettingItem
 import org.junit.Assert.*
 import org.junit.Test
 
 class InateckReadOnlyFaultGatewayTest {
+    @Test fun injectedRecoveryWriteFailureRetainsBaselineAndNeverBecomesReady() {
+        val sdk = StubSdk()
+        val gateway = InateckReadOnlyFaultGateway(sdk)
+        val transport = InateckSdkTransport(gateway)
+        val device = ScannerDevice("synthetic", "test")
+        val store = InMemorySymbologySnapshotStore(INATECK_ANDROID_SDK_PROFILE_IDENTITY)
+        val baseline = SymbologySnapshot(device.id, listOf(
+            ScannerSettingItem("qrcode_on", "test", 1),
+            ScannerSettingItem("code128_on", "test", 1),
+        ))
+        store.save(baseline)
+        val session = BleSymbologySession(
+            device, transport,
+            BleSymbologyProfile(INATECK_SETTINGS_ENDPOINT, InateckAreaNameSymbologyCodec, INATECK_ANDROID_SDK_PROFILE_IDENTITY),
+            store,
+        )
+        assertTrue(transport.connect(device))
+        assertTrue(session.onConnected())
+        sdk.readCallback!!(Result.success(baseline.settings.map {
+            mapOf("area" to it.area, "name" to it.name, "value" to it.value.toString())
+        }))
+        assertTrue(gateway.releaseCompletedRead())
+        assertTrue(session.state is BleSymbologySessionState.Failed)
+        assertFalse(session.configurationState.isReady)
+        assertEquals(baseline, store.load(device.id))
+        assertEquals(0, sdk.writes)
+    }
+
     @Test fun sixSecondSessionDeadlineRejectsLateReadBeforeDisconnectCompletes() {
         val sdk = StubSdk()
         val gateway = InateckReadOnlyFaultGateway(sdk)

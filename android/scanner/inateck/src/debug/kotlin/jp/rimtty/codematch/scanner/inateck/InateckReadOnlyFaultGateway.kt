@@ -21,6 +21,7 @@ internal class InateckReadOnlyFaultGateway(
     private var pending: PendingRead? = null
     private var closed = false
     val hasCompletedRead: Boolean get() = pending?.result != null
+    val completedReadSucceeded: Boolean get() = pending?.result?.isSuccess == true
     override val readiness get() = sdk.readiness
 
     override fun startDiscovery(onDevice: (InateckSdkDevice) -> Unit, onFinished: () -> Unit) =
