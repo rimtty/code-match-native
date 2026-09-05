@@ -2,7 +2,7 @@ package jp.rimtty.codematch.feature.history
 
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
@@ -171,7 +171,7 @@ class HistoryFontScaleAccessibilityTest {
                 LocalDensity provides Density(baseDensity.density, fontScale.value),
             ) {
                 Box(
-                    modifier = Modifier.requiredSize(
+                    modifier = Modifier.size(
                         width = widthDp.dp,
                         height = COMPACT_HEIGHT_DP.dp,
                     ),

@@ -2,7 +2,7 @@ package jp.rimtty.codematch.feature.scan
 
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
@@ -162,7 +162,7 @@ class ScanFontScaleAccessibilityTest {
                 LocalDensity provides Density(baseDensity.density, fontScale.value),
             ) {
                 Box(
-                    modifier = androidx.compose.ui.Modifier.requiredSize(
+                    modifier = androidx.compose.ui.Modifier.size(
                         width = COMPACT_WIDTH_DP.dp,
                         height = COMPACT_HEIGHT_DP.dp,
                     ),

@@ -2,7 +2,7 @@ package jp.rimtty.codematch.feature.settings
 
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -96,7 +96,7 @@ class SettingsFontScaleAccessibilityTest {
                 LocalDensity provides Density(baseDensity.density, fontScale.value),
             ) {
                 Box(
-                    modifier = Modifier.requiredSize(
+                    modifier = Modifier.size(
                         width = COMPACT_WIDTH_DP.dp,
                         height = COMPACT_HEIGHT_DP.dp,
                     ),
