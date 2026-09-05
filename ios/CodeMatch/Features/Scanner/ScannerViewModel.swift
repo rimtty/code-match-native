@@ -30,6 +30,10 @@ final class ScannerViewModel: ObservableObject {
     /// 接続済みスキャナを初期入力にする一方、利用者がカメラを選んだ後は
     /// 同じ照合セッション内で自動的にBluetoothへ戻さないためのフラグ。
     private var cameraWasSelectedByUser = false
+    /// 読み取り設定の失敗が続いた回数。受理できたBluetooth読取でリセットする。
+    private var bluetoothConfigurationFailureCount = 0
+    /// この回数だけ連続で失敗したら、復旧後もBluetoothへ自動で戻さず利用者の再選択に委ねる。
+    static let bluetoothAutomaticReturnFailureLimit = 2
     private var localizedMessageBuilder: (() -> String)?
 
     var expectedCode: ExpectedCode? {
@@ -227,6 +231,16 @@ final class ScannerViewModel: ObservableObject {
             cameraWasSelectedByUser = false
             guard bluetoothScanner.isReadyForScanning else {
                 inputSource = .camera
+                if bluetoothScanner.isConnected,
+                   case .failed = bluetoothScanner.configurationState {
+                    // 設定失敗で止まっている場合は、利用者の再選択を再設定の合図として扱う。
+                    bluetoothConfigurationFailureCount = 0
+                    bluetoothScanner.retryConfiguration()
+                    setLocalizedMessage {
+                        AppLocalization.string("Bluetoothスキャナの読み取り設定をやり直しています。完了すると自動的に切り替わります。")
+                    }
+                    return
+                }
                 let isConnected = bluetoothScanner.isConnected
                 setLocalizedMessage {
                     isConnected
@@ -268,7 +282,12 @@ final class ScannerViewModel: ObservableObject {
             handleBluetoothConnectionState(bluetoothScanner.state)
         case .failed(let reason):
             guard inputSource == .bluetooth else { return }
-            cameraWasSelectedByUser = true
+            // 設定失敗は利用者の選択ではないため、復旧してReadyへ戻ればBluetoothへ自動で戻す。
+            // 失敗が続く場合だけ往復を止め、明示的な再選択に委ねる。
+            bluetoothConfigurationFailureCount += 1
+            if bluetoothConfigurationFailureCount >= Self.bluetoothAutomaticReturnFailureLimit {
+                cameraWasSelectedByUser = true
+            }
             activateCamera()
             setLocalizedMessage {
                 AppLocalization.string("\(reason) 現在の読取ステップを維持してカメラへ切り替えました。")
@@ -319,6 +338,13 @@ final class ScannerViewModel: ObservableObject {
         if step == .result(.match) {
             startAutoAdvanceCountdownIfNeeded()
             return
+        }
+        // 設定失敗でカメラへ退避している間に前景へ戻ったときは、再設定を試みる。
+        if !isEndingSession,
+           !cameraWasSelectedByUser,
+           bluetoothScanner.isConnected,
+           case .failed = bluetoothScanner.configurationState {
+            bluetoothScanner.retryConfiguration()
         }
         guard !isEndingSession,
               inputSource == .bluetooth,
@@ -425,6 +451,7 @@ final class ScannerViewModel: ObservableObject {
     private func handleBluetoothScan(_ value: String) {
         guard inputSource == .bluetooth, bluetoothScanner.isReadyForScanning,
               !scanLocked, let expectedCode else { return }
+        bluetoothConfigurationFailureCount = 0
 
         switch expectedCode {
         case .qr:
