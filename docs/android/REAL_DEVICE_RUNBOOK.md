@@ -190,7 +190,12 @@ adb install -r app/build/outputs/apk/scannerPoc/app-scannerPoc.apk
 - 自動確認: PR #43のfeature単位のPixel connected testはScan font scale 3件、Settings 1件、History 3件が失敗・skipなし。これは実TalkBack/Switch Accessの証拠ではない。製品アプリのfont_scaleを一時2.0で確認後、元の1.3へ戻してreadbackした。
 - 自動確認: PR #43統合相当のインストール済みアプリで、初期状態の閉じた設定ガイドを開き、AndroidシステムBackで閉じることをUI hierarchyで確認。スキャン開始画面へ戻した。製品アプリの履歴・設定の消去は実施していない。
 - 自動確認時の表示所見: ガイドの旧機種名BCST-47を今回の対象BCST-36へ日英とも訂正。この記録はスキャナーで設定コードを実読取した証拠ではない。
-- 残り: 恒久権限拒否、カメラ各工程でのOS process kill、無効・不一致通知、font scale 2.0の実主要フロー、TalkBack/Switch Access、実行時通信観測。BLEの完全復元・timeout異常系・firmware記録はIssue #19に残る。
+- 追加完了（PR #44以降、#46までのscannerPoc）: カメラの権限ダイアログを2回拒否し、恒久拒否表示・設定導線をADB UI操作で確認。許可とフラグは事前状態へ復元した。QR待ち・Code128待ち・一致結果のforce-stop/COLD起動復元も確認し、Code128続行および結果2件保持・次工程で二重加算なしをユーザーが承認した。
+- 追加完了（PR #46 / 2f35282）: 無関係なQRを拒否しQR待ちを保持、無効QRの警告音・振動・案内表示をユーザーが承認。不一致表示・音・振動・非加算も承認済み。font scale 2.0のQR→Code128→一致→次工程、履歴詳細・設定の表示/スクロールをユーザーが承認し、元の1.3へ復元した。
+- 通信の限定観測: Pixelの当該アプリUIDのnetstatsに、カメラプレビュー稼働中および通常操作・読取受入後も通信量エントリなし。インストール済みPoCにINTERNET権限なし。パケット監査や他プロセスを含む全経路の無通信保証ではない。
+- 対象外へ変更: TalkBackとSwitch Accessはユーザー指定で今回の受入から省略。TalkBackの一時有効化は元の無効状態へ復元済み。合格を意味しない。
+- BLE追加確認（PR #47 / 34d70ed）: 手動切断後もCode128待ち・1件を保持し再接続後の読取続行成功。さらに3分30秒以上電源OFFで待機後、電源ONのみで自動再接続しCode128から続行をユーザーが承認。これは全symbologyの完全復元や異常タイムアウトを直接検証した証拠ではない。
+- 残り: BLEの完全復元・timeout異常系・firmware記録はIssue #19で継続。BCST-36は検証端末であり、SDK対応端末の接続対象を限定しない。
 - 追跡: [Issue #23](https://github.com/rimtty/code-match-native/issues/23)、[Issue #19](https://github.com/rimtty/code-match-native/issues/19)。ユーザー承認と自動確認を区別し、未実施項目は完了扱いにしない。
 
 ## 6. 証跡テンプレート
