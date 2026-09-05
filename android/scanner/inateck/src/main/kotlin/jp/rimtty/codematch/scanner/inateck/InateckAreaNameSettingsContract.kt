@@ -70,7 +70,9 @@ internal object InateckAreaNameSettingsContract {
 
     /**
      * Checks that every requested symbology is present in a fresh full
-     * inventory with the requested value. Other general settings are ignored;
+     * inventory with the requested value and no additional known symbologies.
+     * A changed inventory cannot validate an older full snapshot.
+     * Other general settings are ignored;
      * they are not part of a symbology command and may be returned by the SDK
      * before or after a write.
      */
@@ -81,6 +83,7 @@ internal object InateckAreaNameSettingsContract {
         if (requested.isEmpty()) return false
         val actual = extractSymbologies(settings) ?: return false
         val actualByIdentity = actual.associateBy { identity(it.area, it.name) }
+        if (actualByIdentity.size != requested.size) return false
         return requested.all { expected ->
             actualByIdentity[identity(expected.area, expected.name)]?.value == expected.value
         }
