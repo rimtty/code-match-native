@@ -6,6 +6,9 @@
 # generated lock/SBOM file to the app.
 
 set -euo pipefail
+# Large aapt2 dumps are fed to consumers that may exit early (awk ... exit,
+# rg -q). Every such printf is wrapped as `{ printf ... 2>/dev/null || true; }`
+# so an EPIPE on the writer side cannot fail the pipeline under pipefail.
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 android_root="$(cd -- "$script_dir/.." && pwd -P)"
@@ -328,7 +331,7 @@ verify_artifact_file_paths() {
 
     resources_dump="$("$aapt2_path" dump resources -v "$artifact")" || \
         die "aapt2 could not inspect resources in $label"
-    resource_file="$(printf '%s\n' "$resources_dump" | awk '
+    resource_file="$({ printf '%s\n' "$resources_dump" 2>/dev/null || true; } | awk '
         /resource .* xml\/file_paths([[:space:]]|$)/ {
             if (getline > 0) {
                 line = $0
@@ -417,13 +420,13 @@ validate_compiled_backup_dump() {
     local sections=("$@")
     local pairs section domain path count
 
-    ! printf '%s\n' "$dump" | rg -q '^[[:space:]]*E: include([[:space:]]|$)' || \
+    ! { printf '%s\n' "$dump" 2>/dev/null || true; } | rg -q '^[[:space:]]*E: include([[:space:]]|$)' || \
         die "$label must not contain backup includes"
-    pairs="$(printf '%s\n' "$dump" | compiled_exclude_pairs)"
+    pairs="$({ printf '%s\n' "$dump" 2>/dev/null || true; } | compiled_exclude_pairs)"
 
     for section in "${sections[@]}"; do
         while IFS='|' read -r domain path; do
-            count="$(printf '%s\n' "$pairs" | rg -c -F -x "$section|$domain|$path" || true)"
+            count="$({ printf '%s\n' "$pairs" 2>/dev/null || true; } | rg -c -F -x "$section|$domain|$path" || true)"
             [[ "$count" == "1" ]] || \
                 die "$label must contain exactly one $section exclusion for domain=$domain path=$path"
         done <<'EOF'
@@ -446,7 +449,7 @@ compiled_xml_file() {
     local resources_dump="$1"
     local resource_name="$2"
 
-    printf '%s\n' "$resources_dump" | awk -v name="$resource_name" '
+    { printf '%s\n' "$resources_dump" 2>/dev/null || true; } | awk -v name="$resource_name" '
         $0 ~ "resource .* " name "([[:space:]]|$)" {
             if (getline > 0) {
                 line = $0
@@ -518,12 +521,12 @@ verify_manifest_resource_reference() {
     local label="$5"
     local resource_id
 
-    resource_id="$(printf '%s\n' "$resources_dump" | awk -v name="$resource_name" '
+    resource_id="$({ printf '%s\n' "$resources_dump" 2>/dev/null || true; } | awk -v name="$resource_name" '
         $1 == "resource" && $3 == name { print $2; exit }
     ')"
     [[ "$resource_id" =~ ^0x[0-9a-fA-F]+$ ]] || \
         die "$label does not contain $resource_name"
-    printf '%s\n' "$manifest_dump" | rg -q -i "$attribute[^=]*=@$resource_id([[:space:]]|$)" || \
+    { printf '%s\n' "$manifest_dump" 2>/dev/null || true; } | rg -q -i "$attribute[^=]*=@$resource_id([[:space:]]|$)" || \
         die "$label does not reference $resource_name from $attribute"
     printf '%s\n' "$resource_id"
 }
@@ -608,7 +611,7 @@ validate_source_manifest() {
             ' "$file" | rg -F "android.permission.$permission" || true)"
             if [[ -n "$matches" ]]; then
                 if [[ "$permission" == INTERNET || "$permission" == ACCESS_NETWORK_STATE ]]; then
-                    printf '%s\n' "$matches" | rg -q 'tools:node="remove"' || \
+                    { printf '%s\n' "$matches" 2>/dev/null || true; } | rg -q 'tools:node="remove"' || \
                         die "source manifest declares forbidden permission $permission"
                 else
                     die "source manifest declares unconnected-stage permission $permission"
@@ -620,13 +623,13 @@ validate_source_manifest() {
     local provider_block
     provider_block="$(sed -n '/androidx.core.content.FileProvider/,/<\//p' "$file")"
     [[ -n "$provider_block" ]] || die "source manifest is missing FileProvider"
-    printf '%s\n' "$provider_block" | rg -q 'android:exported="false"' || \
+    { printf '%s\n' "$provider_block" 2>/dev/null || true; } | rg -q 'android:exported="false"' || \
         die "FileProvider must be non-exported"
-    printf '%s\n' "$provider_block" | rg -q 'android:grantUriPermissions="true"' || \
+    { printf '%s\n' "$provider_block" 2>/dev/null || true; } | rg -q 'android:grantUriPermissions="true"' || \
         die "FileProvider must grant URI permissions explicitly"
-    printf '%s\n' "$provider_block" | rg -q 'android.support.FILE_PROVIDER_PATHS' || \
+    { printf '%s\n' "$provider_block" 2>/dev/null || true; } | rg -q 'android.support.FILE_PROVIDER_PATHS' || \
         die "FileProvider paths metadata is missing"
-    printf '%s\n' "$provider_block" | rg -q 'android:resource="@xml/file_paths"' || \
+    { printf '%s\n' "$provider_block" 2>/dev/null || true; } | rg -q 'android:resource="@xml/file_paths"' || \
         die "FileProvider paths metadata must reference @xml/file_paths"
 }
 
@@ -638,40 +641,40 @@ validate_manifest_text() {
     local permission
 
     for permission in "${forbidden_permissions[@]}"; do
-        if printf '%s\n' "$text" | rg -q -e "$(permission_pattern "$permission")"; then
+        if { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q -e "$(permission_pattern "$permission")"; then
             die "$label contains forbidden permission android.permission.$permission"
         fi
     done
 
     if [[ "$require_app_contract" == true ]]; then
-        printf '%s\n' "$text" | rg -q -i 'allowBackup[^=]*=[^[:alnum:]]*(false|0x00000000)' || \
+        { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q -i 'allowBackup[^=]*=[^[:alnum:]]*(false|0x00000000)' || \
             die "$label must set android:allowBackup=false"
-        printf '%s\n' "$text" | rg -q -i 'fullBackupContent' || \
+        { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q -i 'fullBackupContent' || \
             die "$label must contain fullBackupContent"
-        printf '%s\n' "$text" | rg -q -i 'dataExtractionRules' || \
+        { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q -i 'dataExtractionRules' || \
             die "$label must contain dataExtractionRules"
-        if printf '%s\n' "$text" | rg -q '<manifest([[:space:]>]|$)'; then
-            printf '%s\n' "$text" | rg -q 'fullBackupContent="@xml/backup_rules"' || \
+        if { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q '<manifest([[:space:]>]|$)'; then
+            { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q 'fullBackupContent="@xml/backup_rules"' || \
                 die "$label must reference @xml/backup_rules"
-            printf '%s\n' "$text" | rg -q 'dataExtractionRules="@xml/data_extraction_rules"' || \
+            { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q 'dataExtractionRules="@xml/data_extraction_rules"' || \
                 die "$label must reference @xml/data_extraction_rules"
-        elif printf '%s\n' "$text" | rg -q -i 'fullBackupContent[^=]*=@xml/backup_rules([[:space:]]|$)' && \
-            printf '%s\n' "$text" | rg -q -i 'dataExtractionRules[^=]*=@xml/data_extraction_rules([[:space:]]|$)'; then
+        elif { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q -i 'fullBackupContent[^=]*=@xml/backup_rules([[:space:]]|$)' && \
+            { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q -i 'dataExtractionRules[^=]*=@xml/data_extraction_rules([[:space:]]|$)'; then
             : # AAB protobuf manifests retain symbolic resource names.
         elif [[ -n "$expected_backup_rules_resource_id" && -n "$expected_data_extraction_rules_resource_id" ]]; then
-            printf '%s\n' "$text" | rg -q -i "fullBackupContent[^=]*=@$expected_backup_rules_resource_id([[:space:]]|$)" || \
+            { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q -i "fullBackupContent[^=]*=@$expected_backup_rules_resource_id([[:space:]]|$)" || \
                 die "$label must resolve fullBackupContent to xml/backup_rules"
-            printf '%s\n' "$text" | rg -q -i "dataExtractionRules[^=]*=@$expected_data_extraction_rules_resource_id([[:space:]]|$)" || \
+            { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q -i "dataExtractionRules[^=]*=@$expected_data_extraction_rules_resource_id([[:space:]]|$)" || \
                 die "$label must resolve dataExtractionRules to xml/data_extraction_rules"
         else
             die "$label backup resource identity could not be verified"
         fi
     fi
 
-    if printf '%s\n' "$text" | rg -q -i 'debuggable[^=]*=[^[:alnum:]]*(true|0x00000001)|application-debuggable'; then
+    if { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q -i 'debuggable[^=]*=[^[:alnum:]]*(true|0x00000001)|application-debuggable'; then
         die "$label is debuggable"
     fi
-    if printf '%s\n' "$text" | rg -q -i 'scanner[/:.]fake|FakeExternalScanner|show_debug_demo_tools[^[:alnum:]]*(true|1)|debug[[:alnum:]_-]*(menu|entry)|demo[[:alnum:]_-]*(menu|entry)'; then
+    if { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q -i 'scanner[/:.]fake|FakeExternalScanner|show_debug_demo_tools[^[:alnum:]]*(true|1)|debug[[:alnum:]_-]*(menu|entry)|demo[[:alnum:]_-]*(menu|entry)'; then
         die "$label contains a Fake/debug release entry"
     fi
 
@@ -679,20 +682,20 @@ validate_manifest_text() {
         # A newly introduced dynamic feature must not silently expand the
         # externally reachable surface. A future intentional exported entry
         # requires an explicit hardening-policy update and review.
-        if printf '%s\n' "$text" | rg -q -i 'exported[^=]*=[^[:alnum:]]*(true|0x00000001)'; then
+        if { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q -i 'exported[^=]*=[^[:alnum:]]*(true|0x00000001)'; then
             die "$label contains an exported dynamic-feature component"
         fi
-        if printf '%s\n' "$text" | rg -q -i 'androidx\.core\.content\.FileProvider|FILE_PROVIDER_PATHS'; then
+        if { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q -i 'androidx\.core\.content\.FileProvider|FILE_PROVIDER_PATHS'; then
             die "$label must not define a dynamic-feature FileProvider"
         fi
     fi
 
     if [[ "$require_app_contract" == true ]]; then
         local provider_block
-        if printf '%s\n' "$text" | rg -q '<provider([[:space:]>]|$)'; then
-            provider_block="$(printf '%s\n' "$text" | sed -n '/androidx.core.content.FileProvider/,/<\//p')"
+        if { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q '<provider([[:space:]>]|$)'; then
+            provider_block="$({ printf '%s\n' "$text" 2>/dev/null || true; } | sed -n '/androidx.core.content.FileProvider/,/<\//p')"
         else
-            provider_block="$(printf '%s\n' "$text" | awk '
+            provider_block="$({ printf '%s\n' "$text" 2>/dev/null || true; } | awk '
             function flush_provider() {
                 if (provider_block ~ /androidx\.core\.content\.FileProvider/) {
                     print provider_block
@@ -730,17 +733,17 @@ validate_manifest_text() {
             ')"
         fi
         [[ -n "$provider_block" ]] || die "$label is missing FileProvider"
-        printf '%s\n' "$provider_block" | rg -q -i 'exported[^=]*=[^[:alnum:]]*(false|0x00000000)' || \
+        { printf '%s\n' "$provider_block" 2>/dev/null || true; } | rg -q -i 'exported[^=]*=[^[:alnum:]]*(false|0x00000000)' || \
             die "$label FileProvider must be non-exported"
-        printf '%s\n' "$provider_block" | rg -q -i 'grantUriPermissions[^=]*=[^[:alnum:]]*(true|0x00000001)' || \
+        { printf '%s\n' "$provider_block" 2>/dev/null || true; } | rg -q -i 'grantUriPermissions[^=]*=[^[:alnum:]]*(true|0x00000001)' || \
             die "$label FileProvider must grant URI permissions"
-        if printf '%s\n' "$text" | rg -q '<manifest([[:space:]>]|$)'; then
-            printf '%s\n' "$provider_block" | rg -q 'android:resource="@xml/file_paths"' || \
+        if { printf '%s\n' "$text" 2>/dev/null || true; } | rg -q '<manifest([[:space:]>]|$)'; then
+            { printf '%s\n' "$provider_block" 2>/dev/null || true; } | rg -q 'android:resource="@xml/file_paths"' || \
                 die "$label FileProvider metadata must reference @xml/file_paths"
-        elif printf '%s\n' "$provider_block" | rg -q -i 'resource[^=]*=@xml/file_paths([[:space:]]|$)'; then
+        elif { printf '%s\n' "$provider_block" 2>/dev/null || true; } | rg -q -i 'resource[^=]*=@xml/file_paths([[:space:]]|$)'; then
             : # AAB protobuf manifests retain the symbolic metadata resource.
         elif [[ -n "$expected_file_paths_id" ]]; then
-            printf '%s\n' "$provider_block" | rg -q -i "resource[^=]*=@$expected_file_paths_id([[:space:]]|$)" || \
+            { printf '%s\n' "$provider_block" 2>/dev/null || true; } | rg -q -i "resource[^=]*=@$expected_file_paths_id([[:space:]]|$)" || \
                 die "$label FileProvider metadata must resolve to xml/file_paths"
         else
             die "$label FileProvider resource identity could not be verified"
@@ -836,7 +839,7 @@ verify_apk_or_aab() {
             manifest_dump="$("$aapt2_path" dump xmltree --file AndroidManifest.xml "$artifact")" || \
                 die "aapt2 could not inspect the manifest in $label"
             for permission in "${forbidden_permissions[@]}"; do
-                printf '%s\n' "$permissions_dump" | rg -q -e "$(permission_pattern "$permission")" && \
+                { printf '%s\n' "$permissions_dump" 2>/dev/null || true; } | rg -q -e "$(permission_pattern "$permission")" && \
                     die "$label contains forbidden permission android.permission.$permission"
             done
             resources_dump="$("$aapt2_path" dump resources "$artifact")" || \
@@ -845,12 +848,12 @@ verify_apk_or_aab() {
                 "$manifest_dump" "$resources_dump" fullBackupContent xml/backup_rules "$label")"
             expected_data_extraction_rules_resource_id="$(verify_manifest_resource_reference \
                 "$manifest_dump" "$resources_dump" dataExtractionRules xml/data_extraction_rules "$label")"
-            expected_file_paths_resource_id="$(printf '%s\n' "$resources_dump" | awk '
+            expected_file_paths_resource_id="$({ printf '%s\n' "$resources_dump" 2>/dev/null || true; } | awk '
                 $1 == "resource" && $3 == "xml/file_paths" { print $2; exit }
             ')"
             [[ "$expected_file_paths_resource_id" =~ ^0x[0-9a-fA-F]+$ ]] || \
                 die "$label does not contain xml/file_paths"
-            bool_value="$(printf '%s\n' "$resources_dump" | awk '
+            bool_value="$({ printf '%s\n' "$resources_dump" 2>/dev/null || true; } | awk '
                 /bool\/show_debug_demo_tools/ { found=1; next }
                 found && !printed && /\(\) (true|false)/ { print; printed=1 }
             ' || true)"
@@ -944,7 +947,7 @@ validate_source_privacy() {
 
         file_hits="$(rg -n '\bFile\s*\(' "${production_dirs[@]}" --glob '*.kt' --glob '*.java' || true)"
         if [[ -n "$file_hits" ]]; then
-            if printf '%s\n' "$file_hits" | rg -v 'core/export/src/main/.*/HistoryPdfExporter\.kt:' | rg -q '.'; then
+            if { printf '%s\n' "$file_hits" 2>/dev/null || true; } | rg -v 'core/export/src/main/.*/HistoryPdfExporter\.kt:' | rg -q '.'; then
                 die "production source creates files outside the dedicated PDF exporter:\n$file_hits"
             fi
         fi
