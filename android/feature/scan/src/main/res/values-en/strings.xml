@@ -1,4 +1,5 @@
 <resources>
+    <string name="scan_invalid_camera_qr">Invalid QR code. Scan the QR code on the delivery slip / kanban label.</string>
     <string name="scan_accessibility_description">Scan a QR code and then a Code 128 barcode to compare them</string>
     <string name="scan_eyebrow">SCAN &amp; VERIFY</string>
     <string name="scan_start_title">Start a comparison</string>

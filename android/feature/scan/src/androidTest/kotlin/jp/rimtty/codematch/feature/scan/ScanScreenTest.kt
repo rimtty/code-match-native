@@ -38,6 +38,33 @@ class ScanScreenTest {
     private val barcodePayload = "BCJH-52-81GG@1N5X0C"
 
     @Test
+    fun invalidCameraQrExplainsWhichLabelToScan() {
+        val reason = mutableStateOf(InvalidScanReason.INCOMPLETE_QR_PAYLOAD)
+        val expected = InstrumentationRegistry.getInstrumentation().targetContext
+            .getString(R.string.scan_invalid_camera_qr)
+        composeRule.setContent {
+            ScanScreen(
+                ScanUiState.fromSession(
+                    session = ScanSessionState(
+                        scan = ScanState.WaitingQr(), inputSource = InputSource.CAMERA,
+                    ),
+                    lastInvalidReason = reason.value,
+                ),
+                onAction = {},
+            )
+        }
+        for (invalid in listOf(
+            InvalidScanReason.INCOMPLETE_QR_PAYLOAD,
+            InvalidScanReason.OVERLONG_QR_PAYLOAD,
+            InvalidScanReason.INVALID_PAYLOAD,
+            InvalidScanReason.EMPTY_PAYLOAD,
+        )) {
+            composeRule.runOnIdle { reason.value = invalid }
+            composeRule.onNodeWithText(expected).performScrollTo().assertIsDisplayed()
+        }
+    }
+
+    @Test
     fun startFormSendsNameAndStartAction() {
         val actions = mutableListOf<ScanUiAction>()
         composeRule.setContent {
