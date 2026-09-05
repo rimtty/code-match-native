@@ -7,6 +7,20 @@ import org.junit.Test
 
 class InateckAreaNameSettingsContractTest {
     @Test
+    fun freshInventoryMustHaveExactlyTheRequestedSymbologyIdentities() {
+        val requested = setOf(
+            InateckAreaNameSettingsContract.SettingTriple("device-area", "qrcode_on", "1"),
+            InateckAreaNameSettingsContract.SettingTriple("device-area", "code128_on", "0"),
+        )
+        val inventory = requested.map { mapOf("area" to it.area, "name" to it.name, "value" to it.value) }
+        assertTrue(InateckAreaNameSettingsContract.containsRequestedSymbologies(inventory.reversed(), requested))
+        assertTrue(!InateckAreaNameSettingsContract.containsRequestedSymbologies(
+            inventory + mapOf("area" to "device-area", "name" to "ean_13_on", "value" to "1"), requested,
+        ))
+        assertTrue(!InateckAreaNameSettingsContract.containsRequestedSymbologies(inventory.take(1), requested))
+    }
+
+    @Test
     fun exactAreaNameValueCommandRoundTripsToInventory() {
         val command = """
             [
