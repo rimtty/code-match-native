@@ -160,3 +160,14 @@ entries created, and no existing records were cleared. This establishes normal
 empty-session-end restoration, not unexpected-disconnect/timeout recovery.
 The read-only comparison addition passed two new unit tests (13 total) and
 assembleDebug/lintDebug. Baseline remains memory-only.
+
+Second physical witness: reused the same baseline, disconnected the probe,
+started another empty normal-app session and observed Bluetooth QR wait. User
+confirmed scanner power OFF; UI changed to camera fallback while preserving QR
+wait. User confirmed ON; without tapping reconnect the UI returned to Bluetooth
+QR wait. Ended session, confirmed Settings Ready, stopped normal app after end,
+reconnected the independent probe, explicitly reread and compared settings:
+all returned settings/all fields matched the pre-session baseline again.
+This covers power-cycle recovery followed by session-end restoration for the
+tested pair. It does not measure the intermediate inventory before Ready, nor
+independently cover auto-sleep, an injected SDK timeout, or restore-write failure.
