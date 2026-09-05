@@ -76,6 +76,29 @@ Eight additional JVM tests cover the one-shot exact replay guard, fresh mismatch
 duplicate/late preparation callbacks, rejected preparation, sanitization,
 transport disconnection, and 24,999/25,000 ms session deadline boundaries.
 
+## Reconnect using the retained baseline
+
+After an injected timeout/failure, end/disconnect the physical link without
+starting a new discovery. `切断後：保持した基準で再接続` is accepted only when
+physical disconnection was confirmed, no pending/active link remains, and the
+same selected device still has a retained snapshot. It creates a fresh SDK
+gateway/transport/session but keeps the existing memory store. It never captures
+a replacement baseline during recovery.
+
+This recovery again permits only a same-values replay with fresh validation.
+While the real write/readback completion is held, require non-Ready and baseline
+retention. Within the normal 25-second deadline, use
+`再接続後：確認済み復元応答を反映`; only then may Ready become true and the
+baseline clear. If the deadline expires first, reconnect again rather than
+treating the late success as valid. Illumination/changed-value commands remain
+prohibited.
+
+This additional path builds and passes lint. A ninth replay JVM test verifies
+the new session uses the old store until acknowledged recovery succeeds, then
+clears it and publishes Ready. Physical execution of this new reconnect path
+was not performed. On 2026-09-05 the user waived the remaining additional checks
+and accepted the local, non-distributed PoC. This waiver is not a hardware pass.
+
 ## Evidence boundary
 
 Seven JVM tests pass for the decorator plus production transport/session gates.
@@ -102,4 +125,6 @@ automatic reconnect coordinator. The exact replay mode proves an application-sid
 completion loss after a successful real set/readback, not a device failure partway
 through a write. Do not infer camera-fallback UI or successful recovery of physically
 partially modified settings from these probes.
-Issue #19 remains open until those applicable acceptance conditions are resolved.
+On 2026-09-05 the user accepted completion of Issue #19 with these remaining
+additional acceptance checks waived. The unverified boundaries above remain
+unverified; closing the issue does not expand the hardware evidence or distribution scope.

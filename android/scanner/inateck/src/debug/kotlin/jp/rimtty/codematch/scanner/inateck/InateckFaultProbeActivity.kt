@@ -28,6 +28,7 @@ class InateckFaultProbeActivity : Activity() {
     private var store: InMemorySymbologySnapshotStore? = null
     private var selected: ScannerDevice? = null
     private var restoreMode = false
+    private var recovering = false
     private var preparing = false
     private var sdkReadSucceeded = false
     private var physicalClosed = false
@@ -47,6 +48,14 @@ class InateckFaultProbeActivity : Activity() {
         button("読出し6秒タイムアウト検証：探索") { discover(false) }
         button("復元失敗検証：探索") { discover(true) }
         button("同一設定の実SDK再適用・25秒期限：探索") { discover(true, replay = true) }
+        button("切断後：保持した基準で再接続") { reconnectWithRetainedBaseline() }
+        button("再接続後：確認済み復元応答を反映") {
+            if (recovering && session?.state == BleSymbologySessionState.Restoring &&
+                exactReplay?.completedWriteSucceeded == true) {
+                exactReplay?.releaseCompletedWrite()
+                render()
+            }
+        }
         choices = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         body.addView(choices)
         button("保留した応答を期限後に配信") {
@@ -80,7 +89,7 @@ class InateckFaultProbeActivity : Activity() {
             requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT), 1)
             phase = "権限を許可して再度探索してください"; render(); return
         }
-        restoreMode = restore; stopped = false; preparing = false
+        restoreMode = restore; recovering = false; stopped = false; preparing = false
         physicalClosed = false; releasedLate = false; sdkReadSucceeded = false; sdkWriteSucceeded = false
         session = null; selected = null
         store = InMemorySymbologySnapshotStore(INATECK_ANDROID_SDK_PROFILE_IDENTITY)
@@ -91,19 +100,7 @@ class InateckFaultProbeActivity : Activity() {
         val t = InateckSdkTransport(exactReplay ?: g, nowMillis = SystemClock::elapsedRealtime)
         transport = t
         val token = ++runGeneration
-        t.listener = BleTransportListener { event ->
-            if (!stopped && token == runGeneration) when (event) {
-                is BleTransportEvent.Connected -> connected(event.device)
-                is BleTransportEvent.Disconnected -> {
-                    physicalClosed = true
-                    if (closing) finishStop()
-                    render()
-                }
-                is BleTransportEvent.ConnectionFailed -> { phase = "SDK接続失敗"; render() }
-                is BleTransportEvent.DisconnectFailed -> { phase = "切断確認失敗：新規接続禁止"; render() }
-                else -> Unit
-            }
-        }
+        listen(t, token)
         val found = linkedMapOf<String, InateckSdkDevice>()
         choices.removeAllViews()
         phase = "実SDK探索中（5秒）"; render()
@@ -130,9 +127,55 @@ class InateckFaultProbeActivity : Activity() {
         }, 5_000)
     }
 
+    private fun listen(t: InateckSdkTransport, token: Int) {
+        t.listener = BleTransportListener { event ->
+            if (!stopped && token == runGeneration) when (event) {
+                is BleTransportEvent.Connected -> connected(event.device)
+                is BleTransportEvent.Disconnected -> {
+                    physicalClosed = true
+                    if (closing) finishStop()
+                    render()
+                }
+                is BleTransportEvent.ConnectionFailed -> { phase = "SDK接続失敗"; render() }
+                is BleTransportEvent.DisconnectFailed -> { phase = "切断確認失敗：新規接続禁止"; render() }
+                else -> Unit
+            }
+        }
+    }
+
+    private fun reconnectWithRetainedBaseline() {
+        // An SDK success/configuration event is not a physical disconnect.
+        // Never replace a live/pending link or recapture/overwrite the baseline.
+        if (!physicalClosed || closing || transport?.isLinkActive == true) return
+        val device = selected ?: return
+        val snapshot = store?.load(device.id) ?: return
+        handler.removeCallbacks(ticker)
+        transport?.close()
+        val sdk = AndroidInateckSdkGateway(applicationContext, handler)
+        val replay = InateckExactReplayGateway(sdk)
+        if (!replay.arm(snapshot)) { replay.close(); phase = "保持基準の再適用拒否"; render(); return }
+        exactReplay = replay
+        gateway = InateckReadOnlyFaultGateway(sdk)
+        val t = InateckSdkTransport(replay, nowMillis = SystemClock::elapsedRealtime)
+        transport = t
+        recovering = true; stopped = false; physicalClosed = false
+        sdkWriteSucceeded = false; sdkReadSucceeded = false; releasedLate = false
+        session = null; preparing = false
+        listen(t, ++runGeneration)
+        elapsedStart = SystemClock.elapsedRealtime()
+        phase = "以前の基準を保持して再接続中"
+        if (!t.connect(device)) phase = "再接続要求拒否"
+        handler.post(ticker)
+        render()
+    }
+
     private fun connected(device: ScannerDevice) {
         phase = "接続成功・実SDK設定読出し"
-        if (restoreMode) {
+        if (recovering) {
+            // Reuse the saved store. A fresh inventory belongs to validation,
+            // never to a new baseline capture during recovery.
+            beginSessionOwner(device)
+        } else if (restoreMode) {
             preparing = true
             if (transport?.read(INATECK_SETTINGS_ENDPOINT) { result ->
                 preparing = false
@@ -169,7 +212,10 @@ class InateckFaultProbeActivity : Activity() {
                 sdkReadSucceeded = g.completedReadSucceeded
                 if (restoreMode) g.releaseCompletedRead()
             }
-            if (exactReplay?.hasCompletedWrite == true) sdkWriteSucceeded = exactReplay?.completedWriteSucceeded == true
+            if (exactReplay?.hasCompletedWrite == true) {
+                sdkWriteSucceeded = exactReplay?.completedWriteSucceeded == true
+                if (recovering && sdkWriteSucceeded) sdkReadSucceeded = true
+            }
             session?.tick()
             if (session == null && SystemClock.elapsedRealtime() - elapsedStart > 30_000) {
                 phase = "接続・基準取得期限超過"; stop(); render(); return
@@ -198,6 +244,7 @@ class InateckFaultProbeActivity : Activity() {
             "リンク保持：${transport?.isLinkActive == true}",
             "期限後の応答配信：$releasedLate",
             "復元用基準保持：${selected?.id?.let { store?.load(it) } != null}",
+            "保持基準での再接続：$recovering",
             if (exactReplay == null) "設定・照明書込み：SDKへ送信しません"
             else "同一設定のSDK再適用数：${exactReplay?.issuedWrites}\nSDK書込・readback完了：$sdkWriteSucceeded\n照明・異なる値の送信：禁止",
         ).joinToString("\n")
