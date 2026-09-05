@@ -147,6 +147,7 @@ class MainActivity : Activity() {
         val started = SystemClock.elapsedRealtime()
         setBusy(true)
         target.text = "$title：取得中…"
+        val commandComparison = if (bluetooth) null else ModernVersionParser.commandComparison()
         val completion: (Result<String>) -> Unit = { result -> runOnUiThread {
             if (generation == token && visible) {
                 generation++ // Invalidate timeout and duplicate/late callbacks.
@@ -164,6 +165,7 @@ class MainActivity : Activity() {
                     else -> "$value（${elapsed}ms）"
                 }
                 observation?.let { target.append("\n${it.summary()}") }
+                commandComparison?.let { target.append("\n$it") }
                 status.text = "取得処理終了。設定書き込みは行っていません。"
                 if (result.isFailure || value == null) close("取得に失敗したため切断します。")
             }

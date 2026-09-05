@@ -89,3 +89,16 @@ Physical comparison result: on Pixel 7 + BCST-36 the UI showed SDK failure
 the first SDK response. This does not establish unsupported firmware commands,
 because response completeness/type and correspondence to the request are not
 yet verified. All six probe unit tests plus build/lint passed.
+
+Further diagnostic flags compare the two native libraries' generated version
+commands (status/byte-array validation, equality only, no transmitted extra command)
+and classify the first response using the official notification parser. The probe
+does not show or persist notification data, and does not interpret arbitrary scan
+text as firmware. This classification is not a replacement for frame reassembly.
+
+Observed on the same physical pair: generated version commands were equal;
+firmware SDK failed in 81 ms; the official notification parser classified the
+first response as incomplete (`notify_status=0`), while the SDK handler had
+already declared reception complete. This provides a concrete reassembly gap
+to test next. It does not yet establish that a complete response will contain a
+valid firmware version. Eight unit tests/build/lint passed before installation.
