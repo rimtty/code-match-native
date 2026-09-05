@@ -3,10 +3,10 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 android_root="$(cd -- "$script_dir/.." && pwd -P)"
-apk="${1:-$android_root/app/build/outputs/apk/scannerPoc/app-scannerPoc.apk}"
+apk="${1:-$android_root/app/build/outputs/apk/release/app-release.apk}"
 
 [[ -f "$apk" ]] || {
-    echo "Inateck PoC verification failed: APK is missing: $apk" >&2
+    echo "Release scanner APK verification failed: APK is missing: $apk" >&2
     exit 1
 }
 
@@ -24,7 +24,7 @@ find_aapt2() {
 }
 
 aapt2="$(find_aapt2)" || {
-    echo "Inateck PoC verification failed: aapt2 is unavailable" >&2
+    echo "Release scanner APK verification failed: aapt2 is unavailable" >&2
     exit 1
 }
 permissions="$($aapt2 dump permissions "$apk")"
@@ -32,35 +32,35 @@ manifest="$($aapt2 dump xmltree "$apk" --file AndroidManifest.xml)"
 
 printf '%s\n' "$permissions" | rg -q \
     "uses-permission: name='android[.]permission[.]BLUETOOTH_SCAN' usesPermissionFlags='neverForLocation'" || {
-    echo "Inateck PoC verification failed: BLUETOOTH_SCAN neverForLocation is missing" >&2
+    echo "Release scanner APK verification failed: BLUETOOTH_SCAN neverForLocation is missing" >&2
     exit 1
 }
 printf '%s\n' "$permissions" | rg -q \
     "uses-permission: name='android[.]permission[.]BLUETOOTH_CONNECT'" || {
-    echo "Inateck PoC verification failed: BLUETOOTH_CONNECT is missing" >&2
+    echo "Release scanner APK verification failed: BLUETOOTH_CONNECT is missing" >&2
     exit 1
 }
 
 for forbidden in BLUETOOTH BLUETOOTH_ADMIN BLUETOOTH_ADVERTISE ACCESS_COARSE_LOCATION ACCESS_FINE_LOCATION ACCESS_BACKGROUND_LOCATION INTERNET ACCESS_NETWORK_STATE; do
     if printf '%s\n' "$permissions" | rg -q "android[.]permission[.]$forbidden([^_[:alnum:]]|$)"; then
-        echo "Inateck PoC verification failed: forbidden permission $forbidden" >&2
+        echo "Release scanner APK verification failed: forbidden permission $forbidden" >&2
         exit 1
     fi
 done
 
 if printf '%s\n' "$manifest" | rg -q 'android:debuggable[^=]*=true'; then
-    echo "Inateck PoC verification failed: APK is debuggable" >&2
+    echo "Release scanner APK verification failed: APK is debuggable" >&2
     exit 1
 fi
 exported_count="$(printf '%s\n' "$manifest" | rg -c 'android:exported[^=]*=true' || true)"
 if [[ "$exported_count" != "1" ]] || \
     ! printf '%s\n' "$manifest" | rg -q 'jp[.]rimtty[.]codematch[.]MainActivity'; then
-    echo "Inateck PoC verification failed: unexpected exported app component" >&2
+    echo "Release scanner APK verification failed: unexpected exported app component" >&2
     exit 1
 fi
 if printf '%s\n' "$manifest" | rg -q \
     'androidx[.]compose[.]ui[.]tooling[.]PreviewActivity|androidx[.]activity[.]ComponentActivity'; then
-    echo "Inateck PoC verification failed: debug tooling activity is packaged" >&2
+    echo "Release scanner APK verification failed: debug tooling activity is packaged" >&2
     exit 1
 fi
 
@@ -70,16 +70,16 @@ for required_native in \
     lib/arm64-v8a/libscanner_cmd.so \
     lib/arm64-v8a/libinateck_scanner_cmd.so; do
     printf '%s\n' "$entries" | rg -q -x "$required_native" || {
-        echo "Inateck PoC verification failed: $required_native is missing" >&2
+        echo "Release scanner APK verification failed: $required_native is missing" >&2
         exit 1
     }
 done
 if printf '%s\n' "$entries" | rg -q -P '^lib/(?!arm64-v8a/)'; then
-    echo "Inateck PoC verification failed: unexpected native ABI" >&2
+    echo "Release scanner APK verification failed: unexpected native ABI" >&2
     exit 1
 fi
 
-temporary="$(mktemp -d "${TMPDIR:-/tmp}/codematch-inateck-poc.XXXXXX")"
+temporary="$(mktemp -d "${TMPDIR:-/tmp}/codematch-release-scanner.XXXXXX")"
 trap 'rm -rf "$temporary"' EXIT
 while IFS= read -r dex; do
     unzip -p "$apk" "$dex"
@@ -88,7 +88,7 @@ strings "$temporary/all.dex" > "$temporary/dex-strings.txt"
 if rg -q -i \
     'notify (00|01).*data|notify 00----- onDisConnected completion|setSettingInfo result|getSettingInfo result' \
     "$temporary/dex-strings.txt"; then
-    echo "Inateck PoC verification failed: vendor raw-log strings remain in DEX" >&2
+    echo "Release scanner APK verification failed: vendor raw-log strings remain in DEX" >&2
     exit 1
 fi
 
@@ -96,7 +96,7 @@ fi
 # ML Kit reflectively constructs these registrars before camera analysis.
 apkanalyzer="$(dirname "$(dirname "$(dirname "$aapt2")")")/cmdline-tools/latest/bin/apkanalyzer"
 [[ -x "$apkanalyzer" ]] || {
-    echo "Inateck PoC verification failed: apkanalyzer is unavailable" >&2
+    echo "Release scanner APK verification failed: apkanalyzer is unavailable" >&2
     exit 1
 }
 for registrar in \
@@ -105,13 +105,13 @@ for registrar in \
     com.google.mlkit.common.internal.CommonComponentRegistrar; do
     if ! "$apkanalyzer" dex code --class "$registrar" --method '<init>()V' "$apk" \
         > "$temporary/registrar.txt" 2>/dev/null; then
-        echo "Inateck PoC verification failed: ML Kit registrar constructor missing: $registrar" >&2
+        echo "Release scanner APK verification failed: ML Kit registrar constructor missing: $registrar" >&2
         exit 1
     fi
     rg -q '\.method public constructor <init>\(\)V' "$temporary/registrar.txt" || {
-        echo "Inateck PoC verification failed: ML Kit registrar constructor is not public: $registrar" >&2
+        echo "Release scanner APK verification failed: ML Kit registrar constructor is not public: $registrar" >&2
         exit 1
     }
 done
 
-echo "Inateck SDK PoC APK permissions, entry points, ABI, vendor-log stripping, and ML Kit constructors are verified."
+echo "Release APK scanner permissions, entry points, ABI, vendor-log stripping, and ML Kit constructors are verified."

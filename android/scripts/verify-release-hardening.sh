@@ -16,13 +16,12 @@ backup_rules="$app_dir/src/main/res/xml/backup_rules.xml"
 data_extraction_rules="$app_dir/src/main/res/xml/data_extraction_rules.xml"
 file_paths="$app_dir/src/main/res/xml/file_paths.xml"
 release_manifest=""
-release_apk="$app_dir/build/outputs/apk/release/app-release-unsigned.apk"
+release_apk="$app_dir/build/outputs/apk/release/app-release.apk"
 release_aab="$app_dir/build/outputs/bundle/release/app-release.aab"
 dependency_report=""
 skip_artifacts=false
 apk_explicit=false
 aab_explicit=false
-allow_production_ble_permissions=false
 tmp_dir=""
 expected_backup_rules_resource_id=""
 expected_data_extraction_rules_resource_id=""
@@ -42,11 +41,13 @@ Options:
   --aab PATH                  Release AAB to inspect (required when supplied)
   --dependency-report PATH    releaseRuntimeClasspath report to inspect
   --skip-artifacts            Skip APK/AAB inspection (for source-only tests)
-  --allow-production-ble-permissions
-                              Future M4 mode: allow only BLUETOOTH_SCAN and
-                              BLUETOOTH_CONNECT; all other Nearby/location
-                              permissions remain forbidden
   --help                      Show this help
+
+Release builds bundle the official Inateck scanner SDK and request only
+BLUETOOTH_SCAN (neverForLocation) and BLUETOOTH_CONNECT. Legacy Bluetooth,
+location, advertising, network, and unrelated Nearby/UWB permissions stay
+forbidden; Fake/debug scanner entry points and analytics SDKs must not leak
+into release.
 EOF
 }
 
@@ -89,10 +90,6 @@ while (($# > 0)); do
             ;;
         --skip-artifacts)
             skip_artifacts=true
-            shift
-            ;;
-        --allow-production-ble-permissions)
-            allow_production_ble_permissions=true
             shift
             ;;
         --help|-h)
@@ -555,38 +552,23 @@ validate_application_contract() {
         die "application must reference @xml/data_extraction_rules: $file"
 }
 
+# Release bundles a real BLE adapter and may request only the two Nearby
+# Devices runtime permissions (BLUETOOTH_SCAN with neverForLocation and
+# BLUETOOTH_CONNECT). Legacy Bluetooth, location, advertising, network, and
+# unrelated Nearby/UWB permissions remain forbidden.
 forbidden_permissions=(
     "INTERNET"
     "ACCESS_NETWORK_STATE"
     "BLUETOOTH"
     "BLUETOOTH_ADMIN"
-    "BLUETOOTH_SCAN"
-    "BLUETOOTH_CONNECT"
     "BLUETOOTH_ADVERTISE"
     "BLUETOOTH_PRIVILEGED"
     "ACCESS_FINE_LOCATION"
     "ACCESS_COARSE_LOCATION"
+    "ACCESS_BACKGROUND_LOCATION"
     "NEARBY_WIFI_DEVICES"
     "UWB_RANGING"
 )
-
-if [[ "$allow_production_ble_permissions" == true ]]; then
-    # M4 may add the two runtime permissions required by a real BLE adapter.
-    # Keep legacy Bluetooth, location, advertising, and unrelated Nearby/UWB
-    # permissions forbidden even in that future mode.
-    forbidden_permissions=(
-        "INTERNET"
-        "ACCESS_NETWORK_STATE"
-        "BLUETOOTH"
-        "BLUETOOTH_ADMIN"
-        "BLUETOOTH_ADVERTISE"
-        "BLUETOOTH_PRIVILEGED"
-        "ACCESS_FINE_LOCATION"
-        "ACCESS_COARSE_LOCATION"
-        "NEARBY_WIFI_DEVICES"
-        "UWB_RANGING"
-    )
-fi
 
 permission_pattern() {
     printf 'android\\.permission\\.%s(["'"'"'[:space:]]|$)' "$1"
@@ -817,17 +799,24 @@ verify_dex_does_not_contain_fake() {
     done <<< "$entries" > "$dex_file"
     if command -v strings >/dev/null 2>&1; then
         strings "$dex_file" > "$strings_file"
-        if rg -n -i 'jp/rimtty/codematch/scanner/fake|FakeExternalScanner|FAKE-BCST-47|jp/rimtty/codematch/scanner/inateck|com/inateck/scanner|com/clj/fastble|com/sun/jna|libscanner_cmd|libinateck_scanner_cmd|libjnidispatch' "$strings_file"; then
-            die "$label contains Fake or Inateck PoC scanner classes or identifiers"
+        if rg -n -i 'jp/rimtty/codematch/scanner/fake|FakeExternalScanner|FAKE-BCST-47' "$strings_file"; then
+            die "$label contains Fake scanner classes or identifiers"
         fi
+        rg -q 'jp/rimtty/codematch/scanner/inateck' "$strings_file" || \
+            die "$label does not contain the Inateck scanner adapter"
         if rg -n -i 'com/google/firebase/analytics|com/google/firebase/crashlytics|com/google/android/gms/analytics|io/sentry|com/bugsnag|com/newrelic|com/datadog|com/mixpanel|com/amplitude|com/segment|com/posthog|com/countly' "$strings_file"; then
             die "$label contains analytics or crash-reporting classes"
         fi
     else
         note "strings is unavailable; skipping binary Fake-class scan for $label"
     fi
-    if zip_entries "$archive" | rg -q -i 'libscanner_cmd[.]so|libinateck_scanner_cmd[.]so|libjnidispatch[.]so'; then
-        die "$label contains Inateck PoC native libraries"
+    local native_lib
+    for native_lib in libjnidispatch.so libscanner_cmd.so libinateck_scanner_cmd.so; do
+        zip_entries "$archive" | rg -q "(^|/)lib/arm64-v8a/$native_lib\$" || \
+            die "$label is missing the Inateck native library $native_lib"
+    done
+    if zip_entries "$archive" | rg -q -P '(^|/)lib/(?!arm64-v8a/)'; then
+        die "$label contains native libraries for an unexpected ABI"
     fi
 }
 
@@ -972,13 +961,13 @@ validate_release_source_boundary() {
     local default_debug_flag="$app_dir/src/main/res/values/bools.xml"
     local unsafe_app_dependencies
 
-    # The release source set must remain camera-only until a reviewed BLE
-    # adapter is available. This source check complements the APK/Dex scan:
-    # it catches a release wiring mistake even when artifacts are not built.
+    # The release source set binds the official Inateck SDK adapter. This
+    # source check complements the APK/Dex scan: it catches a release wiring
+    # mistake even when artifacts are not built.
     require_file "$release_scanner_module"
     require_file "$default_debug_flag"
-    rg -q 'UnavailableExternalScanner' "$release_scanner_module" || \
-        die "release scanner binding must use UnavailableExternalScanner"
+    rg -q 'InateckExternalScanner' "$release_scanner_module" || \
+        die "release scanner binding must use InateckExternalScanner"
     ! rg -q -i 'scanner[.]fake|FakeExternalScanner|debug[[:alnum:]_-]*(menu|entry)|demo[[:alnum:]_-]*(menu|entry)' \
         "$release_scanner_module" || \
         die "release scanner binding contains a Fake/debug entry"
@@ -986,7 +975,7 @@ validate_release_source_boundary() {
         die "default show_debug_demo_tools must be false for release"
 
     unsafe_app_dependencies="$(rg -n \
-        '(^|[^[:alnum:]_])(implementation|api|runtimeOnly|compileOnly)[[:space:]]*[(].*project[(][[:space:]]*[\"]:scanner:fake[\"]' \
+        '(^|[^[:alnum:]_])(implementation|api|runtimeOnly|compileOnly)[[:space:]]*[(].*project[(][[:space:]]*["]:scanner:fake["]' \
         "$app_dir/build.gradle.kts" || true)"
     [[ -z "$unsafe_app_dependencies" ]] || \
         die "app has a non-debug dependency on scanner:fake:\n$unsafe_app_dependencies"
@@ -1001,15 +990,14 @@ validate_dependency_report() {
     if rg -n -F ':scanner:fake' "$dependency_report"; then
         die "Fake scanner leaked into the release dependency graph"
     fi
-    if rg -n -i ':scanner:inateck|com[.]github[.]Jasonchenlijian:FastBle(Lib)?|jna-min|jna-platform|inateck-scanner-ble' "$dependency_report"; then
-        die "Inateck scanner PoC dependency leaked into the release graph"
-    fi
+    rg -q -F ':scanner:inateck' "$dependency_report" || \
+        die "release dependency graph is missing :scanner:inateck"
     local forbidden_dependency_hits
     forbidden_dependency_hits="$(rg -n -i \
         'firebase-analytics|firebase-crashlytics|firebase-crashlytics-ndk|sentry|bugsnag|newrelic|datadog|appcenter|instabug|rollbar|raygun|airbrake|hockeyapp|mixpanel|amplitude|segment|posthog|countly|telemetry' \
         "$dependency_report" || true)"
     [[ -z "$forbidden_dependency_hits" ]] || die "analytics/crash dependency found in release graph:\n$forbidden_dependency_hits"
-    note "release dependency graph contains no Fake, Inateck PoC, analytics, or crash SDK"
+    note "release dependency graph contains :scanner:inateck and no Fake, analytics, or crash SDK"
 }
 
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/codematch-release-hardening.XXXXXX")"

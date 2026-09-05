@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <!-- Remove permissions contributed by the legacy FastBle manifest. This
-         API 31+ PoC uses Nearby Devices and never derives location. -->
+         API 31+ app uses Nearby Devices and never derives location. -->
     <uses-permission android:name="android.permission.BLUETOOTH" tools:node="remove" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" tools:node="remove" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" tools:node="remove" />
@@ -19,7 +19,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
 
     <application>
-        <!-- The local PoC exposes only the real launcher activity. Remove
+        <!-- Release exposes only the real launcher activity. Remove
              development/profile entry points contributed by dependencies.
              MissingClass is irrelevant on removal-only merge directives. -->
         <activity

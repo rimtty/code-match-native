@@ -56,4 +56,4 @@ download_and_verify \
     "$module_root/src/main/jniLibs/arm64-v8a/libinateck_scanner_cmd.so" \
     "96b3a8850813c4ebdb0b5086b5eef9af70d8c15b5227dc5ecbb22b5310478d31"
 
-echo "Inateck SDK PoC dependencies are installed and verified locally."
+echo "Inateck SDK dependencies are installed and verified locally."
