@@ -1589,6 +1589,85 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertEqual(context.service.expectedCode, .barcode)
     }
 
+    func testCameraRejectsUnrelatedQRAndKeepsWaitingForKanbanQR() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        let camera = context.viewModel.camera
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+
+        // 無関係なQR（URL、短い値、66桁だが必須フィールド不正）はQR待機を保持する。
+        for payload in [
+            "https://example.com/tissue",
+            "BCJH5281GG",
+            String(repeating: "X", count: 66)
+        ] {
+            context.viewModel.cameraScanner(camera, didRead: payload, type: .qr)
+            XCTAssertEqual(context.viewModel.step, .qr, payload)
+            XCTAssertTrue(context.viewModel.qrValue.isEmpty, payload)
+            XCTAssertTrue(context.viewModel.message.contains("QRコードではありません"), payload)
+        }
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+
+        context.viewModel.cameraScanner(camera, didRead: ScannerViewModel.sampleQRPayload, type: .qr)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.viewModel.qrValue, ScannerViewModel.sampleQRPayload)
+    }
+
+    func testBluetoothDistinguishesUnrelatedCodesFromWrongOrder() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        // QR待機: Code 128形式は順序違い、それ以外は無関係なコードとして案内する。
+        context.service.simulateScan(ScannerViewModel.sampleBarcodePayload)
+        XCTAssertTrue(context.viewModel.message.contains("読み取り順序が違います"))
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan("https://example.com/tissue")
+        XCTAssertTrue(context.viewModel.message.contains("QRコードではありません"))
+        XCTAssertEqual(context.viewModel.step, .qr)
+
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+
+        // Code 128待機: QR形式は順序違い、それ以外は無関係なコードとして案内する。
+        try? await Task.sleep(for: .milliseconds(800))
+        let otherQR = "DAYA005100DFR55581GA  0001000000010000Y      000000BYBYTLYB16   0*"
+        context.service.simulateScan(otherQR)
+        XCTAssertTrue(context.viewModel.message.contains("読み取り順序が違います"))
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan("https://example.com/tissue")
+        XCTAssertTrue(context.viewModel.message.contains("Code 128バーコードではありません"))
+        XCTAssertEqual(context.viewModel.step, .barcode)
+    }
+
+    func testBluetoothScanDuringMismatchResultWarnsWithoutAdvancing() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleMismatchBarcodePayload)
+        XCTAssertEqual(context.viewModel.step, .result(.mismatch))
+
+        // 不一致の結果表示中のトリガーは進めず、確認操作が必要なことを知らせる。
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        XCTAssertEqual(context.viewModel.step, .result(.mismatch))
+        XCTAssertTrue(context.viewModel.message.contains("次のコードを照合"))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+
+        context.viewModel.reset()
+        XCTAssertEqual(context.viewModel.step, .qr)
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+    }
+
     func testBluetoothDisconnectKeepsCurrentStepAndFallsBackToCamera() async {
         let context = makeContext()
         defer { context.cleanup() }
