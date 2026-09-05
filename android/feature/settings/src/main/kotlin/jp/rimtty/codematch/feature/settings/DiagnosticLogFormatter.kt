@@ -3,6 +3,8 @@ package jp.rimtty.codematch.feature.settings
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import jp.rimtty.codematch.scanner.api.ConfigurationState
+import jp.rimtty.codematch.scanner.api.ConnectionState
 import jp.rimtty.codematch.scanner.api.DiagnosticCategory
 import jp.rimtty.codematch.scanner.api.DiagnosticEvent
 
@@ -51,6 +53,26 @@ object DiagnosticLogFormatter {
                 )
                 appendLine("$timestamp #${event.sequence} ${categoryLabel(event.category)}: ${event.message}")
             }
+    }
+
+    /**
+     * Stable labels for the header. Release builds are minified, so class
+     * names cannot be used; adapter reason strings are deliberately omitted.
+     */
+    fun connectionLabel(state: ConnectionState): String = when (state) {
+        ConnectionState.Idle -> "Idle"
+        ConnectionState.Searching -> "Searching"
+        is ConnectionState.Connecting -> "Connecting"
+        is ConnectionState.Connected -> "Connected"
+        is ConnectionState.Unavailable -> "Unavailable"
+        is ConnectionState.Failed -> "Failed"
+    }
+
+    fun configurationLabel(state: ConfigurationState): String = when (state) {
+        ConfigurationState.Unavailable -> "Unavailable"
+        ConfigurationState.Configuring -> "Configuring"
+        ConfigurationState.Ready -> "Ready"
+        is ConfigurationState.Failed -> "Failed"
     }
 
     fun fileName(now: Instant, zoneId: ZoneId = ZoneId.systemDefault()): String =

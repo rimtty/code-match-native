@@ -2,8 +2,11 @@ package jp.rimtty.codematch.feature.settings
 
 import java.time.Instant
 import java.time.ZoneId
+import jp.rimtty.codematch.scanner.api.ConfigurationState
+import jp.rimtty.codematch.scanner.api.ConnectionState
 import jp.rimtty.codematch.scanner.api.DiagnosticCategory
 import jp.rimtty.codematch.scanner.api.DiagnosticEvent
+import jp.rimtty.codematch.scanner.api.ScannerDevice
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -36,6 +39,16 @@ class DiagnosticLogFormatterTest {
         assertEquals("2025-09-05T00:33:20.000+09:00 #1 connection: connected", lines[10])
         assertEquals("2025-09-05T00:33:21.500+09:00 #2 configuration: symbology-ready", lines[11])
         assertEquals("2025-09-05T00:33:22.000+09:00 #3 error: timeout", lines[12])
+    }
+
+    @Test fun stateLabelsDoNotDependOnClassNamesOrReasons() {
+        assertEquals("Connected", DiagnosticLogFormatter.connectionLabel(
+            ConnectionState.Connected(ScannerDevice(id = "id", name = "HPRT")),
+        ))
+        assertEquals("Failed", DiagnosticLogFormatter.connectionLabel(ConnectionState.Failed("raw reason")))
+        assertEquals("Idle", DiagnosticLogFormatter.connectionLabel(ConnectionState.Idle))
+        assertEquals("Ready", DiagnosticLogFormatter.configurationLabel(ConfigurationState.Ready))
+        assertEquals("Failed", DiagnosticLogFormatter.configurationLabel(ConfigurationState.Failed("raw reason")))
     }
 
     @Test fun fileNameUsesLocalTimestamp() {
