@@ -37,6 +37,9 @@ class SettingsViewModel @Inject constructor(
         override fun onIlluminationStateChanged(state: jp.rimtty.codematch.scanner.api.IlluminationState) {
             refreshScannerState()
         }
+        override fun onTuningStateChanged(state: jp.rimtty.codematch.scanner.api.TuningState) {
+            refreshScannerState()
+        }
         override fun onConnectionStateChanged(state: ConnectionState) {
             refreshScannerState()
         }
@@ -128,6 +131,7 @@ class SettingsViewModel @Inject constructor(
 
     private fun scannerState(current: SettingsUiState): SettingsUiState = current.copy(
         illuminationState = scanner.illuminationState,
+        tuningState = scanner.tuningState,
         devices = scanner.devices,
         connectionState = scanner.connectionState,
         configurationState = scanner.configurationState,

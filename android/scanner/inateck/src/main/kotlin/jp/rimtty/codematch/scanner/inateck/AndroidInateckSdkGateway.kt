@@ -504,6 +504,77 @@ internal class AndroidInateckSdkGateway(
         }
     }
 
+    override fun applyTuning(
+        deviceId: String,
+        completion: (InateckTuningOutcome) -> Unit,
+    ): Boolean {
+        val device = activeDevice?.takeIf { it.mac == deviceId } ?: return false
+        val attempt = connectionAttempt
+        val operation = beginOperation(device, attempt) ?: return false
+        fun finish(outcome: InateckTuningOutcome) {
+            if (!isCurrentOperation(device, attempt, operation)) return
+            finishOperation(operation)
+            completion(outcome)
+        }
+        // Same discipline as illumination: read the live inventory, write only
+        // the differing items with the reported area, then confirm by readback.
+        return runCatching {
+            device.messager.getSettingInfo { result ->
+                dispatch {
+                    if (!isCurrentOperation(device, attempt, operation)) return@dispatch
+                    val inventory = result.getOrNull()?.map { it.toMap() }
+                    if (inventory == null) {
+                        finish(InateckTuningOutcome.FAILED)
+                        return@dispatch
+                    }
+                    if (InateckTuningSettings.present(inventory).isEmpty()) {
+                        finish(InateckTuningOutcome.UNSUPPORTED)
+                        return@dispatch
+                    }
+                    val differences = InateckTuningSettings.differences(inventory)
+                    if (differences.isEmpty()) {
+                        finish(InateckTuningOutcome.MATCHED)
+                        return@dispatch
+                    }
+                    val command = InateckTuningSettings.command(inventory, differences)
+                    if (command == null) {
+                        finish(InateckTuningOutcome.FAILED)
+                        return@dispatch
+                    }
+                    runCatching {
+                        device.messager.setSettingInfo(command) { written ->
+                            dispatch {
+                                if (!isCurrentOperation(device, attempt, operation)) return@dispatch
+                                if (written.isFailure) {
+                                    finish(InateckTuningOutcome.FAILED)
+                                    return@dispatch
+                                }
+                                runCatching {
+                                    device.messager.getSettingInfo { verified ->
+                                        dispatch {
+                                            val actual = verified.getOrNull()?.map { it.toMap() }
+                                            finish(
+                                                if (actual != null && InateckTuningSettings.confirmed(actual)) {
+                                                    InateckTuningOutcome.APPLIED
+                                                } else {
+                                                    InateckTuningOutcome.FAILED
+                                                },
+                                            )
+                                        }
+                                    }
+                                }.onFailure { finish(InateckTuningOutcome.FAILED) }
+                            }
+                        }
+                    }.onFailure { finish(InateckTuningOutcome.FAILED) }
+                }
+            }
+            true
+        }.getOrElse {
+            finishOperation(operation)
+            false
+        }
+    }
+
     override fun close() {
         if (closed) return
         closed = true

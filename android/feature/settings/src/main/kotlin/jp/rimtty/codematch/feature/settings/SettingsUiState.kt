@@ -108,6 +108,8 @@ data class SettingsUiState(
     val scannerIssue: ScannerIssue = ScannerIssue.NONE,
     val illuminationState: jp.rimtty.codematch.scanner.api.IlluminationState =
         jp.rimtty.codematch.scanner.api.IlluminationState.UNSUPPORTED,
+    val tuningState: jp.rimtty.codematch.scanner.api.TuningState =
+        jp.rimtty.codematch.scanner.api.TuningState.UNSUPPORTED,
 ) {
     /** Compatibility/readability aliases for hosts that name these values explicitly. */
     val appSettings: AppSettings get() = settings

@@ -2,6 +2,7 @@ package jp.rimtty.codematch.feature.settings
 
 import android.content.res.Configuration
 import jp.rimtty.codematch.scanner.api.IlluminationState
+import jp.rimtty.codematch.scanner.api.TuningState
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -879,6 +880,23 @@ private fun ScannerCard(
                     IlluminationState.UNKNOWN -> R.string.settings_illumination_unknown
                     else -> R.string.settings_illumination_description
                 }))
+            }
+            if (state.tuningState != TuningState.UNSUPPORTED && state.tuningState != TuningState.UNKNOWN) {
+                Text(
+                    text = stringResource(when (state.tuningState) {
+                        TuningState.APPLYING -> R.string.settings_tuning_applying
+                        TuningState.MATCHED -> R.string.settings_tuning_matched
+                        TuningState.APPLIED -> R.string.settings_tuning_applied
+                        else -> R.string.settings_tuning_failed
+                    }),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (state.tuningState == TuningState.FAILED) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("settings_tuning_status"),
+                )
             }
             if (scannerIssue.isActionable) {
                 ScannerIssueCard(

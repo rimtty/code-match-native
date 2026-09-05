@@ -123,4 +123,8 @@
     <string name="settings_language_description">Choose the language used inside the app.</string>
     <string name="settings_language_japanese">Japanese</string>
     <string name="settings_language_english">English</string>
+    <string name="settings_tuning_applying">Applying read tuning…</string>
+    <string name="settings_tuning_matched">Read tuning: confirmed (no change needed)</string>
+    <string name="settings_tuning_applied">Read tuning: applied (multi-code off, inverse off, red light 4 s)</string>
+    <string name="settings_tuning_failed">Could not confirm the read tuning. Reconnect the scanner.</string>
 </resources>
