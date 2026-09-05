@@ -2,7 +2,7 @@ package jp.rimtty.codematch.feature.scan
 
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
@@ -122,6 +122,32 @@ class ScanFontScaleAccessibilityTest {
         }
     }
 
+    @Test
+    fun resultPartNumbersAppearBelowLabelsAtDeviceFontScale() {
+        composeRule.setContent {
+            ScanScreen(
+                state = ScanUiState.fromSession(
+                    session = ScanSessionState(scan = ScanState.Result(
+                        qrPayload = "QR-PAYLOAD",
+                        barcodePayload = "BARCODE-PAYLOAD",
+                        result = MatchResult.MATCH,
+                        matchedCount = 1,
+                    )),
+                    sessionActive = true,
+                ),
+                onAction = {},
+            )
+        }
+        listOf("scan_result_qr_part", "scan_result_barcode_part").forEach { tag ->
+            composeRule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
+            val label = composeRule.onNodeWithTag("$tag.label", useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot
+            val value = composeRule.onNodeWithTag("$tag.value", useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot
+            assertTrue("value must be below label", value.top >= label.bottom)
+        }
+    }
+
     private fun setCompactContent(fontScale: MutableState<Float>, content: @Composable () -> Unit) {
         composeRule.setContent {
             val baseConfiguration = LocalConfiguration.current
@@ -136,7 +162,7 @@ class ScanFontScaleAccessibilityTest {
                 LocalDensity provides Density(baseDensity.density, fontScale.value),
             ) {
                 Box(
-                    modifier = androidx.compose.ui.Modifier.requiredSize(
+                    modifier = androidx.compose.ui.Modifier.size(
                         width = COMPACT_WIDTH_DP.dp,
                         height = COMPACT_HEIGHT_DP.dp,
                     ),

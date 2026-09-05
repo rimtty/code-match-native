@@ -75,10 +75,27 @@ class SettingsScreenTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun defaultContentShowsThreeStepGuideAndAllPreferenceGroups() {
+    fun guideIsClosedByDefaultAndCanBeOpened() {
+        val state = mutableStateOf(SettingsUiState())
         composeRule.setContent {
             MaterialTheme {
-                SettingsScreen(SettingsUiState(), onAction = {})
+                SettingsScreen(state.value, onAction = { action ->
+                    if (action == SettingsUiAction.OpenSetupGuide) {
+                        state.value = state.value.copy(setupGuideVisible = true)
+                    }
+                })
+            }
+        }
+        composeRule.onAllNodesWithTag(SettingsTestTags.SETUP_GUIDE).assertCountEquals(0)
+        composeRule.onNodeWithTag(SettingsTestTags.SETUP_GUIDE_OPEN).performScrollTo().performClick()
+        composeRule.onNodeWithTag(SettingsTestTags.SETUP_GUIDE).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun explicitlyOpenedGuideShowsThreeStepsAndAllPreferenceGroups() {
+        composeRule.setContent {
+            MaterialTheme {
+                SettingsScreen(SettingsUiState(setupGuideVisible = true), onAction = {})
             }
         }
 
@@ -105,7 +122,7 @@ class SettingsScreenTest {
     fun primarySettingsControlsKeepAccessibleTouchTargets() {
         composeRule.setContent {
             MaterialTheme {
-                SettingsScreen(SettingsUiState(), onAction = {})
+                SettingsScreen(SettingsUiState(setupGuideVisible = true), onAction = {})
             }
         }
 
@@ -127,7 +144,7 @@ class SettingsScreenTest {
     fun setupGuideShowsOneCodeAtATimeAndAdvancesInScannerOrder() {
         composeRule.setContent {
             MaterialTheme {
-                SettingsScreen(SettingsUiState(), onAction = {})
+                SettingsScreen(SettingsUiState(setupGuideVisible = true), onAction = {})
             }
         }
 
@@ -165,7 +182,7 @@ class SettingsScreenTest {
     fun setupBarcodeCanBeEnlargedAndClosedWithoutChangingTheGuide() {
         composeRule.setContent {
             MaterialTheme {
-                SettingsScreen(SettingsUiState(), onAction = {})
+                SettingsScreen(SettingsUiState(setupGuideVisible = true), onAction = {})
             }
         }
 
@@ -186,7 +203,7 @@ class SettingsScreenTest {
         val actions = mutableListOf<SettingsUiAction>()
         composeRule.setContent {
             MaterialTheme {
-                SettingsScreen(SettingsUiState(), onAction = actions::add)
+                SettingsScreen(SettingsUiState(setupGuideVisible = true), onAction = actions::add)
             }
         }
 

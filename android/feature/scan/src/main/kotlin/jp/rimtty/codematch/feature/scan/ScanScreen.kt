@@ -975,17 +975,16 @@ private fun ScanResultCard(
 
 @Composable
 private fun ResultPartRow(label: String, value: String, tag: String) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
             .semantics { contentDescription = "$label $value" }
             .testTag(tag),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, fontWeight = FontWeight.Bold)
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("$tag.label"))
+        Text(value, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("$tag.value"))
     }
 }
 
