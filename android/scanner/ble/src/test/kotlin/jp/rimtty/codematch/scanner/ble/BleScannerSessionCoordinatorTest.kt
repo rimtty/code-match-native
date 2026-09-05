@@ -68,6 +68,11 @@ class BleScannerSessionCoordinatorTest {
         assertEquals(listOf(payload), received)
 
         assertTrue(bridge.setExpectedFormat(ScanFormat.CODE_128))
+        transport.emit(BleTransportEvent.ScanReceived(payload))
+        assertEquals(1, received.size)
+        assertFalse(bridge.state.isReadyForScanning)
+        transport.completeWrite(Result.success(Unit))
+        assertTrue(bridge.state.isReadyForScanning)
         transport.emit(
             BleTransportEvent.ScanReceived(
                 payload.copy(value = "code128-step", format = ScanFormat.QR),

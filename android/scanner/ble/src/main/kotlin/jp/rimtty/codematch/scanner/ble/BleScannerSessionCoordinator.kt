@@ -147,13 +147,13 @@ class BleScannerSessionCoordinator(
         return connectionCoordinator.reconnectKnownDevice()
     }
 
-    /** Start the fixed physical QR + Code 128 mode. */
+    /** Start the physical restriction for the expected step. */
     fun startSession(expectedFormat: ScanFormat): Boolean {
         if (closed || !isConnectedToBoundDevice()) return false
         return symbologySession.startSession(expectedFormat)
     }
 
-    /** Change the logical step without issuing another physical setting write. */
+    /** Change the physical restriction and wait for setting completion. */
     fun setExpectedFormat(expectedFormat: ScanFormat): Boolean {
         if (closed) return false
         return symbologySession.setExpectedFormat(expectedFormat)

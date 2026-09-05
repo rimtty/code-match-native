@@ -18,7 +18,7 @@ class BleSymbologySessionTest {
     private val profileIdentity = "test-profile-v1"
 
     @Test
-    fun connectedSessionRequiresFreshInventoryAndKeepsLogicalStepChangesPhysical() {
+    fun connectedSessionRequiresFreshInventoryAndChangesPhysicalStep() {
         val transport = RecordingTransport()
         val store = InMemorySymbologySnapshotStore(profileIdentity)
         val session = session(transport, store)
@@ -34,16 +34,22 @@ class BleSymbologySessionTest {
         assertEquals(BleSymbologySessionState.ApplyingSession(ScanFormat.QR), session.state)
         assertEquals(1, transport.writeCallbacks.size)
         val sessionCommands = parseCommands(transport.writes.single())
-        assertEquals(2, sessionCommands.count { it.asJsonObject.get("value").asString == "1" })
+        assertEquals(1, sessionCommands.count { it.asJsonObject.get("value").asString == "1" })
+        assertEquals("qrcode_on", sessionCommands.single {
+            it.asJsonObject.get("value").asString == "1"
+        }.asJsonObject.get("name").asString)
         assertEquals(0, sessionCommands.first { it.asJsonObject.get("name").asString == "code39_on" }
             .asJsonObject.get("value").asString.toInt())
         transport.completeWrite(Result.success(Unit))
         assertEquals(BleSymbologySessionState.SessionReady, session.state)
         assertTrue(session.isReadyForScanning)
 
-        // Code128 is a logical phase only. No second GATT command is sent.
+        // Switching the step changes the physical restriction before Ready.
         assertTrue(session.startSession(ScanFormat.CODE_128))
-        assertEquals(1, transport.writes.size)
+        assertEquals(2, transport.writes.size)
+        assertFalse(session.isReadyForScanning)
+        transport.completeWrite(Result.success(Unit))
+        assertTrue(session.isReadyForScanning)
         assertEquals(ScanFormat.CODE_128, session.expectedFormat)
 
         assertTrue(session.endSession())
@@ -60,6 +66,57 @@ class BleSymbologySessionTest {
         assertFalse(session.isReadyForScanning)
         assertNull(store.load(device.id))
         assertNull(session.expectedFormat)
+    }
+
+    @Test
+    fun onlyLatestPendingStepBecomesReadyAndSameStepDoesNotWrite() {
+        val transport = RecordingTransport()
+        val session = session(transport, InMemorySymbologySnapshotStore(profileIdentity))
+        session.onConnected()
+        transport.completeRead(settingsJson())
+        session.startSession(ScanFormat.QR)
+        session.setExpectedFormat(ScanFormat.CODE_128)
+        transport.completeWrite(Result.success(Unit))
+        assertFalse(session.isReadyForScanning)
+        assertEquals(2, transport.writes.size)
+        transport.completeWrite(Result.success(Unit))
+        assertTrue(session.isReadyForScanning)
+        repeat(10) { assertTrue(session.setExpectedFormat(ScanFormat.CODE_128)) }
+        assertEquals(2, transport.writes.size)
+        session.setExpectedFormat(ScanFormat.QR)
+        assertFalse(session.isReadyForScanning)
+        transport.completeWrite(Result.success(Unit))
+        assertTrue(session.isReadyForScanning)
+        assertEquals(BleSymbologyMode.QR_ONLY, session.physicalMode)
+    }
+
+    @Test
+    fun pendingStepChangesAreCoalescedAndRestoreTakesPriority() {
+        val transport = RecordingTransport()
+        val store = InMemorySymbologySnapshotStore(profileIdentity)
+        val session = session(transport, store)
+        session.onConnected()
+        transport.completeRead(settingsJson())
+        session.startSession(ScanFormat.QR)
+        repeat(10) { session.setExpectedFormat(ScanFormat.CODE_128) }
+        assertEquals(1, transport.writes.size)
+        assertFalse(session.isReadyForScanning)
+        transport.completeWrite(Result.success(Unit))
+        assertEquals(2, transport.writes.size)
+        assertFalse(session.isReadyForScanning)
+        val commands = parseCommands(transport.writes.last())
+        assertEquals(listOf("code128_on"), commands.filter {
+            it.asJsonObject.get("value").asString == "1"
+        }.map { it.asJsonObject.get("name").asString })
+        session.setExpectedFormat(ScanFormat.QR)
+        session.endSession()
+        transport.completeWrite(Result.success(Unit))
+        assertEquals(BleSymbologySessionState.Restoring, session.state)
+        assertEquals(3, transport.writes.size)
+        assertFalse(session.isReadyForScanning)
+        transport.completeWrite(Result.success(Unit))
+        assertEquals(BleSymbologySessionState.Ready, session.state)
+        assertNull(store.load(device.id))
     }
 
     @Test
