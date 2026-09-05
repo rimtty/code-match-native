@@ -20,8 +20,9 @@ decorator, and the normal app manifest does not expose this Activity.
 - Disconnect the normal app and SDK version/inventory probe before using this
   APK; do not scan codes during the test. Select a scanner from SDK discovery;
   there is no model or fixed identity filter.
-- Connection/authentication and settings reads use the official SDK. The
-  decorator never forwards a settings or illumination write. SDK connection
+- Connection/authentication and settings reads use the official SDK. The two
+  read-only modes never forward a settings or illumination write. The explicit
+  **exact replay mode does send one unchanged symbology command**. SDK connection
   setup itself may configure its output mode, as in the normal adapter.
 - Current settings are retained only in memory. No app repositories or user
   history are used. Values, identifiers, frames and scan payloads are not logged.
@@ -49,6 +50,32 @@ recovery. The decorator rejects the write before it reaches the scanner. Require
 failure/non-Ready and a retained recovery snapshot. This is intentional fault
 injection, not evidence of a naturally failing SDK/device or altered symbologies.
 
+## Exact replay / real SDK write completion deadline
+
+The third mode uses `InateckExactReplayGateway`. It arms once from the same
+device's current snapshot. Different devices, changed values, missing/extra
+items, general settings, and repeat writes are rejected. An additional fresh SDK
+read must still match all armed symbologies immediately before dispatch. It then
+performs a real SDK `setSettingInfo` and the production gateway's fresh readback,
+but holds the completion callback. No illumination command is permitted.
+
+The production session keeps its 25-second write deadline. The retained callback
+can be delivered after timeout/disconnect to test the actual transport/session
+generation guards. This simulates loss/delay of the application-facing completion,
+not a device failing to apply an in-flight command.
+
+Pixel 7/API36 + BCST-36, 2026-09-05: one real unchanged-settings replay and SDK
+readback succeeded. While its success was held, the session remained Restoring,
+Ready=false, baseline retained=true. After 25 seconds it timed out and physical
+disconnect was confirmed. Late success delivery left Ready=false and the baseline
+retained. A separate already-running inventory probe then reconnected, performed
+a fresh read and compared all returned fields/items with its earlier baseline:
+**exact match**. No normal app data was cleared and no codes were scanned.
+
+Eight additional JVM tests cover the one-shot exact replay guard, fresh mismatch,
+duplicate/late preparation callbacks, rejected preparation, sanitization,
+transport disconnection, and 24,999/25,000 ms session deadline boundaries.
+
 ## Evidence boundary
 
 Seven JVM tests pass for the decorator plus production transport/session gates.
@@ -71,7 +98,8 @@ Pixel 7/API 36 + BCST-36 physical results (2026-09-05):
   installed version/inventory probe was not overwritten.
 
 This host does not instantiate CodeMatch's ViewModel/camera UI or the full
-automatic reconnect coordinator. Do not infer camera-fallback UI, late replies
-after a real set command, the 25-second write deadline, or successful restoration
-from a failed/in-flight physical write from this narrower read-only experiment.
+automatic reconnect coordinator. The exact replay mode proves an application-side
+completion loss after a successful real set/readback, not a device failure partway
+through a write. Do not infer camera-fallback UI or successful recovery of physically
+partially modified settings from these probes.
 Issue #19 remains open until those applicable acceptance conditions are resolved.
