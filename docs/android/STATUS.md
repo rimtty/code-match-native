@@ -1,6 +1,71 @@
-# Android版の現在地
+# Android版の到達点（手元利用版）
 
-## 2026-09-05 受入更新
+2026-09-05の判断（Issue #57）により、Android版は手元利用専用（ストア提出なし）とし、下記「打ち切った確認項目」に挙げる実機・手動ゲートはこれ以上確認しません。打ち切りは検証成功を意味しません。このページは、その時点の到達点と打ち切り項目の一覧であり、CIや実機の結果はこのページの文言だけでは更新されません。PRの実行結果、端末記録、生成artifactを証跡として紐付けてください。
+
+## 運用形態
+
+- 配付: 手元でビルドした`release` APK（arm64-v8a、minified、既定はdebug keystore署名）を自分のPixel 7へ`adb install`する。ストア提出、署名済み配付物の運用承認、第三者への配付は行わない。
+- release構成: カメラ入力（CameraX + bundled ML Kit）に加え、公式Inateck Android SDK 2.0.0のBLE adapter（`scanner:inateck`）を同梱する（#56、`scannerPoc` build typeは廃止）。SDK binaryは固定commitからchecksum検証付きでローカル取得し、Gitへは同梱しない。SDKの`.so`は4KB page alignmentのため、16KB page size端末では動作しない。
+- debug構成: `scanner/fake`のFake scannerで照合フローを駆動する。emulator・CIのinstrumentationはこの構成で実行する。
+- 接続対象: 採用SDKに対応するスキャナー。BCST-36（firmware `V2.6.16 AI JP`、Bluetooth `OTA_D_V0.3.7`）は検証機種であり、機種の許可リストではない。
+
+## 到達点
+
+| 領域 | 確認済み（自動test・artifact検査・Pixel 7実機） |
+|---|---|
+| Domain / matching | 純Kotlin matcher/parser、shared fixture（`matching-cases.json`）、JVM test、Swift unit 71本/UI 5本との意図対応表（[`TEST_PARITY.md`](TEST_PARITY.md)） |
+| UI / navigation | Composeの照合・履歴・設定、3 destination、system/predictive backの完了・無効・cancel境界、履歴選択のActivity再生成・destination往復・compact back stack、320dp/840dp・font scale 1.3/2.0の主要操作到達、動的案内・結果のpolite live region、emulatorでのQR待機・Code 128待機・一致結果のOS force-stop後UI復元。Pixel 7ではfont scale 1.3/2.0の主要表示・操作をユーザーが承認 |
+| History / settings / PDF | Room（schema v2）/DataStore、日英リソースとper-app locale双方向同期、0件破棄・名称変更・詳細・削除のapp E2E、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test。Pixel 7では日英切替、1ページ/複数ページPDFのDownloads保存と共有先での表示、音量0/通常音量の音・触覚をユーザーが承認 |
+| Camera | CameraX/ML Kit adapter、工程別ROI、権限・lifecycle・focus・format切替の非同期境界test。Pixel 7縦画面で実ラベルのQR→Code 128一致、復帰後のCode 128、タップfocus、権限の拒否・恒久拒否・再許可、ガイド枠内外の読取境界、無関係QR拒否、不一致の表示・音・振動・非加算をユーザーが承認 |
+| BLE | SDK非依存の安全コア（command直列化、全設定snapshot、復元前Ready禁止、known-device store、再接続予算）、公式SDK adapter、公式native通知parser、工程別symbology制限（QR待機はQRのみ、Code 128待機はCode 128のみ）、照明の接続時OFF適用、R8 vendor-log除去。Pixel 7 / BCST-36では検索・接続・fresh readback、QR→Code 128一致、背景復元、QR待機中のapp force-stop後の自動再接続、手動切断後の工程保持と再接続、電源OFF→ONの自動再接続、通常終了・手動切断・電源再起動後の開始前設定との一致（独立probe）、照明の初期OFFと手動ON/OFFをユーザーが承認。2026-09-05に`release` APKでBCST-36と接続し、QR→Code 128の照合完了をユーザーが確認（#56） |
+| Privacy / release | Manifest、backup/D2D除外規則、専用FileProvider、`test-release-hardening.sh` / `verify-release-hardening.sh` / `verify-release-scanner-apk.sh`によるsource/APK/AAB/依存グラフ検査（Fake・analytics・INTERNET・legacy Bluetooth・位置情報の不在、`:scanner:inateck`とarm64 native libraryの同梱、vendor raw-log除去、ML Kit registrar保持）。Pixel 7のnetstatsで当該UIDの通信量エントリなし |
+
+個別の端末・commit・ユーザー承認と自動確認の区別は、[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)の実施記録、Issue #19 / #23 / #56、および本ページ末尾の履歴を参照してください。
+
+## 打ち切った確認項目（対象外）
+
+Issue #57の判断で、以下は未実施のまま確認を打ち切りました。打ち切りは検証成功を意味しません。
+
+- 配付・OEM: Samsung / 他OEMでのカメラ・BLE・レイアウト受入、ストア提出回答、署名済み配付物の運用承認、SDK再配付条件の確認、通信のパケット監査（netstatsの限定観測のみ）。
+- アクセシビリティ・OS操作: TalkBack、Switch Access、Accessibility Scanner、OS設定画面からの言語変更、予測型「戻る」の視覚遷移、OEM依存のランチャー表示。
+- PDF: 外部viewerでの全viewer互換、実共有先アプリ側での受け取り確認（Pixel 7で1件の共有先表示は確認済み）。
+- カメラ: 画面回転中の工程保持、連続箱の実ラベル確認、OEM省電力挙動。
+- BLE: 同一箱重複・不一致・連続箱の実機確認、予期しない切断、scanner再起動、Bluetooth権限変化中のlive link、Code 128待機 / 結果表示中のforce-stop、timeout復旧とカメラfallback、電源OFF→ON後の独立設定比較、復旧途中のReady境界、正常アプリUIを含む実SDK異常系の統合確認、PR #54の保持基準再接続経路の実機実行、firmware revisionの継続記録。
+- 工程別symbology（[`STEP_SYMBOLOGY_CHECK.md`](STEP_SYMBOLOGY_CHECK.md)）の受入手順、照明（[`SCANNER_ILLUMINATION_CHECK.md`](SCANNER_ILLUMINATION_CHECK.md)）の残手順（QR→Code 128との組み合わせ、背景・切断競合）。
+- 書込途中の強制終了の耐久性、Swift/Kotlinの全ケースを同一CI実行で確認した記録。
+
+## パリティ分類の補足
+
+[`TEST_PARITY.md`](TEST_PARITY.md) の `N/A` は、Androidに未実装のまま残した行ではなく、現行Androidの共通仕様に含まれないことをソースと仕様のリンクで確認した行です。現在の対象は、iOS固有の画面収録防御（#6）、旧iOS UserDefaultsのCode128-only recovery移行（#38）、旧iOS diagnosticsからの既知端末migration（#42）です。Android版は独立Gradle projectとして導入され、現行のBLE復旧はversion/profile付きの新規snapshot・known-device envelopeを使うため、これら旧iOS状態を読む入口はありません（[`android/README.md`](../../android/README.md#L1)、[`BleSymbologySnapshotStore.kt`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleSymbologySnapshotStore.kt#L63)、[`BleKnownDeviceStore.kt`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceStore.kt#L90)）。
+
+ROIのclamp（#5）はiOSとAndroidでpolicyが異なるため`P`のまま、active restriction（#27）は現行session mode文言だけを検査した`P`、camera lifetime（#58）はprocess破棄を含まない`P`です。`P`や`—`の行に残る実機・手動確認は、上記「打ち切った確認項目」に含まれる場合はこれ以上実施しません。
+
+## 再現可能なチェック
+
+Androidプロジェクトで次を実行できます（`rg`、JDK 21、Android SDK 37が必要）。
+
+```sh
+cd android
+./gradlew testDebugUnitTest lintDebug assembleDebug
+bash scripts/run-connected-tests.sh
+bash scripts/setup-inateck-sdk.sh
+./gradlew assembleRelease bundleRelease
+./gradlew :app:dependencies --configuration releaseRuntimeClasspath > /tmp/codematch-release-dependencies.txt
+bash scripts/test-release-hardening.sh
+bash scripts/verify-release-scanner-apk.sh
+bash scripts/verify-release-hardening.sh \
+  --apk app/build/outputs/apk/release/app-release.apk \
+  --aab app/build/outputs/bundle/release/app-release.aab \
+  --dependency-report /tmp/codematch-release-dependencies.txt
+```
+
+JDK/SDKがない環境ではGradle結果を推測せず、実行不能として記録します。エミュレーター・CIのinstrumentation成功は、カメラの実読取やBLE通信の実機成功を意味しません。
+
+## 履歴
+
+以下は各時点の記述をそのまま残した記録です。「未完了」「実機ゲートに残す」「非配付`scannerPoc`」などの表現は当時のものであり、現在の扱いは上記「運用形態」「打ち切った確認項目」が優先します。
+
+### 2026-09-05 受入更新（当時の記述）
 
 非BLEのPixel 7受入（Issue #23）は、カメラ各工程のprocess再起動、権限の恒久拒否と復帰、日英切替、PDF保存・共有・最終ページ、音・触覚、font scale 2.0まで確認済みです。個別の端末・commit・ユーザー承認と自動確認の区別は [`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md) とIssue #23を参照してください。PR #48（`c7e1419`）で記録を統合し、Android CIの4ジョブが成功しました。
 
@@ -12,45 +77,7 @@ BLE（Issue #19）は2026-09-05のユーザー指示により、残る追加確�
 
 このページは、2026-09-04のPixel 7 / BCST-36 BLE部分実機確認を含む統合監査と、その時点で再実行した証跡を基準にした状態記録です。CIや実機の結果は、このページの文言だけでは更新されません。PRの実行結果、端末記録、生成artifactを証跡として紐付けてください。
 
-## 実装と証跡の境界
-
-| 領域 | このcheckoutで確認できるもの | まだ完了扱いにしないもの |
-|---|---|---|
-| Domain / matching | 純Kotlin matcher/parser、shared fixture、JVM test、Swift unit 71本/UI 5本との意図対応表 | Swift/Kotlinの全ケースを同一CI実行で確認した記録 |
-| UI / navigation | Composeの照合・履歴・設定、3 destination、system/predictive backの完了・無効・cancel境界、保存可能なdestination/履歴選択、expanded履歴選択のselected/stateDescription semantics、動的な読取案内・結果のpolite live region、履歴のActivity再生成・destination往復・compact back stack自動test、320dp/840dp・font scale 1.3/2.0の主要操作到達test、debug Fake境界、隔離emulatorアプリでQR待機・Code 128待機・一致結果のOS force-stop後UI復元 | predictive gestureの視覚遷移、実端末でのWAITING Code 128・RESULTを含むOS process kill/relaunch、TalkBack、Switch Access、複数OEMの人手確認 |
-| History / settings / PDF | Room/DataStore、日英リソース、Android 13以降のper-app locale双方向同期/no-loop、0件破棄・名称変更・詳細・削除のapp E2E、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test、実ContentProvider write/read test、Pixel 7のDocumentsUIでの1件PDF保存と共有画面起動 | OS設定画面を使った言語変更、外部viewerでの内容/複数ページ確認、実際の共有先アプリへの受け渡し、複数OEMの業務受け入れ |
-| Camera | CameraX/ML Kit adapter、ROI、権限・lifecycle・focus、非同期provider/format切替/古いcallback破棄、処理中frameをdrainしてからsession終了・terminal closeする自動test、Pixel 7縦画面でガイド内に限定した実ラベルQR→Code 128一致 | Pixelで不一致・連続箱・focus・回転・背景復帰、Samsungで同じ実カメラ受け入れを完了した記録 |
-| Privacy / release | Manifest、backup規則、FileProvider、source/APK/AAB checker、通常・round・adaptive・monochromeアプリアイコン、すべてのAndroid Gradle CI jobでのWrapper validation | 通信観測、ストア提出回答、署名済み配布物の運用承認 |
-| BLE | SDK非依存の安全コア、公式Inateck Android SDK 2.0.0を使う`scannerPoc` adapter、公式native通知parser、area/name/value read/write/readback、切断失敗時の物理link保持・有限再試行・切断完了前の再接続禁止、Nearby最小権限、R8 vendor-log除去、Pixel 7 / BCST-36で検索・接続・QR→Code 128一致・背景復元・QR待機中のapp force-stop後自動再接続 | 同一箱重複・不一致・連続箱、手動/予期しない切断、scanner再起動、Bluetooth権限変化中のlive link、Code 128待機/結果表示中のforce-stop、timeout復旧、firmware revision、Samsung、SDK再配付条件を確認したproduction/release採用 |
-
-現在のrelease構成は、カメラ入力に加えて公式Inateck SDK adapter（`scanner:inateck`）を同梱したarm64限定・minifiedのBLE対応ビルドです（2026-09-05、#56。`scannerPoc` build typeは廃止）。SDK binaryは固定commitからchecksum検証付きでローカル取得し、Gitへは同梱しません。Android版はストアへ提出せず、手元でビルドしたAPKを自分の端末で使います（詳細は [`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)）。
-
-## パリティ分類の補足
-
-[`TEST_PARITY.md`](TEST_PARITY.md) の `N/A` は、Androidに未実装のまま残した行ではなく、現行Androidの共通仕様に含まれないことをソースと仕様のリンクで確認した行です。現在の対象は、iOS固有の画面収録防御（#6）、旧iOS UserDefaultsのCode128-only recovery移行（#38）、旧iOS diagnosticsからの既知端末migration（#42）です。Android版は独立Gradle projectとして導入され、現行のBLE復旧はversion/profile付きの新規snapshot・known-device envelopeを使うため、これら旧iOS状態を読む入口はありません（[`android/README.md`](../../android/README.md#L1)、[`BleSymbologySnapshotStore.kt`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleSymbologySnapshotStore.kt#L63)、[`BleKnownDeviceStore.kt`](../../android/scanner/ble/src/main/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceStore.kt#L90)）。
-
-これは実機・手動ゲートの免除ではありません。ROIのclamp（#5）はiOSとAndroidでpolicyが異なるため`P`のまま、active restriction（#27）は現行session mode文言だけを検査した`P`、camera lifetime（#58）はprocess破棄を含まない`P`です。OS設定画面、実端末のQR待機以外のforce-stop/relaunch（UI #4）、対象scannerの未試験の切断・timeout・完全復元（#35、#37、#40）は未完了境界として残します。
-
-## 再現可能なチェック
-
-Androidプロジェクトで次を実行できます。
-
-```sh
-cd android
-./gradlew testDebugUnitTest lintDebug assembleDebug
-bash scripts/run-connected-tests.sh
-./gradlew assembleRelease bundleRelease
-./gradlew :app:dependencies --configuration releaseRuntimeClasspath > /tmp/codematch-release-dependencies.txt
-bash scripts/test-release-hardening.sh
-bash scripts/verify-release-hardening.sh \
-  --apk app/build/outputs/apk/release/app-release-unsigned.apk \
-  --aab app/build/outputs/bundle/release/app-release.aab \
-  --dependency-report /tmp/codematch-release-dependencies.txt
-```
-
-JDK/SDKがない環境ではGradle結果を推測せず、実行不能として記録します。エミュレーター・CIのinstrumentation成功は、カメラの実読取やBLE通信の実機成功を意味しません。
-
-## 2026-09-02〜04 統合検証記録
+### 2026-09-02〜04 統合検証記録（当時の記述）
 
 - 2026-09-04、Android 17/API 37.1・16KBのread-only emulatorで、専用application IDの`ProcessRecoveryInstrumentationTest`をhost runnerから実行した。QR待機・Code 128待機・一致結果の3ケース（各seed/verify、計6回のinstrumentation）がすべて成功した。公開ViewModel actionで合成checkpointを永続化し、実際に起動したアプリのPIDを確認してOS force-stop、PID消失後の新しいApplication/MainActivityで工程・session名・受理済み値・件数・全設定値・英語UIを確認した。一致結果は保存済み5秒delayを超えてもRESULTのまま、履歴entryは1件でcountdownを再開しない。これは完了済み保存からのOS process復元の証拠であり、書込途中の強制終了・実カメラ・BLE復元・OEM省電力挙動は検査していない。
 - 同変更でJVM test 351件（失敗・error・skip 0）、全module lint、debug/release/非配付PoC APKとrelease AAB、release source/APK/AAB/dependency hardening、PoC artifact検査が成功した。実ContentProviderのUUID cache write/read 1件も通常debug testで再成功。runnerは物理端末・対象未指定・既存recovery app/test・通常APK・異なるinstrumentation targetを拒否し、10件のguard regressionが成功した。通常アプリとテスト専用アプリを同居させてもtest providerが衝突しない。物理端末・scannerには接続していない。専用debug manifestではCAMERA権限を除去し、API 31にない権限flag shell commandを使わない。

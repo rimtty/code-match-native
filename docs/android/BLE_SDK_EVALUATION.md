@@ -2,7 +2,7 @@
 
 ## 判定
 
-2026-09-04時点で、ユーザー指定により公式Inateck Android SDK 2.0.0を非配付PoCへ採用し、2026-09-05（#56）に`scanner:inateck`を通常の`release` build typeへ同梱しました（`scannerPoc`は廃止、debugはFakeのまま）。Pixel 7 / Android 16とBCST-36では検索・接続・設定制限・QR→Code 128一致・背景時復元を実通信で確認しましたが、Samsung、予期しない切断、強制終了、配付条件を含むM4全体は未完了です。
+2026-09-04時点で、ユーザー指定により公式Inateck Android SDK 2.0.0を非配付PoCへ採用し、2026-09-05（#56）に`scanner:inateck`を通常の`release` build typeへ同梱しました（`scannerPoc`は廃止、debugはFakeのまま）。Pixel 7 / Android 16とBCST-36では検索・接続・設定制限・QR→Code 128一致・背景時復元・手動切断/電源OFF後の再接続を実通信で確認し、2026-09-05には`release` APKでの照合完了をユーザーが確認しました。Samsung、予期しない切断、timeout、配付条件などの残項目はIssue #57で打ち切りとし、Android版は手元利用専用として扱います（一覧は[`STATUS.md`](STATUS.md)）。
 
 ## 確認した候補
 
@@ -26,23 +26,23 @@
 
 他機種も選択・接続できる設計を維持しますが、全機種の実機検証済みを意味しません。設定API・必須QR/Code128項目・通知プロトコルが適合しない場合は安全に未Readyとして扱い、機種名だけで成功と判定しません。
 
-## PoC限定の採用条件
+## 採用条件（当初はPoC限定、#56でreleaseへ適用）
 
 ### ライセンスと供給元
 
-公開元に `licenseInfo` がなく、Licenceファイルも確認できません。SDK binaryはGitへcommitせず、公式commit `8ce0fd5d25d1`からローカル取得してSHA-256を検証します。PoC APKは配付せず、release artifactにも同梱しません。
+公開元に `licenseInfo` がなく、Licenceファイルも確認できません。SDK binaryはGitへcommitせず、公式commit `8ce0fd5d25d1`からローカル取得してSHA-256を検証します。SDKを同梱した`release` APKは手元利用専用で、配付やストア提出はしません。
 
 ### target SDKとABI
 
-例示プロジェクトはtarget SDK 33、native libraryはarm64-v8aだけです。Code Match側はcompile/target 37、min 31のまま、PoC APKをarm64-v8a実機専用に限定します。Play配付や他ABI対応には使用しません。
+例示プロジェクトはtarget SDK 33、native libraryはarm64-v8aだけです。Code Match側はcompile/target 37、min 31のまま、`release` APKをarm64-v8a実機専用に限定します。native libraryは4KB page alignmentのため16KB page size端末では動作しません。Play配付や他ABI対応には使用しません。
 
 ### 権限とプライバシー
 
-PoC ManifestはAPI 31以降の`BLUETOOTH_SCAN`と`BLUETOOTH_CONNECT`だけを許可し、FastBle由来のlegacy Bluetooth、位置情報、advertise、network権限をmerge時に除去します。SDKのraw `android.util.Log`呼び出しは、非debuggable/minified PoCのR8規則で副作用なしとして除去し、FastBle loggingも初期化直後に停止します。
+`app/src/release/AndroidManifest.xml`はAPI 31以降の`BLUETOOTH_SCAN`（neverForLocation）と`BLUETOOTH_CONNECT`だけを許可し、FastBle由来のlegacy Bluetooth、位置情報、advertise、network権限をmerge時に除去します。SDKのraw `android.util.Log`/`System.out`呼び出しは、minified releaseのR8規則（`app/scanner-rules.pro`）で副作用なしとして除去し、FastBle loggingも初期化直後に停止します。
 
 ### scan通知の受け渡し
 
-公式サイトの[接続手順](https://docs.inateck.com/scanner-sdk-en/ble/desktop_connect/)にある`set_code_callback`は公開Android 2.0.0 JARにはありません。PoC adapterはSDK接続完了後のFF01 notifyを1本だけ所有し、SDK command実行中は`BleTaskManager.receiveData`へ、アイドル中は公式`scanner_lib`の`inateck_scanner_cmd_notify_data_result`へ振り分けます。status 0で返る断片だけを次回入力へ保持し、status 1まで再構成します。
+公式サイトの[接続手順](https://docs.inateck.com/scanner-sdk-en/ble/desktop_connect/)にある`set_code_callback`は公開Android 2.0.0 JARにはありません。adapterはSDK接続完了後のFF01 notifyを1本だけ所有し、SDK command実行中は`BleTaskManager.receiveData`へ、アイドル中は公式`scanner_lib`の`inateck_scanner_cmd_notify_data_result`へ振り分けます。status 0で返る断片だけを次回入力へ保持し、status 1まで再構成します。
 
 BCST-36のscanはtype 1で返り、Android command libraryは通知再構成までで、公式iOS SDKにある最終notify-code APIを公開していません。adapterは公式iOS SDK commit `03aa36d0e204`と実機挙動に合わせ、末尾の加算checksumを検証し、先頭2 byteとchecksumを除いた本文だけをstrict UTF-8へ渡します。checksum不一致、短すぎるframe、invalid UTF-8、4096 byte超過はfail closedです。payload、raw frame、byte数は診断・Logcatへ出しません。
 
@@ -56,7 +56,7 @@ BCST-36のscanはtype 1で返り、Android command libraryは通知再構成ま�
 
 Androidは[探索と接続に別の権限](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions)を要求します。SCANだけの不許可と、接続中にCONNECTが失われる場合を同一の接続喪失として扱いません。
 
-PoC hostは既存の250ms tickerと前景復帰・利用者操作の境界でSDK gatewayのreadinessを再確認し、変化を安全コアへ通知します。接続が利用不可になったlinkでは、物理切断のepochを残したまま読み取り・設定応答を無効化し、一時的にReadyへ戻っても古いcallbackを受理しません。切断・再接続後に改めてinventoryとsnapshot復元を確認します。SCANだけを失った場合は探索を停止し、CONNECTが有効な既存linkは失効させません。
+hostは既存の250ms tickerと前景復帰・利用者操作の境界でSDK gatewayのreadinessを再確認し、変化を安全コアへ通知します。接続が利用不可になったlinkでは、物理切断のepochを残したまま読み取り・設定応答を無効化し、一時的にReadyへ戻っても古いcallbackを受理しません。切断・再接続後に改めてinventoryとsnapshot復元を確認します。SCANだけを失った場合は探索を停止し、CONNECTが有効な既存linkは失効させません。
 
 安全コアは利用不可通知でも物理linkのidentityとsnapshotを保持します。復元中に手動切断が要求されていた場合、利用不可への変化でその意図を自動再接続へ変更しません。旧linkの切断完了までは別deviceへsettings ownerを付け替えず、Ready通知だけで保存済みsnapshotを消しません。物理linkがないときのReady通知は古い利用不可表示をIdleへ戻すだけで、再接続のdeadline/回数や設定確認結果は変更しません。
 
@@ -81,9 +81,9 @@ PoC hostは既存の250ms tickerと前景復帰・利用者操作の境界でSDK
 - active sessionのQR待機中に`scannerPoc`をOSからforce-stopして再起動し、checkpointの工程を維持したまま保存済みBCST-36へ自動再接続して、設定処理後に接続済み・Readyへ戻った。その状態からQR→Code 128を読み取り、照合件数が1件増えて次のQR待機へ進んだ。
 - 安全な段階ログは`incomplete` / `scan` / `delivered`だけで、payload、raw frame、設定値、device IDを含まなかった。
 
-## 過去の実機ゲートと受入範囲
+## 過去の実機ゲートと受入範囲（打ち切り）
 
-以下は初期評価時点の一覧です。最新の個別結果はIssue #19と[`STATUS.md`](STATUS.md)を参照してください。2026-09-05、ユーザーは残る追加確認を省略し、非配布ローカルPoCとしての受入完了を指定しました。未実施の復旧途中Ready境界・正常アプリUIを含む実SDK異常系・保持基準再接続probeの実機実行を成功扱いにはしません。通常releaseのcamera-onlyとSDK対応機種を固定しない契約は維持します。
+以下は初期評価時点の一覧です。実施済みの範囲はIssue #19と[`STATUS.md`](STATUS.md)の到達点を参照してください。2026-09-05、ユーザーは残る追加確認を省略して手元利用向けの受入完了を指定し、Issue #57で未実施項目（復旧途中のReady境界、正常アプリUIを含む実SDK異常系、保持基準再接続probeの実機実行、下記の未実施分）を打ち切りました。打ち切りは検証成功を意味しません。SDK対応機種を固定しない契約は維持します。
 
 1. 同一QRの重複抑止、不一致、異なる箱QRの連続照合をBCST-36で確認する。
 2. 手動切断・予期しない切断・scanner再起動後の既知端末再接続と完全復元を確認する。アプリ強制終了はQR待機で合格済みだが、Code 128待機・結果表示中の工程復元は別途確認する。

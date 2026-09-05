@@ -40,7 +40,7 @@ cd android
 ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > /tmp/codematch-release-dependencies.txt
 bash scripts/test-release-hardening.sh
 bash scripts/verify-release-hardening.sh \
-  --apk app/build/outputs/apk/release/app-release-unsigned.apk \
+  --apk app/build/outputs/apk/release/app-release.apk \
   --aab app/build/outputs/bundle/release/app-release.aab \
   --dependency-report /tmp/codematch-release-dependencies.txt
 ```

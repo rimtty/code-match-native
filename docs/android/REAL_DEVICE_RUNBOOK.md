@@ -1,10 +1,12 @@
 # Android実機確認ランブック
 
-この手順は、エミュレーターやCIでは代替できないAndroid端末の確認を同じ条件で再実行するためのものです。実機確認済みと記録できるのは、実際に接続した端末で該当項目を完了し、証跡を保存した項目だけです。現在のcheckoutでは、この文書だけでQR/Code 128の実読取やBLE成功を宣言しません。
+この手順は、エミュレーターやCIでは代替できないAndroid端末の確認を同じ条件で再実行するためのものです。実機確認済みと記録できるのは、実際に接続した端末で該当項目を完了し、証跡を保存した項目だけです。
+
+2026-09-05の判断（Issue #57）で、Android版は手元利用専用（Pixel 7 / BCST-36、ストア提出なし）とし、各節に「対象外（打ち切り）」と記した項目はこれ以上実施しません。打ち切りは検証成功を意味しません。到達点と打ち切り項目の一覧は[`STATUS.md`](STATUS.md)を正本とし、この文書は手順と実施記録を残します。
 
 ## 0. 対象と前提
 
-- Android 12（API 31）以上。主対象はPixel系、比較対象はSamsung系。
+- Android 12（API 31）以上。対象はPixel 7。Samsung系は対象外（打ち切り）。
 - USBデバッグを有効にした実端末。カメラ付き端末を使う。
 - リポジトリの `shared/test-fixtures/images/` を端末とは別の表示端末または紙に表示する。実ラベルを使う場合は、値をログやスクリーンショットへ残さない。
 - `android/` は独立Gradleプロジェクト。JDK 21とAndroid SDK 37を用意する。
@@ -86,7 +88,7 @@ QR待機・Code 128待機・一致結果の各checkpointを合成データで準
 - カメラ開始/停止と工程表示のスクリーンショット。payloadやカメラ画像そのものは保存しない。
 - 失敗時は再現手順、時刻、端末状態、payloadを含まないlogcat抜粋。
 
-このセクションを完了しても、対象端末で実ラベルを使った連続照合が確認されるまでは、M3完了やカメラ実機成功を宣言しません。
+Pixel 7での実施結果は本文末尾の実施記録を参照してください。画面回転中の工程保持、連続箱の実ラベル確認、Samsungでの受入は対象外（打ち切り）です。
 
 ## 3. アクセシビリティと適応レイアウト
 
@@ -99,7 +101,7 @@ QR待機・Code 128待機・一致結果の各checkpointを合成データで準
 5. compact phone、横長またはfoldable相当、tablet幅で履歴を開き、狭幅では一覧→詳細、広幅では一覧と詳細の同時表示になることを確認する。
 6. Switch Accessまたはキーボード/D-padで、カメラ以外の主要操作を順番に実行する。
 
-Compose側には、主要画面のsemanticsと最小タッチ領域、履歴のcompact/expanded表示を検査するUI testがあります。Accessibility Scannerの指摘と、実端末でのみ確認できるTalkBack/フォント倍率の結果は別々に記録してください。
+Compose側には、主要画面のsemanticsと最小タッチ領域、履歴のcompact/expanded表示を検査するUI testがあります。フォント倍率1.3/2.0はPixel 7でユーザーが承認済みです。手順1・2・6のTalkBack、Switch Access、Accessibility Scannerは対象外（打ち切り）です。
 
 ## 4. プライバシーとrelease確認
 
@@ -110,9 +112,10 @@ Compose側には、主要画面のsemanticsと最小タッチ領域、履歴のc
 ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > /tmp/codematch-release-dependencies.txt
 bash scripts/test-release-hardening.sh
 bash scripts/verify-release-hardening.sh \
-  --apk app/build/outputs/apk/release/app-release-unsigned.apk \
+  --apk app/build/outputs/apk/release/app-release.apk \
   --aab app/build/outputs/bundle/release/app-release.aab \
   --dependency-report /tmp/codematch-release-dependencies.txt
+bash scripts/verify-release-scanner-apk.sh
 ```
 
 確認する境界は次のとおりです。
@@ -123,7 +126,7 @@ bash scripts/verify-release-hardening.sh \
 - Room/DataStoreとBLE復旧状態がcloud backupとdevice-to-device transferから除外される。
 - FileProviderは専用 `cache/codematch-pdf/` だけを一時共有する。
 
-checker通過は静的・artifact証拠です。端末外通信がないことの最終確認や、ストア向け回答の更新は依存ライブラリ変更時にも再実施します。詳細は [`PRIVACY.md`](PRIVACY.md) を参照してください。
+checker通過は静的・artifact証拠です。パケット監査による無通信の最終確認とストア向け回答は対象外（打ち切り）です。依存ライブラリを変更した時はcheckerと[`PRIVACY.md`](PRIVACY.md)を再確認してください。
 
 ## 5. BLE実機ゲート（M4、release）
 
@@ -139,18 +142,18 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 
 設定画面が生成する3つのCode 128は、自動instrumentationで同梱ML Kitから `/*EnterSet*/` → `/*BLE_GATT*/` → `/*ExitSave*/` の順にexact decodeできることを確認済みです。これは画像生成と復号の証拠であり、対象BCST-36が実際に読み取って設定を変更・保存した証拠ではありません。
 
-実装が用意された後だけ、次を対象端末で行います。
+以下は当初の受入項目です。Pixel 7 / BCST-36で実施済みの範囲は本節の実施記録と[`STATUS.md`](STATUS.md)の到達点、未実施のまま打ち切った範囲は同ページの「打ち切った確認項目」を参照してください。
 
-1. Android 12以降のPixel系とSamsung系で、必要時だけNearby devices権限を要求する。
+1. Android 12以降のPixel 7で、必要時だけNearby devices権限を要求する（Samsung系は対象外）。
 2. 初回設定ガイドの3コードを順に実機scannerで読み、GATT modeが保存されたことを確認してから、検索、接続、pairing、scan通知、切断、既知端末再接続を確認する。
 3. QR→Code 128の一致、不一致、逆順拒否、重複callback抑止、連続箱を確認する。
 4. 接続前のscanner報告を全symbology保存し、QR+Code 128固定mode後、終了・背景・切断・再接続で完全復元する。
 5. timeout後にGATT commandが重ならず、安全にカメラへfallbackすることを確認する。
 6. BLE→camera→BLEで工程と読み取り済みQRを維持し、scan payloadが診断やlogcatへ出ないことを確認する。
 
-これらの実機結果がすべて保存されるまで、M4/full parity/BLE成功とは扱いません。
+2026-09-05に`release` APK（#56）でBCST-36と接続し、QR→Code 128の照合完了をユーザーが確認しました。残る不一致・重複・連続箱、予期しない切断、scanner再起動、timeout/fallback、Code 128待機/結果表示中のforce-stopは対象外（打ち切り）です。
 
-### 2026-09-04 部分実施記録
+### 2026-09-04 部分実施記録（当時は非配付`scannerPoc`で実施）
 
 - 端末: Google Pixel 7、Android 16 / API 36、USB接続
 - scanner: Inateck BCST-36、GATT mode
@@ -159,7 +162,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 - privacy: 段階ログにpayload、raw frame、設定値、device IDが含まれないことを確認
 - 未実施: 不一致、同一箱重複、異なる箱の連続照合、手動/予期しない切断、scanner再起動、Code 128待機/結果表示中のforce-stop、timeout/fallback、firmware revision記録、Samsung
 
-この記録はPixel 7 / BCST-36の上記項目だけの実機証拠です。未実施項目とSDK再配付条件が残るため、M4/full parity/production BLE完了とは扱いません。
+この記録はPixel 7 / BCST-36の上記項目だけの実機証拠です。未実施項目のうち、その後に実施したものは「2026-09-05 追加受入記録」、残りは打ち切りとして[`STATUS.md`](STATUS.md)に一覧化しています。
 
 ### 2026-09-04 カメラ部分実施記録
 
@@ -169,7 +172,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 - 調整: preview全体ではなく白いガイド枠内だけを工程別ROIとして解析し、縦画面で不要な上下画素を入力へ含めない構成へ変更後に合格
 - 未実施: 不一致、連続箱、QR読み直し、手動/自動次工程、tap focus、回転、背景復帰、Samsung
 
-この記録は上記のQR→Code 128一致だけの実カメラ証拠です。未実施項目が残るためM3全体の完了とは扱いません。
+この記録は上記のQR→Code 128一致だけの実カメラ証拠です。不一致・QR読み直し・tap focus・背景復帰・権限は「2026-09-05 追加受入記録」で承認済み、回転・連続箱・Samsungは対象外（打ち切り）です。
 
 ### 2026-09-04 PDF保存・共有の部分実施記録
 
@@ -179,7 +182,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 - 共有: 「共有する」からAndroidの共有先選択画面が開くことを確認した
 - 未実施: 保存PDFを外部viewerで開いて内容・複数ページを確認、実際の共有先アプリへ受け渡し、通常debug/release buildでの再確認
 
-この記録はDocumentProvider保存と共有画面起動の部分証拠です。外部viewerと共有先の受入が未実施のため、PDF実機受入完了とは扱いません。
+この記録はDocumentProvider保存と共有画面起動の部分証拠です。外部viewerと共有先での表示は「2026-09-05 追加受入記録」で承認済みで、全viewer互換と実共有先アプリ側の受け取り確認は対象外（打ち切り）です。
 
 ## 2026-09-05 追加受入記録（Pixel 7限定）
 
@@ -196,7 +199,8 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 - 通信の限定観測: Pixelの当該アプリUIDのnetstatsに、カメラプレビュー稼働中および通常操作・読取受入後も通信量エントリなし。インストール済みPoCにINTERNET権限なし。パケット監査や他プロセスを含む全経路の無通信保証ではない。
 - 対象外へ変更: TalkBackとSwitch Accessはユーザー指定で今回の受入から省略。TalkBackの一時有効化は元の無効状態へ復元済み。合格を意味しない。
 - BLE追加確認（PR #47 / 34d70ed）: 手動切断後もCode128待ち・1件を保持し再接続後の読取続行成功。さらに3分30秒以上電源OFFで待機後、電源ONのみで自動再接続しCode128から続行をユーザーが承認。これは全symbologyの完全復元や異常タイムアウトを直接検証した証拠ではない。
-- 残り: BLEの完全復元・timeout異常系・firmware記録はIssue #19で継続。BCST-36は検証端末であり、SDK対応端末の接続対象を限定しない。
+- 残り: BLEの完全復元・timeout異常系・firmware記録はIssue #19で継続していたが、2026-09-05のIssue #57で打ち切り。BCST-36は検証端末であり、SDK対応端末の接続対象を限定しない。
+- 2026-09-05（#56）: `scannerPoc`を廃止し、SDKを同梱した`release` APKをPixel 7へ導入。BCST-36と接続し、QR→Code 128の照合完了をユーザーが確認した。
 - 追跡: [Issue #23](https://github.com/rimtty/code-match-native/issues/23)、[Issue #19](https://github.com/rimtty/code-match-native/issues/19)。ユーザー承認と自動確認を区別し、未実施項目は完了扱いにしない。
 
 ## 6. 証跡テンプレート
