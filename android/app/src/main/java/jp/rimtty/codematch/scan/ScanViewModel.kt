@@ -799,7 +799,7 @@ class ScanViewModel @Inject constructor(
             scanner.configurationState,
         )
         val projectedBluetoothIssue = when {
-            scanner.isReadyForScanning && current?.inputSource == InputSource.BLUETOOTH -> {
+            bluetoothFallbackCanClear(current?.inputSource, session.expectedFormat, scanner) -> {
                 bluetoothFallbackActive = false
                 bluetoothFallbackIssue = ScannerIssue.NONE
                 ScannerIssue.NONE

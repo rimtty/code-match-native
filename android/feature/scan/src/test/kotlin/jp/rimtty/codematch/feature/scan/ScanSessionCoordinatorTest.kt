@@ -24,6 +24,32 @@ class ScanSessionCoordinatorTest {
     private val barcodePayload = "BCJH-52-81GG@1N5X0C"
 
     @Test
+    fun restartOnMatchKeepsResultAndCountThenManualNextResumesQr() {
+        val scanner = TestScanner().apply {
+            requireExpectedFormatForPayloadReadiness = true
+            markReady()
+        }
+        val coordinator = ScanSessionCoordinator(scanner)
+        coordinator.startSession()
+        coordinator.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.BLUETOOTH))
+        coordinator.submitScanPayload(ScanPayload.code128(barcodePayload, InputSource.BLUETOOTH))
+        val matched = coordinator.state
+        assertEquals(ScanPhase.RESULT, matched.phase)
+        assertEquals(1, matched.matchedCount)
+        scanner.markDisconnected()
+        assertEquals(InputSource.CAMERA, coordinator.inputSource)
+        scanner.markConnecting()
+        scanner.markReady()
+        assertEquals(InputSource.BLUETOOTH, coordinator.inputSource)
+        assertEquals(matched.scan, coordinator.state.scan)
+        assertEquals(matched.matchedCount, coordinator.state.matchedCount)
+        assertNull(scanner.expectedFormat)
+        coordinator.dispatch(ScanEvent.ManualNext)
+        assertEquals(ScanPhase.WAITING_QR, coordinator.state.phase)
+        assertEquals(ScanFormat.QR, scanner.expectedFormat)
+    }
+
+    @Test
     fun readyBluetoothIsSelectedAtSessionStart() {
         val scanner = TestScanner().apply { markReady() }
         val coordinator = ScanSessionCoordinator(scanner)
