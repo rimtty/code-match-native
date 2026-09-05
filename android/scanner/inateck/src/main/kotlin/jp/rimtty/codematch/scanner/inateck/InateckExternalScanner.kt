@@ -315,6 +315,7 @@ class InateckExternalScanner private constructor(
                 knownDeviceStore = knownDeviceStore,
                 nowMillis = nowMillis,
                 discoveryTimeoutMillis = 6_000L,
+                sustainedReconnectDelayMillis = 30_000L,
             )
             val delegate = SelectableBleExternalScanner(
                 connectionCoordinator = connection,
