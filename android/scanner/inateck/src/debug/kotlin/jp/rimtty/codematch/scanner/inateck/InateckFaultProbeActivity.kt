@@ -21,6 +21,8 @@ class InateckFaultProbeActivity : Activity() {
     private lateinit var choices: LinearLayout
     private lateinit var report: TextView
     private var gateway: InateckReadOnlyFaultGateway? = null
+    private var exactReplay: InateckExactReplayGateway? = null
+    private var sdkWriteSucceeded = false
     private var transport: InateckSdkTransport? = null
     private var session: BleSymbologySession? = null
     private var store: InMemorySymbologySnapshotStore? = null
@@ -41,16 +43,22 @@ class InateckFaultProbeActivity : Activity() {
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 64, 32, 48) }
         setContentView(ScrollView(this).apply { addView(body) })
         label("実SDK異常系・独立検証")
-        label("通常アプリとSDK Probeを切断してから開始。設定の書き込みは遮断。SDK接続処理は実行します。コードを読まないでください。")
+        label("通常アプリとSDK Probeを切断してから開始。コードを読まないでください。再適用モードだけは現在と同じ設定を実SDKで1回書き込みます。")
         button("読出し6秒タイムアウト検証：探索") { discover(false) }
         button("復元失敗検証：探索") { discover(true) }
+        button("同一設定の実SDK再適用・25秒期限：探索") { discover(true, replay = true) }
         choices = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         body.addView(choices)
         button("保留した応答を期限後に配信") {
             val s = session
             if (s?.state == BleSymbologySessionState.AwaitingTransportReset) {
-                sdkReadSucceeded = gateway?.completedReadSucceeded == true
-                releasedLate = gateway?.releaseCompletedRead() == true
+                if (exactReplay != null) {
+                    sdkWriteSucceeded = exactReplay?.completedWriteSucceeded == true
+                    releasedLate = exactReplay?.releaseCompletedWrite() == true
+                } else {
+                    sdkReadSucceeded = gateway?.completedReadSucceeded == true
+                    releasedLate = gateway?.releaseCompletedRead() == true
+                }
             }
             render()
         }
@@ -65,7 +73,7 @@ class InateckFaultProbeActivity : Activity() {
         body.addView(Button(this).apply { this.text = text; setOnClickListener { action() } })
     }
 
-    private fun discover(restore: Boolean) {
+    private fun discover(restore: Boolean, replay: Boolean = false) {
         if (!stopped) return
         if (listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
                 .any { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }) {
@@ -73,12 +81,14 @@ class InateckFaultProbeActivity : Activity() {
             phase = "権限を許可して再度探索してください"; render(); return
         }
         restoreMode = restore; stopped = false; preparing = false
-        physicalClosed = false; releasedLate = false; sdkReadSucceeded = false
+        physicalClosed = false; releasedLate = false; sdkReadSucceeded = false; sdkWriteSucceeded = false
         session = null; selected = null
         store = InMemorySymbologySnapshotStore(INATECK_ANDROID_SDK_PROFILE_IDENTITY)
-        val g = InateckReadOnlyFaultGateway(AndroidInateckSdkGateway(applicationContext, handler))
+        val sdk = AndroidInateckSdkGateway(applicationContext, handler)
+        val g = InateckReadOnlyFaultGateway(sdk)
+        exactReplay = if (replay) InateckExactReplayGateway(sdk) else null
         gateway = g
-        val t = InateckSdkTransport(g, nowMillis = SystemClock::elapsedRealtime)
+        val t = InateckSdkTransport(exactReplay ?: g, nowMillis = SystemClock::elapsedRealtime)
         transport = t
         val token = ++runGeneration
         t.listener = BleTransportListener { event ->
@@ -130,7 +140,12 @@ class InateckFaultProbeActivity : Activity() {
                     InateckAreaNameSymbologyCodec.decodeSnapshot(device.id, it, SystemClock.elapsedRealtime())
                 }
                 if (snapshot == null) { phase = "基準取得失敗：復元試験未実施"; render() }
-                else { store?.save(snapshot); beginSessionOwner(device) }
+                else if (exactReplay != null && exactReplay?.arm(snapshot) != true) {
+                    phase = "同一設定の再適用ガード拒否"; render()
+                } else {
+                    sdkReadSucceeded = true
+                    store?.save(snapshot); beginSessionOwner(device)
+                }
             } != true) { preparing = false; phase = "基準読出し拒否" }
         } else beginSessionOwner(device)
         render()
@@ -154,6 +169,7 @@ class InateckFaultProbeActivity : Activity() {
                 sdkReadSucceeded = g.completedReadSucceeded
                 if (restoreMode) g.releaseCompletedRead()
             }
+            if (exactReplay?.hasCompletedWrite == true) sdkWriteSucceeded = exactReplay?.completedWriteSucceeded == true
             session?.tick()
             if (session == null && SystemClock.elapsedRealtime() - elapsedStart > 30_000) {
                 phase = "接続・基準取得期限超過"; stop(); render(); return
@@ -182,7 +198,8 @@ class InateckFaultProbeActivity : Activity() {
             "リンク保持：${transport?.isLinkActive == true}",
             "期限後の応答配信：$releasedLate",
             "復元用基準保持：${selected?.id?.let { store?.load(it) } != null}",
-            "設定・照明書込み：SDKへ送信しません",
+            if (exactReplay == null) "設定・照明書込み：SDKへ送信しません"
+            else "同一設定のSDK再適用数：${exactReplay?.issuedWrites}\nSDK書込・readback完了：$sdkWriteSucceeded\n照明・異なる値の送信：禁止",
         ).joinToString("\n")
     }
     private fun stop() {
