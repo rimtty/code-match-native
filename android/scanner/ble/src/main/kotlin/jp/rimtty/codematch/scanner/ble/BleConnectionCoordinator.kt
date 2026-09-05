@@ -30,6 +30,8 @@ class BleConnectionCoordinator(
     private val connectTimeoutMillis: Long = DEFAULT_CONNECT_TIMEOUT_MILLIS,
     /** Optional app-private store for a manually retained known scanner. */
     private val knownDeviceStore: KnownDeviceStore? = null,
+    /** Optional foreground-only retry interval after the initial budget. */
+    private val sustainedReconnectDelayMillis: Long? = null,
 ) : BleTransportListener {
     private enum class DisconnectIntent {
         MANUAL,
@@ -38,6 +40,7 @@ class BleConnectionCoordinator(
 
     init {
         require(maxReconnectAttempts > 0) { "maxReconnectAttempts must be positive" }
+        require(sustainedReconnectDelayMillis == null || sustainedReconnectDelayMillis > 0)
         require(discoveryTimeoutMillis > 0) { "discoveryTimeoutMillis must be positive" }
         require(connectTimeoutMillis > 0) { "connectTimeoutMillis must be positive" }
         transport.listener = this
@@ -872,10 +875,15 @@ class BleConnectionCoordinator(
 
     private fun scheduleReconnect(nowMillis: Long) {
         if (!applicationActive || manualDisconnect || preferredDevice == null) return
-        if (reconnectAttempt >= maxReconnectAttempts) return
         if (reconnectAtMillis != null) return
-        val nextAttempt = reconnectAttempt + 1
-        val delay = reconnectDelayMillis(nextAttempt)
+        val delay = if (reconnectAttempt >= maxReconnectAttempts) {
+            // Only disconnected devices enter slow recovery. Failed physical
+            // closes retain their separate bounded policy and cannot overlap.
+            if (hasPhysicalLink) return
+            sustainedReconnectDelayMillis ?: return
+        } else {
+            reconnectDelayMillis(reconnectAttempt + 1)
+        }
         require(delay >= 0) { "reconnect delay must not be negative" }
         reconnectAtMillis = nowMillis + delay
     }

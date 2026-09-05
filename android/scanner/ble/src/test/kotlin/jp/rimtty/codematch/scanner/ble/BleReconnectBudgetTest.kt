@@ -10,6 +10,56 @@ class BleReconnectBudgetTest {
     private val device = ScannerDevice("test-id", "test-scanner")
 
     @Test
+    fun sustainedRetryRecoversAfterLongPowerOffAndStopsInBackgroundOrManually() {
+        val transport = TestTransport()
+        var now = 0L
+        val coordinator = BleConnectionCoordinator(
+            transport,
+            reconnectDelayMillis = { 1_000L },
+            maxReconnectAttempts = 4,
+            nowMillis = { now },
+            sustainedReconnectDelayMillis = 30_000L,
+        )
+        transport.onConnect = {
+            transport.emit(BleTransportEvent.ConnectionFailed(device, "synthetic failure"))
+            true
+        }
+        assertTrue(coordinator.connect(device))
+        for (attempt in 1..4) {
+            now = attempt * 1_000L
+            assertTrue(coordinator.tick(now))
+        }
+        assertEquals(34_000L, coordinator.pendingReconnectAtMillis)
+        assertFalse(coordinator.tick(33_999L))
+        now = 34_000L
+        assertTrue(coordinator.tick(now))
+        assertEquals(64_000L, coordinator.pendingReconnectAtMillis)
+        coordinator.setApplicationActive(false)
+        assertEquals(null, coordinator.pendingReconnectAtMillis)
+        assertFalse(coordinator.tick(100_000L))
+        now = 100_000L
+        coordinator.setApplicationActive(true)
+        assertEquals(130_000L, coordinator.pendingReconnectAtMillis)
+        transport.onConnect = { true }
+        now = 130_000L
+        assertTrue(coordinator.tick(now))
+        val calls = transport.connectCalls
+        assertFalse(coordinator.tick(now))
+        assertEquals(calls, transport.connectCalls)
+        transport.emit(BleTransportEvent.Connected(device))
+        assertEquals(0, coordinator.reconnectAttemptCount)
+        transport.close = {
+            transport.emit(BleTransportEvent.Disconnected(device, unexpected = false))
+            true
+        }
+        assertTrue(coordinator.disconnect())
+        coordinator.setApplicationActive(false)
+        coordinator.setApplicationActive(true)
+        assertFalse(coordinator.tick(200_000L))
+        assertEquals(calls, transport.connectCalls)
+    }
+
+    @Test
     fun explicitReconnectStartsANewBudgetAfterAutomaticCloseRetriesAreExhausted() {
         val transport = TestTransport()
         var now = 0L
@@ -18,6 +68,7 @@ class BleReconnectBudgetTest {
             reconnectDelayMillis = { 1_000L },
             maxReconnectAttempts = 1,
             nowMillis = { now },
+            sustainedReconnectDelayMillis = 30_000L,
         )
         assertTrue(coordinator.connect(device))
         transport.emit(BleTransportEvent.Connected(device))
