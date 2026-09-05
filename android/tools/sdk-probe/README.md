@@ -51,3 +51,23 @@ The first runtime smoke exposed the vendor JAR's undeclared ActivityCompat
 dependency. AndroidX core is now explicit; subsequent search/connect/read ran.
 Vendor native libraries may trigger Android's 16 KB compatibility warning;
 this PoC does not claim 16 KB ELF compatibility or distribution readiness.
+
+## Probe-only response observation
+
+`VersionObservation` wraps the running SDK firmware task's parser, calling the
+original handler exactly once and returning its unchanged result. Only booleans
+are retained: whether a reply reached the SDK, whether it was null, and whether
+the original handler declared reception complete. No bytes, payloads, error
+messages or identifiers are retained or exported. Java accesses the public
+2.0.0 JAR ABI of Kotlin-internal task APIs; this is intentionally an isolated
+diagnostic, not a production SDK integration contract. If no running handler is
+available, the UI explicitly reports the missing observation rather than inferring
+no response. Two unit tests verify transparent forwarding and null/missing cases.
+
+Observed with this hook on Pixel 7 + BCST-36: firmware API failed in 51 ms;
+the UI reported a non-null response and the SDK parser declaring reception
+complete. This rules out a simple no-response timeout for that attempt. It does
+not prove the response was valid firmware data: a rejection/acknowledgement,
+unexpected response or incomplete frame may still have reached the native parser.
+The probe disconnected after the failure as designed. Build/lint and all four
+unit tests passed before installation.

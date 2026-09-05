@@ -142,6 +142,7 @@ class MainActivity : Activity() {
         if (!ready || scanner == null) { status.text = "先に接続してください。"; return }
         val target = if (bluetooth) hardware else firmware
         val title = if (bluetooth) "Bluetoothバージョン" else "本体ファームウェア"
+        val observation = if (bluetooth) null else VersionObservation()
         val token = ++generation
         val started = SystemClock.elapsedRealtime()
         setBusy(true)
@@ -162,13 +163,17 @@ class MainActivity : Activity() {
                     value == null -> "応答形式が不正（${elapsed}ms）"
                     else -> "$value（${elapsed}ms）"
                 }
+                observation?.let { target.append("\n${it.summary()}") }
                 status.text = "取得処理終了。設定書き込みは行っていません。"
                 if (result.isFailure || value == null) close("取得に失敗したため切断します。")
             }
         } }
         runCatching {
             if (bluetooth) scanner.messager.getHardwareInfo(completion)
-            else scanner.messager.getVersion(completion)
+            else {
+                scanner.messager.getVersion(completion)
+                observation?.attach(scanner.messager)
+            }
         }.onFailure { close("SDK取得呼び出し失敗") }
         handler.postDelayed({ if (generation == token) {
             target.text = "$title：取得タイムアウト（6秒）"
