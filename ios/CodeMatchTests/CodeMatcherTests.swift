@@ -606,14 +606,14 @@ final class BluetoothScannerServiceTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let service = BluetoothScannerService(defaults: defaults)
 
-        for _ in 0..<12 {
+        for _ in 0..<BluetoothScannerService.diagnosticEventLimit {
             service.startDiscovery()
             service.stopDiscovery()
         }
         service.connect(service.devices[0])
         service.simulateScan("PRIVATE-SCAN-PAYLOAD")
 
-        XCTAssertEqual(service.diagnosticEvents.count, 20)
+        XCTAssertEqual(service.diagnosticEvents.count, BluetoothScannerService.diagnosticEventLimit)
         XCTAssertTrue(
             service.diagnosticEvents.contains(where: { $0.message.contains("Connect requested") })
         )
@@ -622,7 +622,10 @@ final class BluetoothScannerServiceTests: XCTestCase {
         )
 
         let relaunched = BluetoothScannerService(defaults: defaults)
-        XCTAssertLessThanOrEqual(relaunched.diagnosticEvents.count, 20)
+        XCTAssertLessThanOrEqual(
+            relaunched.diagnosticEvents.count,
+            BluetoothScannerService.diagnosticEventLimit
+        )
         XCTAssertTrue(
             relaunched.diagnosticEvents.contains(where: { $0.message.contains("Connect requested") })
         )
@@ -821,6 +824,39 @@ final class BluetoothScannerServiceTests: XCTestCase {
     }
 
     private let suiteName = "BluetoothScannerServiceTests"
+
+    func testDiagnosticLogKeepsRecentEventsAndOmitsPayloads() throws {
+        let defaults = isolatedDefaults()
+        let service = BluetoothScannerService(defaults: defaults)
+        service.startDiscovery()
+        service.connect(service.devices[0])
+        service.setExpectedCode(.qr)
+        var delivered: [String] = []
+        service.onCode = { delivered.append($0) }
+
+        let payload = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
+        service.simulateScan(payload)
+        XCTAssertEqual(delivered, [payload])
+
+        let log = service.diagnosticLogText()
+        XCTAssertTrue(log.contains("Scan callback accepted"))
+        XCTAssertFalse(log.contains("BCJH5281GG"))
+        XCTAssertFalse(log.contains(payload))
+        XCTAssertTrue(log.contains("symbology mode: sessionCodes"))
+
+        // 上限を超えた古いイベントは捨て、保持分だけを永続化する。
+        for _ in 0..<(BluetoothScannerService.diagnosticEventLimit + 40) {
+            service.stopDiscovery()
+        }
+        XCTAssertEqual(service.diagnosticEvents.count, BluetoothScannerService.diagnosticEventLimit)
+        let data = try XCTUnwrap(defaults.data(forKey: BluetoothScannerService.diagnosticEventsKey))
+        let persisted = try JSONDecoder().decode([BluetoothScannerDiagnosticEvent].self, from: data)
+        XCTAssertEqual(persisted.count, BluetoothScannerService.diagnosticEventLimit)
+
+        service.clearDiagnosticEvents()
+        XCTAssertTrue(service.diagnosticEvents.isEmpty)
+        XCTAssertNil(defaults.data(forKey: BluetoothScannerService.diagnosticEventsKey))
+    }
 
     private func isolatedDefaults() -> UserDefaults {
         let defaults = UserDefaults(suiteName: suiteName)!

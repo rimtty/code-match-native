@@ -299,7 +299,11 @@ struct SettingsScreen: View {
             if !bluetoothScanner.diagnosticEvents.isEmpty {
                 DisclosureGroup("接続診断（直近20件）") {
                     VStack(alignment: .leading, spacing: 7) {
-                        ForEach(bluetoothScanner.diagnosticEvents.reversed()) { event in
+                        ForEach(
+                            bluetoothScanner.diagnosticEvents
+                                .suffix(BluetoothScannerService.diagnosticDisplayLimit)
+                                .reversed()
+                        ) { event in
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Text(event.date, style: .time)
                                     .foregroundStyle(AppTheme.muted)
@@ -312,6 +316,39 @@ struct SettingsScreen: View {
                     .font(.caption2.monospaced())
                     .padding(.top, 8)
                     .accessibilityIdentifier("bluetoothDiagnosticEvents")
+
+                    HStack(spacing: 10) {
+                        ShareLink(
+                            item: bluetoothScanner.diagnosticLogText(),
+                            preview: SharePreview(AppLocalization.string("CodeMatch Bluetooth診断ログ"))
+                        ) {
+                            Label(
+                                AppLocalization.string("診断ログを共有"),
+                                systemImage: "square.and.arrow.up"
+                            )
+                            .font(.caption.weight(.bold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(AppTheme.green)
+                        .accessibilityIdentifier("shareBluetoothDiagnosticsButton")
+
+                        Button(role: .destructive) {
+                            bluetoothScanner.clearDiagnosticEvents()
+                        } label: {
+                            Label(
+                                AppLocalization.string("診断ログを消去"),
+                                systemImage: "trash"
+                            )
+                            .font(.caption.weight(.bold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("clearBluetoothDiagnosticsButton")
+                    }
+                    .padding(.top, 10)
                 }
                 .font(.caption.weight(.bold))
                 .tint(AppTheme.green)
