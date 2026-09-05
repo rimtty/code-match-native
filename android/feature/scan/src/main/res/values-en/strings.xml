@@ -45,7 +45,6 @@
     <string name="scan_bluetooth_waiting">Ready to scan from the connected scanner</string>
     <string name="scan_bluetooth_device_fallback">Bluetooth scanner</string>
     <string name="scan_bluetooth_from">Scanning from %1$s</string>
-    <string name="scan_bluetooth_configuration_configuring">Preparing scanner scan targets. Please wait.</string>
     <string name="scan_bluetooth_restriction_session">Scan targets: QR and Code 128 (comparison session)</string>
     <string name="scan_bluetooth_configuration_failed">Scanner scan settings could not be verified. Continue with the camera.</string>
     <string name="scan_bluetooth_fallback_title">Switched from Bluetooth to camera</string>

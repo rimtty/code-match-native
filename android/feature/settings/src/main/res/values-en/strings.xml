@@ -77,6 +77,8 @@
     <string name="settings_scanner_open_settings">Bluetooth settings</string>
 
     <string name="settings_diagnostics_title">Connection diagnostics</string>
+    <string name="settings_diagnostics_expand">Show events</string>
+    <string name="settings_diagnostics_collapse">Collapse events</string>
     <string name="settings_diagnostics_empty">No connection or configuration events yet.</string>
     <string name="settings_diagnostic_connection">Connection</string>
     <string name="settings_diagnostic_configuration">Configuration</string>
