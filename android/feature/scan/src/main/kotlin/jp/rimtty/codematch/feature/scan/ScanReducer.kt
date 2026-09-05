@@ -370,12 +370,11 @@ class ScanReducer(
         payload: ScanPayload,
         value: String,
     ): InvalidScanReason? {
-        // Bluetooth has no reliable symbol-type field in its callback, so its
-        // strict business formats prevent QR/Code 128 reverse-order mistakes.
-        // CameraX/ML Kit already supplies the symbol type; non-standard QR
-        // values remain eligible for CodeMatcher's conservative fallback.
+        // Recognising a QR symbol does not establish that it is a business
+        // label. Validate QR content for both camera and Bluetooth before
+        // advancing; the comparison fallback must not bypass scan acceptance.
         return when {
-            payload.source == InputSource.BLUETOOTH && payload.format == ScanFormat.QR -> {
+            payload.format == ScanFormat.QR -> {
                 val length = value.trim().length
                 when {
                     length < KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH ->

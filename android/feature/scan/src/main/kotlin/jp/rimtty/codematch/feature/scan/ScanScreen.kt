@@ -1112,7 +1112,16 @@ private fun AutoDelayOption(
 private fun ScanMessage(state: ScanUiState) {
     val invalid = state.lastInvalidReason
     if (invalid == null && state.message.isNullOrBlank()) return
-    val invalidText = when (invalid) {
+    val invalidCameraQr = state.inputSource == InputSource.CAMERA &&
+        state.phase == ScanPhase.WAITING_QR && invalid in setOf(
+            InvalidScanReason.EMPTY_PAYLOAD,
+            InvalidScanReason.INCOMPLETE_QR_PAYLOAD,
+            InvalidScanReason.OVERLONG_QR_PAYLOAD,
+            InvalidScanReason.INVALID_PAYLOAD,
+        )
+    val invalidText = if (invalidCameraQr) {
+        stringResource(R.string.scan_invalid_camera_qr)
+    } else when (invalid) {
         InvalidScanReason.SESSION_NOT_STARTED -> stringResource(R.string.scan_invalid_session)
         InvalidScanReason.WRONG_ORDER -> stringResource(R.string.scan_invalid_order)
         InvalidScanReason.EMPTY_PAYLOAD -> stringResource(R.string.scan_invalid_empty)

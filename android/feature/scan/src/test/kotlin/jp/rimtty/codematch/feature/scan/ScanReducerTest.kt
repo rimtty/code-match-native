@@ -217,6 +217,38 @@ class ScanReducerTest {
     }
 
     @Test
+    fun cameraRejectsUnrelatedQrWithoutAdvancingOrRecording() {
+        val reducer = ScanReducer()
+        val waiting = reducer.reduce(
+            ScanReducer.initial(matchedCount = 2), ScanEvent.StartSession,
+        ).state
+        val invalidValues = listOf(
+            "https://example.com/tissues",
+            qrPayload.dropLast(1),
+            qrPayload + "X",
+            "X".repeat(66),
+            "https://example.com/".padEnd(66, 'x'),
+        )
+        for (value in invalidValues) {
+            val rejected = reducer.reduce(
+                waiting,
+                ScanEvent.PayloadReceived(ScanPayload.qr(value, InputSource.CAMERA)),
+            )
+            assertEquals(waiting, rejected.state)
+            assertEquals(1, rejected.effects.size)
+            assertTrue(rejected.effects.single() is ScanEffect.InvalidScan)
+            assertEquals(2, rejected.state.scan.matchedCount)
+        }
+        val accepted = reducer.reduce(
+            waiting,
+            ScanEvent.PayloadReceived(ScanPayload.qr(qrPayload, InputSource.CAMERA)),
+        )
+        assertEquals(ScanPhase.WAITING_CODE_128, accepted.state.phase)
+        assertEquals(2, accepted.state.scan.matchedCount)
+        assertTrue(accepted.effects.contains(ScanEffect.ScanAccepted))
+    }
+
+    @Test
     fun bluetoothRequiresBusinessPayloadFormats() {
         val reducer = ScanReducer()
         val waitingQr = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
