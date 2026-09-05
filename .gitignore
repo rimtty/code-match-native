@@ -30,3 +30,7 @@ android/.cxx/
 # the binaries local and fetch exact, hash-verified copies when needed.
 android/scanner/inateck/libs/*.jar
 android/scanner/inateck/src/main/jniLibs/**/*.so
+# Also ignore the directories themselves so a symlink placed there for a
+# worktree can never be committed by a broad `git add`.
+android/scanner/inateck/libs
+android/scanner/inateck/src/main/jniLibs
