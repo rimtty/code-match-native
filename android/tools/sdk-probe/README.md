@@ -128,3 +128,35 @@ malformed/oversize/cancelled input. This experiment is not in the production app
 - Eleven unit tests, build/lint passed. The normal scannerPoc app remains
   unchanged. Its recorded settings profile remains
   `inateck-android-sdk-2.0.0-area-name-v1`.
+
+## Read-only external settings witness
+
+The inventory buttons call only official `getSettingInfo`. Capture retains the
+entire returned inventory keyed by exact `(area,name)` and all returned fields
+in process memory. No disk, logs, hashes or raw values are exposed. Capture is
+refused if a baseline already exists; explicit discard is required to replace it.
+Comparison requires the same device, unique identities and a nonempty, bounded
+inventory. Map order is ignored; missing/extra items or any changed value/field
+are mismatches. This is stricter than comparing only symbologies: unrelated
+general-setting changes can also cause a mismatch and need separate diagnosis.
+
+To witness restoration: capture while the normal app is stopped and no session
+is active; disconnect and wait for confirmed link closure; use the normal app;
+end its session and await restoration; stop/disconnect the normal app; return to
+the probe without killing its process; reconnect the same scanner and compare.
+Activity recreation retains the in-memory witness, but process death loses it
+and produces an explicit missing-baseline result. A probe-to-probe unchanged
+comparison alone does NOT prove application restoration. Do not clear app data.
+No restriction/restore write is made by this witness.
+
+Physical witness result (2026-09-05, Pixel 7 + BCST-36): captured baseline with
+normal app stopped; observed probe disconnect completion; launched installed
+stable scannerPoc, confirmed SDK Ready, started empty session and observed
+Bluetooth QR wait; confirmed End Session and subsequent Settings Ready;
+force-stopped normal app after completion; returned to the still-alive probe,
+reconnected same scanner and freshly read settings. UI confirmed all returned
+settings/all fields exactly equal to baseline. No codes were scanned or history
+entries created, and no existing records were cleared. This establishes normal
+empty-session-end restoration, not unexpected-disconnect/timeout recovery.
+The read-only comparison addition passed two new unit tests (13 total) and
+assembleDebug/lintDebug. Baseline remains memory-only.

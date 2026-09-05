@@ -23,9 +23,11 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var hardware: TextView
     private lateinit var firmware: TextView
+    private lateinit var inventory: TextView
     private lateinit var devices: LinearLayout
     private val controls = mutableListOf<Button>()
     private var device: BleScannerDevice? = null
+    private var closingDevice: BleScannerDevice? = null
     private var generation = 0
     private var busy = false
     private var ready = false
@@ -53,6 +55,13 @@ class MainActivity : Activity() {
         button("本体ファームウェア取得 (getVersion)") { read(false) }
         button("本体ファームウェア取得（分割再構成）") { read(false, true) }
         button("切断") { close("切断しました") }
+        inventory = label("設定比較：未実施（値は非表示・端末保存なし）")
+        button("設定の比較基準を取得") { readInventory(false) }
+        button("設定を再取得して基準と比較") { readInventory(true) }
+        button("比較基準を破棄") {
+            ProbeInventoryWitness.comparison.clear()
+            inventory.text = "比較基準を破棄しました。"
+        }
         BleListManager.disconnectHandler = { disconnected, _ ->
             runOnUiThread {
                 if (device !== disconnected || !visible) return@runOnUiThread
@@ -189,6 +198,37 @@ class MainActivity : Activity() {
             close("タイムアウトのため切断。再接続が必要です。")
         } }, 6_000)
     }
+    private fun readInventory(compare: Boolean) {
+        val scanner = device
+        val id = scanner?.mac
+        if (!ready || scanner == null || id == null) { status.text = "先に接続してください。"; return }
+        val token = ++generation
+        val started = SystemClock.elapsedRealtime()
+        setBusy(true)
+        inventory.text = "設定を読み取り中（書き込みなし）"
+        runCatching {
+            scanner.messager.getSettingInfo { result -> runOnUiThread {
+                if (generation != token || !visible) return@runOnUiThread
+                generation++
+                if (SystemClock.elapsedRealtime() - started >= 6_000 || result.isFailure) {
+                    inventory.text = "設定読み取り失敗／期限超過。比較していません。"
+                    close("取得失敗のため切断します。")
+                    return@runOnUiThread
+                }
+                val items = result.getOrNull()?.map { it.toMap() }
+                inventory.text = if (items == null) "設定の応答がありません。" else {
+                    if (compare) ProbeInventoryWitness.comparison.compare(id, items)
+                    else ProbeInventoryWitness.comparison.capture(id, items)
+                }
+                setBusy(false)
+                status.text = "設定の読み取り完了。書き込みは行っていません。"
+            } }
+        }.onFailure { close("設定読み取り呼び出し失敗") }
+        handler.postDelayed({ if (generation == token) {
+            inventory.text = "設定読み取りタイムアウト。比較していません。"
+            close("期限超過のため切断します。")
+        } }, 6_000)
+    }
     private fun close(message: String) {
         activeAssembly?.cancel()
         activeAssembly = null
@@ -197,10 +237,26 @@ class MainActivity : Activity() {
         runCatching { BleListManager.stopScan() }
         val previous = device
         device = null
-        runCatching { previous?.disconnect { } }
-        // Never overlap a reconnect with an uncertain SDK operation. Relaunch after timeout.
         setBusy(true)
-        status.text = "$message\n検証を続ける場合はアプリを閉じて開き直してください。"
+        status.text = "$message\n切断完了を待っています。"
+        if (closingDevice != null) return
+        if (previous == null) {
+            devices.removeAllViews()
+            setBusy(false)
+            status.text = message
+        } else {
+            closingDevice = previous
+            runCatching { previous.disconnect { result -> runOnUiThread {
+            if (closingDevice !== previous || isDestroyed) return@runOnUiThread
+            val mac = previous.mac
+            if (result.isSuccess && mac != null && !BleManager.getInstance().isConnected(mac)) {
+                closingDevice = null
+                devices.removeAllViews()
+                setBusy(false)
+                status.text = "$message\n切断完了。必要なら再検索してください。"
+            }
+        } } }.onFailure { status.text = "切断確認できません。検証アプリを終了してください。" }
+        }
     }
     override fun onStart() { super.onStart(); visible = true }
     override fun onStop() { visible = false; close("画面を離れたため停止しました"); super.onStop() }
