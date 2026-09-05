@@ -19,6 +19,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScanSessionCoordinatorTest {
+    @Test
+    fun repeatedReconnectDoesNotInterruptConnectingOrConfiguringAndFailureAllowsRetry() {
+        val scanner = TestScanner()
+        val coordinator = ScanSessionCoordinator(scanner)
+        scanner.markConnecting()
+        repeat(20) { assertEquals(false, coordinator.reconnectKnownDevice()) }
+        scanner.markReady()
+        scanner.configurationState = ConfigurationState.Configuring
+        repeat(20) { assertEquals(false, coordinator.reconnectKnownDevice()) }
+        assertEquals(0, scanner.reconnectCalls)
+        assertEquals(0, scanner.disconnectCalls)
+        scanner.markDisconnected()
+        assertTrue(coordinator.reconnectKnownDevice())
+        assertEquals(1, scanner.reconnectCalls)
+    }
+
     private val qrPayload =
         "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private val barcodePayload = "BCJH-52-81GG@1N5X0C"
@@ -476,6 +492,8 @@ class ScanSessionCoordinatorTest {
         override var expectedFormat: ScanFormat? = null
         override var listener: ExternalScannerListener? = null
         var reconnectSynchronously: Boolean = true
+        var reconnectCalls = 0
+        var disconnectCalls = 0
         var requireExpectedFormatForPayloadReadiness: Boolean = false
         override val isReadyForScanning: Boolean
             get() = super.isReadyForScanning &&
@@ -490,11 +508,13 @@ class ScanSessionCoordinatorTest {
         }
 
         override fun disconnect(): Boolean {
+            disconnectCalls++
             markDisconnected()
             return true
         }
 
         override fun reconnectKnownDevice(): Boolean {
+            reconnectCalls++
             if (reconnectSynchronously) markReady()
             return true
         }

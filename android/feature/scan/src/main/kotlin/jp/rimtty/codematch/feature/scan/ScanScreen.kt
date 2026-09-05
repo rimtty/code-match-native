@@ -368,9 +368,19 @@ private fun ScanSessionContent(
 
         BluetoothConfigurationStatus(state)
 
-        if (state.bluetoothFallbackActive) {
+        if (state.bluetoothFallbackActive && state.bluetoothConnected &&
+            (state.bluetoothConfigurationState == ConfigurationState.Configuring ||
+                state.bluetoothConfigurationState == ConfigurationState.Unavailable)
+        ) {
+            Text(
+                text = stringResource(R.string.scan_bluetooth_reconnected_checking),
+                modifier = Modifier.testTag("scan_bluetooth_reconnected_checking"),
+                style = MaterialTheme.typography.titleSmall,
+            )
+        } else if (state.bluetoothFallbackActive) {
             BluetoothFallbackCard(
                 issue = state.bluetoothIssue,
+                reconnecting = state.bluetoothReconnecting,
                 onReconnect = { onAction(ScanUiAction.ReconnectBluetooth) },
                 onOpenBluetoothSettings = onOpenBluetoothSettings,
             )
@@ -615,6 +625,7 @@ private fun SourceChoice(
 @Composable
 private fun BluetoothFallbackCard(
     issue: ScannerIssue,
+    reconnecting: Boolean,
     onReconnect: () -> Unit,
     onOpenBluetoothSettings: () -> Unit,
 ) {
@@ -667,6 +678,7 @@ private fun BluetoothFallbackCard(
             ) {
                 Button(
                     onClick = onReconnect,
+                    enabled = !reconnecting,
                     modifier = Modifier
                         .weight(1f)
                         .heightIn(min = 48.dp)
@@ -674,7 +686,7 @@ private fun BluetoothFallbackCard(
                 ) {
                     Icon(Icons.Outlined.Refresh, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.scan_bluetooth_reconnect))
+                    Text(stringResource(if (reconnecting) R.string.scan_bluetooth_reconnecting else R.string.scan_bluetooth_reconnect))
                 }
                 if (issue.requiresSystemSettings) {
                     OutlinedButton(

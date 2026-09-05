@@ -371,6 +371,7 @@ class ScanViewModel @Inject constructor(
         created.onScannerConfigurationStateChanged = {
             publishCoordinatorState()
         }
+        created.onScannerConnectionStateChanged = { publishCoordinatorState() }
         created.onBluetoothFallbackIssue = { issue ->
             bluetoothFallbackIssue = issue
         }
@@ -817,6 +818,10 @@ class ScanViewModel @Inject constructor(
             // QR/Code 128 restriction is applied. Payload-ready remains the
             // stricter adapter state used to forward scan callbacks.
             bluetoothReady = scanner.isReadyToStartSession,
+            bluetoothConnected = scanner.isConnected,
+            bluetoothReconnecting = scanner.connectionState is jp.rimtty.codematch.scanner.api.ConnectionState.Connecting ||
+                scanner.connectionState is jp.rimtty.codematch.scanner.api.ConnectionState.Searching ||
+                scanner.configurationState == jp.rimtty.codematch.scanner.api.ConfigurationState.Configuring,
             bluetoothDeviceName = scanner.connectedDevice?.name,
             bluetoothConfigurationState = scanner.configurationState,
             bluetoothIssue = projectedBluetoothIssue,

@@ -260,6 +260,29 @@ class ScanScreenTest {
     }
 
     @Test
+    fun reconnectShowsConnectionBeforeSettingsAreReadyWithoutHidingFailure() {
+        val state = mutableStateOf(ScanUiState.fromSession(
+            session = ScanSessionState(scan = ScanState.WaitingQr(), inputSource = InputSource.CAMERA),
+            sessionActive = true,
+        ).copy(bluetoothFallbackActive = true))
+        composeRule.setContent { ScanScreen(state = state.value, onAction = {}) }
+        composeRule.onAllNodesWithTag("scan_bluetooth_fallback").assertCountEquals(1)
+        composeRule.runOnIdle {
+            state.value = state.value.copy(
+                bluetoothConnected = true,
+                bluetoothConfigurationState = ConfigurationState.Configuring,
+            )
+        }
+        composeRule.onAllNodesWithTag("scan_bluetooth_fallback").assertCountEquals(0)
+        composeRule.onNodeWithTag("scan_bluetooth_reconnected_checking").performScrollTo().assertIsDisplayed()
+        composeRule.runOnIdle {
+            state.value = state.value.copy(bluetoothConfigurationState = ConfigurationState.Failed("test"))
+        }
+        composeRule.onAllNodesWithTag("scan_bluetooth_reconnected_checking").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("scan_bluetooth_fallback").assertCountEquals(1)
+    }
+
+    @Test
     fun bluetoothConfigurationStatusReturnsToSessionRestrictionAfterReady() {
         val language = mutableStateOf(AppLanguage.ENGLISH)
         val state = mutableStateOf(
