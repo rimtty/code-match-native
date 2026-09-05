@@ -20,6 +20,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -185,6 +186,7 @@ fun CameraStage(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(4f / 3f)
+            .clip(RoundedCornerShape(20.dp))
             .background(
                 color = Color.Black,
                 shape = RoundedCornerShape(20.dp),

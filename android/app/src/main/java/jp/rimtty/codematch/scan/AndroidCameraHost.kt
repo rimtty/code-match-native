@@ -109,7 +109,10 @@ private class AndroidCameraHost(
         request: CameraStartRequest,
         callbacks: CameraHostCallbacks,
     ): CameraStartResult {
-        if (closed) return CameraStartResult.Failed
+        if (closed) {
+            android.util.Log.println(android.util.Log.WARN, "CodeMatchCamera", "host_closed")
+            return CameraStartResult.Failed
+        }
         this.callbacks = callbacks
 
         if (availability == CameraAvailability.UNAVAILABLE) {
@@ -276,6 +279,8 @@ private class AndroidCameraHost(
     }
 
     private fun onCameraError(error: CameraError) {
+        // Only the fixed error category; never frames, payloads or exception messages.
+        android.util.Log.println(android.util.Log.WARN, "CodeMatchCamera", "camera_error=${error.code.name}")
         when (error.code) {
             CameraErrorCode.BACK_CAMERA_UNAVAILABLE -> callbacks?.onUnavailable()
             CameraErrorCode.PERMISSION_DENIED -> {

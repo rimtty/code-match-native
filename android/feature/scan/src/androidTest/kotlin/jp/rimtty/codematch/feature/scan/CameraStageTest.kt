@@ -1,5 +1,20 @@
 package jp.rimtty.codematch.feature.scan
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.unit.dp
+
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -22,6 +37,32 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class CameraStageTest {
+    @Test
+    fun oversizedPreviewCannotPaintOutsideStoppedStageBounds() {
+        composeRule.setContent {
+            Box(
+                Modifier.size(240.dp, 260.dp).background(Color.White).testTag("clip_root"),
+                contentAlignment = Alignment.Center,
+            ) {
+                CameraStage(
+                    format = jp.rimtty.codematch.scanner.api.ScanFormat.QR,
+                    running = true,
+                    modifier = Modifier.width(200.dp),
+                    previewContent = { modifier, _ ->
+                        Canvas(modifier) {
+                            drawRect(Color.Red, Offset(0f, -size.height), Size(size.width, size.height * 3))
+                        }
+                    },
+                )
+            }
+        }
+        val pixels = composeRule.onNodeWithTag("clip_root").captureToImage().toPixelMap()
+        val x = pixels.width / 2
+        assertEquals(Color.White, pixels[x, pixels.height / 10])
+        assertEquals(Color.White, pixels[x, pixels.height * 9 / 10])
+        assertEquals(Color.Red, pixels[x, pixels.height / 2])
+    }
+
     @get:Rule
     val composeRule = createComposeRule()
 

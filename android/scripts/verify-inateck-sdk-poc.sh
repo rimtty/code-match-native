@@ -92,4 +92,26 @@ if rg -q -i \
     exit 1
 fi
 
-echo "Inateck SDK PoC APK permissions, entry points, ABI, and vendor-log stripping are verified."
+# Inspect the actual minified DEX, not just the Manifest or keep-rule source.
+# ML Kit reflectively constructs these registrars before camera analysis.
+apkanalyzer="$(dirname "$(dirname "$(dirname "$aapt2")")")/cmdline-tools/latest/bin/apkanalyzer"
+[[ -x "$apkanalyzer" ]] || {
+    echo "Inateck PoC verification failed: apkanalyzer is unavailable" >&2
+    exit 1
+}
+for registrar in \
+    com.google.mlkit.vision.barcode.internal.BarcodeRegistrar \
+    com.google.mlkit.vision.common.internal.VisionCommonRegistrar \
+    com.google.mlkit.common.internal.CommonComponentRegistrar; do
+    if ! "$apkanalyzer" dex code --class "$registrar" --method '<init>()V' "$apk" \
+        > "$temporary/registrar.txt" 2>/dev/null; then
+        echo "Inateck PoC verification failed: ML Kit registrar constructor missing: $registrar" >&2
+        exit 1
+    fi
+    rg -q '\.method public constructor <init>\(\)V' "$temporary/registrar.txt" || {
+        echo "Inateck PoC verification failed: ML Kit registrar constructor is not public: $registrar" >&2
+        exit 1
+    }
+done
+
+echo "Inateck SDK PoC APK permissions, entry points, ABI, vendor-log stripping, and ML Kit constructors are verified."
