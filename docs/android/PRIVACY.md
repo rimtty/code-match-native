@@ -9,7 +9,7 @@
 | カメラ映像・解析フレーム | CameraX/ML Kitの解析中だけ一時利用 | 保存・送信しない |
 | 一致履歴 | Roomへ端末内保存。一致したQR/Code 128のpayloadを箱詳細とPDF生成に使う | analytics、クラッシュレポート、サーバーへ送信しない |
 | 不一致・無効入力 | 照合状態とフィードバックにだけ使う | 履歴、診断、外部送信へ保存しない |
-| BLE診断 | 接続・設定の種別と連番だけを最大20件表示 | scan payloadを保存・表示・送信しない |
+| BLE診断 | 接続・設定・エラーの種別・連番・段階名を最大300件端末内に保持し、設定画面には直近20件の種別と連番だけを表示 | scan payloadを保存・表示・送信しない。利用者が「診断ログを共有」「診断ログを保存」を選んだ時だけ、段階名とアプリ／端末の版情報を含むテキストを共有シートまたは選択先へ渡す |
 | BLE復旧snapshot | `release`が公式SDK adapterへ接続し、開始前のsymbology設定を端末内に保存する | Auto Backupとdevice-to-device transferから除外する |
 | BLE既知端末identity | 同じ除外DataStoreへversion/profile、device ID、表示名だけを保存。設定値・scan payload・raw frameは含めない | Auto Backupとdevice-to-device transferから除外する |
 | PDF | ユーザーが保存を選んだ時は選択先へ、共有を選んだ時は専用cacheからSharesheetへ渡す | 明示操作の時だけアプリ領域外へ出る |
