@@ -111,7 +111,12 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     static let connectionTimeout: TimeInterval = 30
     static let automaticReconnectTimeout: TimeInterval = 8
     static let duplicateInterval: TimeInterval = 0.75
-    static let symbologyCommandTimeout: Duration = .seconds(3)
+    /// 1回の設定書込（最大28項目）にSDKの応答を待つ上限。超過時は新しい
+    /// コマンドを重ねずリンクを閉じて再同期する。3秒ではBLE混雑やスキャナー側の
+    /// 処理遅延だけで強制切断に至ったため、Android版の25秒との中間の10秒にする。
+    static let symbologyCommandTimeout: Duration = .seconds(10)
+    /// SDKの切断通知に依存せず、SDKが保持するリンク状態を定期的に確認する間隔。
+    static let linkLivenessInterval: Duration = .seconds(30)
     static let settingsRetryLimit = 4
     /// 読み取り設定の書込が失敗したときに、同じ要求を再送する回数。
     static let symbologyWriteRetryLimit = 2
@@ -163,6 +168,10 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     private var manualDisconnectInProgress = false
     private var configurationRecoveryTask: Task<Void, Never>?
     private var configurationRecoveryAttempt = 0
+    private var linkLivenessTask: Task<Void, Never>?
+    /// 接続直後にSDKが報告したリンク状態。SDKがこの値を更新しない実装でも
+    /// 誤って切断扱いにしないよう、生存確認はこの基準からの変化だけを見る。
+    private var connectedLinkBaselineState: BLEDevice.ConnectType?
 #else
     /// Simulatorテスト用: 設定されている間は`setExpectedCode`が失敗し、
     /// `retryConfiguration()`で解除される。
@@ -172,6 +181,10 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     var connectedDevice: BluetoothScannerDevice? { state.connectedDevice }
     var isConnected: Bool { connectedDevice != nil }
     var isReadyForScanning: Bool { isConnected && configurationState == .ready }
+    var isConnecting: Bool {
+        if case .connecting = state { return true }
+        return false
+    }
     var reconnectableDevice: BluetoothScannerDevice? {
         guard let id = defaults.string(forKey: Self.lastKnownDeviceIDKey), !id.isEmpty else {
             return nil
@@ -318,6 +331,16 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     ) {
         trace("Connect requested: \(device.name) [\(device.id)]")
 #if INATECK_SDK
+        // 同じSDKデバイスへconnectを重ねると、片方の失敗応答が接続済みの状態を
+        // 消したりscan callbackが二重登録されたりする。接続中・接続済みなら無視する。
+        if let connectedSDKDevice, connectedSDKDevice.uuid == device.id {
+            trace("Connect request ignored: already connected to \(device.name)")
+            return
+        }
+        if isConnecting {
+            trace("Connect request ignored: a connection is already in progress")
+            return
+        }
         guard let sdkDevice = sdkDevices[device.id]
                 ?? BLEManager.shared.devices.first(where: { $0.uuid == device.id }) else {
             rememberDevice(device)
@@ -368,7 +391,12 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                     self.rememberDevice(device)
                     self.state = .connected(device)
                     self.automaticReconnectAttempt = 0
-                    self.trace("Connected: \(device.name) [\(device.id)]")
+                    self.connectedLinkBaselineState = sdkDevice.connectState
+                    self.trace(
+                        "Connected: \(device.name) [\(device.id)] "
+                            + "(SDK link state \(String(describing: sdkDevice.connectState)))"
+                    )
+                    self.startLinkLivenessMonitor()
                     self.ensureGATTMode(for: sdkDevice, appDevice: device)
                 case .failure(let error):
                     self.connectedSDKDevice = nil
@@ -430,6 +458,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
 
     func reconnectPreferredDevice() {
         guard !isConnected,
+              !isConnecting,
               reconnectDeviceID == nil,
               let preferredID = defaults.string(forKey: Self.preferredDeviceIDKey),
               !preferredID.isEmpty else { return }
@@ -472,6 +501,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         applicationIsActive = isActive
         if isActive {
             automaticReconnectAttempt = 0
+            verifyLinkLiveness(reason: "foreground")
             reconnectPreferredDevice()
         } else {
             automaticReconnectTask?.cancel()
@@ -800,6 +830,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         configurationRecoveryTask?.cancel()
         configurationRecoveryTask = nil
         configurationRecoveryAttempt = 0
+        stopLinkLivenessMonitor()
         configurationState = .unavailable
         if manualDisconnectInProgress {
             state = .idle
@@ -994,6 +1025,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             sdkDevice.disconnect { [weak self] _ in
                 Task { @MainActor in
                     guard let self else { return }
+                    self.stopLinkLivenessMonitor()
                     self.connectedSDKDevice = nil
                     self.gattModeChangeInProgress = false
                     self.state = .idle
@@ -1060,9 +1092,41 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         return nil
     }
 
-    private var isConnecting: Bool {
-        if case .connecting = state { return true }
-        return false
+    private func startLinkLivenessMonitor() {
+        linkLivenessTask?.cancel()
+        linkLivenessTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: Self.linkLivenessInterval)
+                } catch {
+                    return
+                }
+                guard let self else { return }
+                self.verifyLinkLiveness(reason: "periodic check")
+            }
+        }
+    }
+
+    private func stopLinkLivenessMonitor() {
+        linkLivenessTask?.cancel()
+        linkLivenessTask = nil
+        connectedLinkBaselineState = nil
+    }
+
+    /// SDKの`disconnectHandler`が呼ばれないままリンクが落ちた場合に備え、
+    /// SDKが保持するリンク状態から切断を検知する。接続直後の基準値から
+    /// `disconnected`側へ変化したときだけ切断として扱い、通信は発生させない。
+    private func verifyLinkLiveness(reason: String) {
+        guard let sdkDevice = connectedSDKDevice, isConnected else { return }
+        let linkState = sdkDevice.connectState
+        guard linkState != connectedLinkBaselineState,
+              linkState != .connected,
+              linkState != .connecting else { return }
+        trace(
+            "SDK link state is \(String(describing: linkState)) without a disconnect "
+                + "callback (\(reason)); treating the link as disconnected"
+        )
+        handleSDKDisconnect(sdkDevice)
     }
 
     private func scheduleAutomaticReconnect(reason: String) {
@@ -1284,6 +1348,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         symbologyCommandTimeoutTask = nil
         configurationRecoveryTask?.cancel()
         configurationRecoveryTask = nil
+        stopLinkLivenessMonitor()
         manualDisconnectInProgress = true
         cancelSDKOutputConfiguration()
         sdkDevice.disconnect { [weak self] result in
@@ -1509,6 +1574,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             }
 
             self.cancelSDKOutputConfiguration()
+            self.stopLinkLivenessMonitor()
             self.connectedSDKDevice = nil
             self.sdkOutputConfigurationCompleted = false
             self.connectedScannerSettings = nil
