@@ -1,6 +1,6 @@
 # Code Match Android
 
-Android版Code Matchの独立Gradleプロジェクトです。iOS版と同じ照合契約を、Android標準の操作とJetpack Compose / Material 3で実装します。通常のreleaseはカメラ入力のみです。公式Inateck Android SDKを使うBLE実装は、ローカル実機評価専用の`scannerPoc`へ隔離します。
+Android版Code Matchの独立Gradleプロジェクトです。iOS版と同じ照合契約を、Android標準の操作とJetpack Compose / Material 3で実装します。Android版はストアへ提出せず、手元でreleaseビルドしたAPKを自分の端末へ入れて使う運用です。`release`はカメラ入力に加えて公式Inateck Android SDKによるBLE読取を同梱し、`debug`はFake scannerを使います。
 
 ## 開発環境
 
@@ -28,7 +28,7 @@ scanner/api/          # カメラ/BLEから独立したscanner契約
 scanner/camera/       # CameraX + bundled ML Kit（QR / Code 128）
 scanner/fake/         # 開発用Fakeの隔離先（debug専用）
 scanner/ble/          # SDK/UUID非依存のBLE安全コア（release未接続）
-scanner/inateck/      # 公式SDK adapter（scannerPoc専用、binaryはローカル取得）
+scanner/inateck/      # 公式SDK adapter（release専用、binaryはローカル取得）
 ```
 
 `core/model`と`core/matching`の本体ロジックはAndroid APIに依存しません。共通fixtureは`../shared/test-fixtures`をテストリソースとしてクラスパスへ追加し、テストからは`ClassLoader.getResourceAsStream`で読み込みます。アプリアイコンは通常・round・adaptive・monochromeを持ち、Android 13以降のper-app languageにも日本語と英語を公開します。
@@ -50,12 +50,16 @@ bash scripts/verify-release-hardening.sh \
   --dependency-report tmp/release-dependencies.txt
 ```
 
-公式Inateck SDKを使う非配付PoCは、固定commitからbinaryを取得してchecksumを検証してから組み立てます。生成物はGit管理外です。
+公式Inateck SDKのbinaryは固定commitから取得してchecksumを検証し、Git管理外の`scanner/inateck/libs`と`jniLibs`へ置きます（再配付ライセンスがないため、Gitやreleaseの成果物へは含めず、手元利用に限ります）。releaseはこのbinaryがないとビルドできません。
 
 ```bash
-bash scripts/setup-inateck-sdk-poc.sh
-./gradlew :app:assembleScannerPoc
+bash scripts/setup-inateck-sdk.sh
+./gradlew :app:assembleRelease
+bash scripts/verify-release-scanner-apk.sh      # 権限・ABI・vendorログ除去・ML Kit registrarの検査
+adb install -r app/build/outputs/apk/release/app-release.apk
 ```
+
+releaseは既定でdebug keystoreで署名するため、再ビルドしてもそのまま上書きインストールできます。自分のkeystoreで署名する場合は `~/.gradle/gradle.properties` などに `codematchReleaseStoreFile` / `codematchReleaseStorePassword` / `codematchReleaseKeyAlias` / `codematchReleaseKeyPassword` を設定します（keystoreはGit管理外に置く）。releaseはR8でminifyし、SDKのLog/System.out呼び出しを除去し、ABIはSDKに合わせて`arm64-v8a`だけです。SDKの`libscanner_cmd.so` / `libinateck_scanner_cmd.so`は4KB page alignmentのため、16KB page sizeの端末では動作しません（Pixel 7は4KB）。
 
 Release検証は、まず`./gradlew :app:dependencies --configuration releaseRuntimeClasspath`で解決済み依存グラフを出力し、その後source規則と
 生成したAPK/AABを検査します。ネットワーク／Nearby権限、debug/Fake入口、広すぎる
@@ -84,4 +88,4 @@ GitHub ActionsではAPI 31と、Linux x86_64向けに提供される最新runtim
 
 Fake scannerは`scanner/fake`へ置き、`app`からは`debugImplementation`だけで参照します。`releaseImplementation`や`implementation`では参照しないため、リリース依存グラフとAPKにFake入口を含めない構成です。CIの`android-release-build` jobがこの境界を確認します。
 
-`scanner/ble`には、command直列化、timeout後の停止、完全設定snapshot、復元前Ready禁止、payload正規化と重複抑制を置いています。`scanner/inateck`は公式2.0.0 SDKのscan/connect/getSettingInfo/setSettingInfoと公式native通知parserをこの安全コアへ接続し、FF01の設定応答と分割scan通知を単一ルーターで分離します。`scannerPoc`だけが`BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`を要求し、位置情報・広告・ネットワーク権限を除外します。minified PoCはSDKのLog/System.out呼び出しを除去します。releaseはSDK、native library、Nearby権限を含まないカメラ専用境界を維持します。Pixel 7 / BCST-36ではQR→Code 128一致、背景復元、active session中のapp force-stop後の既知端末自動再接続・Ready復帰と、その後のQR→Code 128一致まで実機確認済みですが、残る重複・不一致・連続箱・切断・scanner再起動・timeout・Samsung等のゲートが完了するまでM4/full parityとは扱いません。
+`scanner/ble`には、command直列化、timeout後の停止、完全設定snapshot、復元前Ready禁止、payload正規化と重複抑制を置いています。`scanner/inateck`は公式2.0.0 SDKのscan/connect/getSettingInfo/setSettingInfoと公式native通知parserをこの安全コアへ接続し、FF01の設定応答と分割scan通知を単一ルーターで分離します。`release`は`BLUETOOTH_SCAN`（neverForLocation）と`BLUETOOTH_CONNECT`だけを要求し、legacy Bluetooth・位置情報・広告・ネットワーク権限を`tools:node="remove"`で除外します（`app/src/release/AndroidManifest.xml`）。minified releaseはSDKのLog/System.out呼び出しを除去します。Pixel 7 / BCST-36ではQR→Code 128一致、背景復元、active session中のapp force-stop後の既知端末自動再接続・Ready復帰と、その後のQR→Code 128一致まで実機確認済みですが、残る重複・不一致・連続箱・切断・scanner再起動・timeout・Samsung等のゲートが完了するまでM4/full parityとは扱いません。

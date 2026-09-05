@@ -3,7 +3,7 @@
 Local-only, opt-in debug APK, package `jp.rimtty.codematch.sdkfaultprobe`.
 Not installed into CodeMatch and not available as a release variant.
 
-Build with the same locally bootstrapped official SDK as scannerPoc:
+Build with the same locally bootstrapped official SDK as the release app:
 
 ```sh
 ./gradlew -PincludeSdkProbe=true :tools:sdk-fault-probe:assembleDebug :tools:sdk-fault-probe:lintDebug

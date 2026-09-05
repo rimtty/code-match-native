@@ -2,7 +2,7 @@
 
 ## 判定
 
-2026-09-04時点で、ユーザー指定により公式Inateck Android SDK 2.0.0を非配付PoCへ採用しました。`scanner:inateck`を`scannerPoc` build typeだけへ接続し、通常のdebugはFake、releaseはカメラ専用を維持します。Pixel 7 / Android 16とBCST-36では検索・接続・設定制限・QR→Code 128一致・背景時復元を実通信で確認しましたが、Samsung、予期しない切断、強制終了、配付条件を含むM4全体は未完了です。
+2026-09-04時点で、ユーザー指定により公式Inateck Android SDK 2.0.0を非配付PoCへ採用し、2026-09-05（#56）に`scanner:inateck`を通常の`release` build typeへ同梱しました（`scannerPoc`は廃止、debugはFakeのまま）。Pixel 7 / Android 16とBCST-36では検索・接続・設定制限・QR→Code 128一致・背景時復元を実通信で確認しましたが、Samsung、予期しない切断、強制終了、配付条件を含むM4全体は未完了です。
 
 ## 確認した候補
 
@@ -91,4 +91,4 @@ PoC hostは既存の250ms tickerと前景復帰・利用者操作の境界でSDK
 4. scanner型番に加えてfirmware revisionを記録する。
 5. Samsung系で同じ受け入れを実施する。配付へ進む場合は、その前に正式な再配布条件と対応ABIを確認する。
 
-通常のreleaseは引き続きカメラ入力のみです。`scannerPoc`はローカル運用専用で、今回の受入完了をproduction採用・他機種での実機検証成功・再配布許諾へ読み替えません。
+`release`は公式SDKを同梱したBLE対応ビルドですが、手元利用専用でストアへ提出せず配付もしません。今回の受入完了を他機種での実機検証成功・再配布許諾へ読み替えません。

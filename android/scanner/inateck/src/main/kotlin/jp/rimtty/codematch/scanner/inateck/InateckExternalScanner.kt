@@ -33,7 +33,7 @@ private const val TICK_INTERVAL_MILLIS = 250L
 private const val RESET_RECONNECT_DELAY_MILLIS = 8_000L
 
 /**
- * Official-SDK-backed scanner used only by the `scannerPoc` app variant.
+ * Official-SDK-backed scanner bound by the `release` app variant.
  *
  * The SDK owns discovery, authentication, command framing, and GATT. Existing
  * BLE safety coordinators still own settings snapshot/restore, timeout order,

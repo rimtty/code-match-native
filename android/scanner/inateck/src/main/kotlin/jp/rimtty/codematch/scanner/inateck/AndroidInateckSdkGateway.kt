@@ -525,7 +525,7 @@ internal class AndroidInateckSdkGateway(
      * BluetoothGatt. Use the SDK's bundled FastBle controller to synchronously
      * destroy its active and temporary link maps before acknowledging reset.
      *
-     * This gateway owns the only FastBle scanner stack in the scannerPoc
+     * This gateway owns the only FastBle scanner stack in the release
      * process, so the controller-wide reset cannot affect another client.
      */
     private fun cancelPendingConnection(

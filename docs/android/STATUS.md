@@ -23,7 +23,7 @@ BLE（Issue #19）は2026-09-05のユーザー指示により、残る追加確�
 | Privacy / release | Manifest、backup規則、FileProvider、source/APK/AAB checker、通常・round・adaptive・monochromeアプリアイコン、すべてのAndroid Gradle CI jobでのWrapper validation | 通信観測、ストア提出回答、署名済み配布物の運用承認 |
 | BLE | SDK非依存の安全コア、公式Inateck Android SDK 2.0.0を使う`scannerPoc` adapter、公式native通知parser、area/name/value read/write/readback、切断失敗時の物理link保持・有限再試行・切断完了前の再接続禁止、Nearby最小権限、R8 vendor-log除去、Pixel 7 / BCST-36で検索・接続・QR→Code 128一致・背景復元・QR待機中のapp force-stop後自動再接続 | 同一箱重複・不一致・連続箱、手動/予期しない切断、scanner再起動、Bluetooth権限変化中のlive link、Code 128待機/結果表示中のforce-stop、timeout復旧、firmware revision、Samsung、SDK再配付条件を確認したproduction/release採用 |
 
-現在のrelease構成は `UnavailableExternalScanner` によるカメラ入力のみです。公式Inateck SDK adapterは、arm64実機向け・非配付・minifiedの`scannerPoc`だけに接続します。SDK binaryは固定commitからchecksum検証付きでローカル取得し、Gitやreleaseへ同梱しません（詳細は [`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)）。
+現在のrelease構成は、カメラ入力に加えて公式Inateck SDK adapter（`scanner:inateck`）を同梱したarm64限定・minifiedのBLE対応ビルドです（2026-09-05、#56。`scannerPoc` build typeは廃止）。SDK binaryは固定commitからchecksum検証付きでローカル取得し、Gitへは同梱しません。Android版はストアへ提出せず、手元でビルドしたAPKを自分の端末で使います（詳細は [`BLE_SDK_EVALUATION.md`](BLE_SDK_EVALUATION.md)）。
 
 ## パリティ分類の補足
 

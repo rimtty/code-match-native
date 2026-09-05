@@ -11,7 +11,7 @@ plugins {
 
 // Host-driven force-stop tests must never share the installed product's data.
 // Both the application ID and test-only source are opt-in; ordinary debug,
-// scannerPoc, release, and their existing test suites remain unchanged.
+// release, and their existing test suites remain unchanged.
 val processRecoveryTests = providers.gradleProperty("codematchProcessRecoveryTests")
     .map { it.toBooleanStrict() }
     .getOrElse(false)
@@ -33,36 +33,44 @@ android {
         }
     }
 
+    // Release APKs are side-loaded for personal use only; there is no store
+    // distribution. By default they are signed with the debug keystore so
+    // reinstalls keep working across rebuilds. Supply a local keystore through
+    // Gradle properties (for example in ~/.gradle/gradle.properties or
+    // ORG_GRADLE_PROJECT_* environment variables) to sign with your own key:
+    //   codematchReleaseStoreFile, codematchReleaseStorePassword,
+    //   codematchReleaseKeyAlias, codematchReleaseKeyPassword
+    val releaseStoreFile = providers.gradleProperty("codematchReleaseStoreFile").orNull
+    if (!releaseStoreFile.isNullOrBlank()) {
+        signingConfigs.create("release") {
+            storeFile = rootProject.file(releaseStoreFile)
+            storePassword = providers.gradleProperty("codematchReleaseStorePassword").orNull
+            keyAlias = providers.gradleProperty("codematchReleaseKeyAlias").orNull
+            keyPassword = providers.gradleProperty("codematchReleaseKeyPassword").orNull
+        }
+    }
+
     buildTypes {
         debug {
             if (processRecoveryTests) {
                 applicationIdSuffix = ".recoverytest"
             }
         }
-        create("scannerPoc") {
-            isDebuggable = false
-            // Resolve library release variants so debug-only Compose tooling
-            // manifests cannot add externally exported activities to the PoC.
-            matchingFallbacks += listOf("release")
-            signingConfig = signingConfigs.getByName("debug")
-            applicationIdSuffix = ".scannerpoc"
-            versionNameSuffix = "-scanner-poc"
+        release {
+            signingConfig = signingConfigs.findByName("release")
+                ?: signingConfigs.getByName("debug")
+            // Strip the Inateck SDK's raw-payload logging and keep JNA/native
+            // entry points; see scanner-rules.pro.
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
-                "scanner-poc-rules.pro",
+                "scanner-rules.pro",
             )
+            // The official SDK ships arm64-v8a native libraries only.
             ndk {
                 abiFilters += "arm64-v8a"
             }
-        }
-        release {
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
-            )
         }
     }
 
@@ -207,7 +215,7 @@ dependencies {
     implementation(libs.androidx.navigation3.ui)
 
     debugImplementation(project(":scanner:fake"))
-    "scannerPocImplementation"(project(":scanner:inateck"))
+    releaseImplementation(project(":scanner:inateck"))
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 

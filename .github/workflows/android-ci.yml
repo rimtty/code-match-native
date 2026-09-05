@@ -64,14 +64,11 @@ jobs:
           java -version
           ./gradlew --version
 
-      - name: Install pinned Inateck SDK for local PoC compilation
-        run: bash scripts/setup-inateck-sdk-poc.sh
+      - name: Install pinned Inateck SDK binaries
+        run: bash scripts/setup-inateck-sdk.sh
 
       - name: Assemble, lint, and run JVM tests
-        run: ./gradlew assembleDebug lintDebug testDebugUnitTest :app:assembleScannerPoc --stacktrace
-
-      - name: Verify Inateck SDK PoC isolation
-        run: bash scripts/verify-inateck-sdk-poc.sh
+        run: ./gradlew assembleDebug lintDebug testDebugUnitTest --stacktrace
 
       - name: Build and test opt-in standalone SDK probe
         run: ./gradlew -PincludeSdkProbe=true :tools:sdk-probe:assembleDebug :tools:sdk-probe:lintDebug :tools:sdk-probe:testDebugUnitTest :tools:sdk-fault-probe:assembleDebug :tools:sdk-fault-probe:lintDebug --stacktrace
@@ -184,10 +181,14 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Install pinned Inateck SDK binaries
+        run: bash scripts/setup-inateck-sdk.sh
+
       - name: Assemble release APK and verify offline app bundle languages
-        # Qualify the app tasks so this camera-only job never tries to build
-        # the separately provisioned, non-distributed scanner PoC module.
         run: ./gradlew :app:assembleRelease :app:verifyReleaseLanguageDelivery --stacktrace
+
+      - name: Verify release scanner APK (permissions, ABI, vendor-log stripping, ML Kit)
+        run: bash scripts/verify-release-scanner-apk.sh
 
       - name: Verify release hardening and dependency graph
         shell: bash
@@ -195,6 +196,6 @@ jobs:
           dependency_report="$RUNNER_TEMP/codematch-release-dependencies.txt"
           ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > "$dependency_report"
           bash scripts/verify-release-hardening.sh \
-            --apk app/build/outputs/apk/release/app-release-unsigned.apk \
+            --apk app/build/outputs/apk/release/app-release.apk \
             --aab app/build/outputs/bundle/release/app-release.aab \
             --dependency-report "$dependency_report"

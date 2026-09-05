@@ -87,29 +87,49 @@ assert_manifest_mutation_is_rejected \
     "must set android:allowBackup=false"
 
 assert_manifest_mutation_is_rejected \
-    "nearby-permission" \
+    "location-permission" \
     'android.permission.CAMERA' \
-    'android.permission.BLUETOOTH_SCAN' \
-    "contains forbidden permission android.permission.BLUETOOTH_SCAN"
+    'android.permission.ACCESS_FINE_LOCATION' \
+    "contains forbidden permission android.permission.ACCESS_FINE_LOCATION"
 
-for coordinate in \
-    'project :scanner:inateck' \
-    'com.github.Jasonchenlijian:FastBle:2.4.0'; do
-    dependency_fixture="$tmp_dir/unsafe-dependency.txt"
+assert_manifest_mutation_is_rejected \
+    "legacy-bluetooth-permission" \
+    'android.permission.CAMERA' \
+    'android.permission.BLUETOOTH_ADMIN' \
+    "contains forbidden permission android.permission.BLUETOOTH_ADMIN"
+
+assert_dependency_report_is_rejected() {
+    local name="$1"
+    local coordinate="$2"
+    local expected_message="$3"
+    local dependency_fixture="$tmp_dir/$name.txt"
+    local dependency_output="$tmp_dir/$name.log"
+
     printf '%s\n' "$coordinate" > "$dependency_fixture"
-    dependency_output="$tmp_dir/unsafe-dependency.log"
     if "$checker" --dependency-report "$dependency_fixture" --skip-artifacts \
         > "$dependency_output" 2>&1; then
-        printf 'Release hardening checker accepted unsafe dependency: %s\n' "$coordinate" >&2
+        printf 'Release hardening checker accepted unsafe dependency report: %s\n' "$name" >&2
         exit 1
     fi
-    rg -q -F 'Inateck scanner PoC dependency leaked into the release graph' \
-        "$dependency_output" || {
-        printf 'Release hardening checker rejected %s for an unexpected reason:\n' \
-            "$coordinate" >&2
+    rg -q -F "$expected_message" "$dependency_output" || {
+        printf 'Release hardening checker rejected %s for an unexpected reason:\n' "$name" >&2
         sed -n '1,80p' "$dependency_output" >&2
         exit 1
     }
-done
+}
+
+# Fake must never reach release; the Inateck adapter must always be present.
+assert_dependency_report_is_rejected \
+    "fake-dependency" \
+    $'project :scanner:inateck\nproject :scanner:fake' \
+    'Fake scanner leaked into the release dependency graph'
+assert_dependency_report_is_rejected \
+    "missing-inateck-dependency" \
+    'project :scanner:camera' \
+    'release dependency graph is missing :scanner:inateck'
+
+safe_dependency_fixture="$tmp_dir/safe-dependency.txt"
+printf '%s\n' 'project :scanner:inateck' 'com.github.Jasonchenlijian:FastBle:2.4.0' > "$safe_dependency_fixture"
+"$checker" --dependency-report "$safe_dependency_fixture" --skip-artifacts >/dev/null
 
 printf '[release-hardening-test] positive and fail-closed source checks passed\n'

@@ -37,7 +37,7 @@ val verifyInateckSdkArtifacts by tasks.registering {
     doLast {
         val missing = inputs.files.files.filterNot { it.isFile }
         check(missing.isEmpty()) {
-            "Inateck SDK PoC files are missing. Run android/scripts/setup-inateck-sdk-poc.sh"
+            "Inateck SDK files are missing. Run android/scripts/setup-inateck-sdk.sh"
         }
     }
 }

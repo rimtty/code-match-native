@@ -2,7 +2,7 @@
 
 This PoC module uses binary artifacts published in the official
 [`Inateck-Technology-Inc/android_sdk`](https://github.com/Inateck-Technology-Inc/android_sdk)
-repository. `android/scripts/setup-inateck-sdk-poc.sh` downloads byte-for-byte
+repository. `android/scripts/setup-inateck-sdk.sh` downloads byte-for-byte
 copies from commit `8ce0fd5d25d1` (2025-01-09) and rejects any SHA-256 mismatch.
 The generated files are ignored by Git and must not be committed.
 

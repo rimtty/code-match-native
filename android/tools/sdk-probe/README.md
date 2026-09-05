@@ -6,7 +6,7 @@ Uses the official SDK JAR directly: discovery/select/connect, `getHardwareInfo`,
 `getVersion`, disconnect. No symbology/illumination/HID configuration writes.
 SDK connection still performs its own authorization handshake.
 
-Bootstrap the ignored vendor files with `android/scripts/setup-inateck-sdk-poc.sh`.
+Bootstrap the ignored vendor files with `android/scripts/setup-inateck-sdk.sh`.
 From `android`, with Android Studio JBR and ANDROID_HOME configured:
 
 ```sh

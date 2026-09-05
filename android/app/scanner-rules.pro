@@ -1,6 +1,6 @@
-# The official Inateck Android SDK 2.0.0 logs raw notification bytes. The PoC
-# build removes platform logging calls so scan payloads and setting replies do
-# not enter Logcat. The normal release variant does not include this SDK.
+# The official Inateck Android SDK 2.0.0 logs raw notification bytes. The
+# release build removes platform logging calls so scan payloads and setting
+# replies do not enter Logcat.
 -assumenosideeffects class android.util.Log {
     public static int v(...);
     public static int d(...);
@@ -10,7 +10,7 @@
 }
 
 # SDK 2.0.0 also writes connection and command objects with System.out.
-# Remove those calls from the non-debuggable local PoC as well.
+# Remove those calls from the non-debuggable release build as well.
 -assumenosideeffects class java.io.PrintStream {
     public void print(...);
     public void println(...);
