@@ -38,7 +38,7 @@ class SettingsFontScaleAccessibilityTest {
         setCompactContent(fontScale) {
             MaterialTheme {
                 SettingsScreen(
-                    state = SettingsUiState(),
+                    state = SettingsUiState(setupGuideVisible = true),
                     onAction = actions::add,
                 )
             }

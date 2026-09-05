@@ -28,7 +28,7 @@ class SettingsUiStateTest {
         assertEquals(FailureSound.ALARM, state.failureSound)
         assertEquals(AppLanguage.JAPANESE, state.language)
         assertEquals(SettingsPresentationState.FAKE_BLE, state.presentation)
-        assertTrue(state.setupGuideVisible)
+        assertFalse(state.setupGuideVisible)
     }
 
     @Test

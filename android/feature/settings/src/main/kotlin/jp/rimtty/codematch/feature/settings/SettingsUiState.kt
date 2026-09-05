@@ -101,7 +101,7 @@ data class SettingsUiState(
     val configurationState: ConfigurationState = ConfigurationState.Unavailable,
     val diagnosticEvents: List<DiagnosticEvent> = emptyList(),
     val selectedDeviceId: String? = null,
-    val setupGuideVisible: Boolean = true,
+    val setupGuideVisible: Boolean = false,
     val presentation: SettingsPresentationState = SettingsPresentationState.FAKE_BLE,
     /** Typed scanner issue; raw adapter reason strings never reach the UI. */
     val scannerIssue: ScannerIssue = ScannerIssue.NONE,

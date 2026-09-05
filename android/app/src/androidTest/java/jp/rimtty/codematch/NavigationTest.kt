@@ -125,6 +125,7 @@ class NavigationTest {
             composeRule.activity.getString(R.string.destination_settings),
             useUnmergedTree = true,
         ).performClick()
+        composeRule.onNodeWithTag(SettingsTestTags.SETUP_GUIDE_OPEN).performClick()
         composeRule.onNodeWithTag(SettingsTestTags.SETUP_GUIDE).assertIsDisplayed()
 
         composeRule.runOnIdle {
