@@ -7,7 +7,9 @@
 - 配付: 手元でビルドした`release` APK（arm64-v8a、minified、既定はdebug keystore署名）を自分のPixel 7へ`adb install`する。ストア提出、署名済み配付物の運用承認、第三者への配付は行わない。
 - release構成: カメラ入力（CameraX + bundled ML Kit）に加え、公式Inateck Android SDK 2.0.0のBLE adapter（`scanner:inateck`）を同梱する（#56、`scannerPoc` build typeは廃止）。SDK binaryは固定commitからchecksum検証付きでローカル取得し、Gitへは同梱しない。SDKの`.so`は4KB page alignmentのため、16KB page size端末では動作しない。
 - debug構成: `scanner/fake`のFake scannerで照合フローを駆動する。emulator・CIのinstrumentationはこの構成で実行する。
-- 接続対象: 採用SDKに対応するスキャナー。BCST-36（firmware `V2.6.16 AI JP`、Bluetooth `OTA_D_V0.3.7`）は検証機種であり、機種の許可リストではない。
+- 接続対象: 採用SDKに対応するスキャナー。BCST-36（firmware `V2.6.16 AI JP`、Bluetooth `OTA_D_V0.3.7`）とHPRT-4F5Fは検証機種であり、機種の許可リストではない。
+- 接続時の機器設定（2026-09-06、#59）: 照明OFF（`lighting_lamp_control`=2、設定画面のトグルで読取中点灯へ）の確認後に、読取チューニング（多コード`*_read_more_code`/`*_read_multi`=0、反転`read_inverse_color`/`*_read_phase`=0、赤光消灯時間`auto_close_mode`=20≒4秒）をinventoryと比較し、差分のある項目だけを書いて再取得で確認する（PR #74）。値は機器側に保存され、切断時に復元しない。name/flag対応表は[`../ios/IMPLEMENTATION_GUIDE.md`](../ios/IMPLEMENTATION_GUIDE.md)。
+- 診断: BLE診断イベントを300件保持し、設定画面の「接続診断」から共有シートまたはSAF保存先へテキストで書き出せる（PR #76）。段階名と版情報のみで読取値は含まない。
 
 ## 到達点
 
@@ -17,7 +19,7 @@
 | UI / navigation | Composeの照合・履歴・設定、3 destination、system/predictive backの完了・無効・cancel境界、履歴選択のActivity再生成・destination往復・compact back stack、320dp/840dp・font scale 1.3/2.0の主要操作到達、動的案内・結果のpolite live region、emulatorでのQR待機・Code 128待機・一致結果のOS force-stop後UI復元。Pixel 7ではfont scale 1.3/2.0の主要表示・操作をユーザーが承認 |
 | History / settings / PDF | Room（schema v2）/DataStore、日英リソースとper-app locale双方向同期、0件破棄・名称変更・詳細・削除のapp E2E、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test。Pixel 7では日英切替、1ページ/複数ページPDFのDownloads保存と共有先での表示、音量0/通常音量の音・触覚をユーザーが承認 |
 | Camera | CameraX/ML Kit adapter、工程別ROI、権限・lifecycle・focus・format切替の非同期境界test。Pixel 7縦画面で実ラベルのQR→Code 128一致、復帰後のCode 128、タップfocus、権限の拒否・恒久拒否・再許可、ガイド枠内外の読取境界、無関係QR拒否、不一致の表示・音・振動・非加算をユーザーが承認 |
-| BLE | SDK非依存の安全コア（command直列化、全設定snapshot、復元前Ready禁止、known-device store、再接続予算）、公式SDK adapter、公式native通知parser、工程別symbology制限（QR待機はQRのみ、Code 128待機はCode 128のみ）、照明の接続時OFF適用、R8 vendor-log除去。Pixel 7 / BCST-36では検索・接続・fresh readback、QR→Code 128一致、背景復元、QR待機中のapp force-stop後の自動再接続、手動切断後の工程保持と再接続、電源OFF→ONの自動再接続、通常終了・手動切断・電源再起動後の開始前設定との一致（独立probe）、照明の初期OFFと手動ON/OFFをユーザーが承認。2026-09-05に`release` APKでBCST-36と接続し、QR→Code 128の照合完了をユーザーが確認（#56） |
+| BLE | SDK非依存の安全コア（command直列化、全設定snapshot、復元前Ready禁止、known-device store、再接続予算）、公式SDK adapter、公式native通知parser、工程別symbology制限（QR待機はQRのみ、Code 128待機はCode 128のみ）、照明の接続時OFF適用、読取チューニング（差分時のみ書込・readback確認）、診断ログの共有・保存、R8 vendor-log除去。Pixel 7 / BCST-36では検索・接続・fresh readback、QR→Code 128一致、背景復元、QR待機中のapp force-stop後の自動再接続、手動切断後の工程保持と再接続、電源OFF→ONの自動再接続、通常終了・手動切断・電源再起動後の開始前設定との一致（独立probe）、照明の初期OFFと手動ON/OFFをユーザーが承認。2026-09-05に`release` APKでBCST-36と接続し、QR→Code 128の照合完了をユーザーが確認（#56）。2026-09-06にPixel 7で読取チューニング「適用済み」と赤光約4秒、診断ログの共有・保存をユーザーが確認 |
 | Privacy / release | Manifest、backup/D2D除外規則、専用FileProvider、`test-release-hardening.sh` / `verify-release-hardening.sh` / `verify-release-scanner-apk.sh`によるsource/APK/AAB/依存グラフ検査（Fake・analytics・INTERNET・legacy Bluetooth・位置情報の不在、`:scanner:inateck`とarm64 native libraryの同梱、vendor raw-log除去、ML Kit registrar保持）。Pixel 7のnetstatsで当該UIDの通信量エントリなし |
 
 個別の端末・commit・ユーザー承認と自動確認の区別は、[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)の実施記録、Issue #19 / #23 / #56、および本ページ末尾の履歴を参照してください。
