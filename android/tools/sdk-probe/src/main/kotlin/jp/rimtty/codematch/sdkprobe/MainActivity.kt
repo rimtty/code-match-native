@@ -142,7 +142,7 @@ class MainActivity : Activity() {
         if (!ready || scanner == null) { status.text = "先に接続してください。"; return }
         val target = if (bluetooth) hardware else firmware
         val title = if (bluetooth) "Bluetoothバージョン" else "本体ファームウェア"
-        val observation = if (bluetooth) null else VersionObservation()
+        val observation = if (bluetooth) null else VersionObservation { ModernVersionParser.inspect(it) }
         val token = ++generation
         val started = SystemClock.elapsedRealtime()
         setBusy(true)

@@ -11,6 +11,12 @@ import com.inateck.scanner.ble.BleTask;
  * This implementation is intentionally not suitable for a production adapter.
  */
 public final class VersionObservation {
+    private final java.util.function.Function<byte[], String> comparison;
+    private volatile String comparisonResult = "";
+    public VersionObservation() { this(bytes -> ""); }
+    public VersionObservation(java.util.function.Function<byte[], String> comparison) {
+        this.comparison = comparison;
+    }
     private volatile boolean attached;
     private volatile boolean replySeen;
     private volatile boolean nonNullReply;
@@ -28,6 +34,7 @@ public final class VersionObservation {
             nonNullReply = bytes != null;
             var result = original.invoke(bytes);
             parserCompleted = result instanceof BleParseEvent.Success;
+            comparisonResult = comparison.apply(bytes);
             return result;
         });
         attached = true;
@@ -38,7 +45,7 @@ public final class VersionObservation {
         if (!attached) return "観測フック未接続";
         if (!replySeen) return "SDKへの応答通知なし";
         if (!nonNullReply) return "SDKへnull応答";
-        if (parserCompleted) return "応答あり／SDKが受信完了扱い";
+        if (parserCompleted) return "応答あり／SDKが受信完了扱い" + (comparisonResult.isEmpty() ? "" : "\n" + comparisonResult);
         return "応答あり／SDK受信処理未完了";
     }
 }

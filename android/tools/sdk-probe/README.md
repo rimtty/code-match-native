@@ -71,3 +71,21 @@ not prove the response was valid firmware data: a rejection/acknowledgement,
 unexpected response or incomplete frame may still have reached the native parser.
 The probe disconnected after the failure as designed. Build/lint and all four
 unit tests passed before installation.
+
+The comparison build additionally calls the official standalone library's
+`inateck_scanner_cmd_software_result` on a temporary clone of the same response.
+The signature is verified against `scanner_lib` commit
+`6d8fc093656c3535c5a48bbe7de51eab4a471b48`, `cmd/scanner_cmd.h`
+(`const uint8_t*`, `uintptr_t`; arm64 maps length to Java long).
+It sends no additional command and changes neither the original parser result
+nor SDK queue behavior. Only a classification or validated printable version is
+displayed. Comparative timing includes the extra parser/JNA initialization, and
+must not be treated as the original SDK-only latency. Two additional tests check
+success/rejection/malformed/control-character display handling.
+
+Physical comparison result: on Pixel 7 + BCST-36 the UI showed SDK failure
+(102 ms including comparison), non-null response/SDK reception complete, and
+`比較：公式解析ライブラリも拒否`. Thus both native version parsers rejected
+the first SDK response. This does not establish unsupported firmware commands,
+because response completeness/type and correspondence to the request are not
+yet verified. All six probe unit tests plus build/lint passed.
