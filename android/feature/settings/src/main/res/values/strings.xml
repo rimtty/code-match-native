@@ -77,6 +77,8 @@
     <string name="settings_scanner_open_settings">Bluetooth設定</string>
 
     <string name="settings_diagnostics_title">接続診断</string>
+    <string name="settings_diagnostics_expand">イベント一覧を表示</string>
+    <string name="settings_diagnostics_collapse">イベント一覧を折りたたむ</string>
     <string name="settings_diagnostics_empty">接続と設定のイベントはまだありません。</string>
     <string name="settings_diagnostic_connection">接続</string>
     <string name="settings_diagnostic_configuration">設定</string>

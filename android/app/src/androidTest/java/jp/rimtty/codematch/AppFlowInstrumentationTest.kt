@@ -131,7 +131,7 @@ class AppFlowInstrumentationTest {
             ),
         )
         waitForTag("scan_message")
-        onNodeWithText("QRコードを読み取ってください").assertIsDisplayed()
+        onNodeWithText("QRコード読み取り").assertIsDisplayed()
 
         emitBluetooth(
             ScanPayload.qr(
@@ -140,7 +140,7 @@ class AppFlowInstrumentationTest {
                 timestampMillis = 2_000L,
             ),
         )
-        onNodeWithText("Code 128を読み取ってください").assertIsDisplayed()
+        onNodeWithText("バーコード読み取り").assertIsDisplayed()
 
         // The Fake duplicate gate is crossed because the repeated Bluetooth
         // callbacks are one second apart.
@@ -257,7 +257,7 @@ class AppFlowInstrumentationTest {
         // Manual next is the reset equivalent. A different box QR carrying
         // the same part and Code 128 is a second persisted box.
         onNodeWithTag("scan_manual_next").performClick()
-        waitForText("QRコードを読み取ってください")
+        waitForText("QRコード読み取り")
         emitBluetooth(
             ScanPayload.qr(
                 value = secondBoxQrPayload,
@@ -280,7 +280,7 @@ class AppFlowInstrumentationTest {
         // Re-reading the first box with the same shared Code 128 is a
         // duplicate. It remains visible but creates no third history row.
         onNodeWithTag("scan_manual_next").performClick()
-        waitForText("QRコードを読み取ってください")
+        waitForText("QRコード読み取り")
         emitBluetooth(
             ScanPayload.qr(
                 value = firstBoxQrPayload,
@@ -303,7 +303,7 @@ class AppFlowInstrumentationTest {
         // Start a fourth comparison, then explicitly reread the QR. The
         // reread preserves the two successful boxes and returns to QR input.
         onNodeWithTag("scan_manual_next").performClick()
-        waitForText("QRコードを読み取ってください")
+        waitForText("QRコード読み取り")
         emitBluetooth(
             ScanPayload.qr(
                 value = firstBoxQrPayload,
@@ -311,14 +311,14 @@ class AppFlowInstrumentationTest {
                 timestampMillis = 7_000L,
             ),
         )
-        waitForText("Code 128を読み取ってください")
+        waitForText("バーコード読み取り")
         // The action follows the waiting card and can be outside the compact
         // API 31 viewport. Scroll it into view so the click exercises the
         // action instead of being clipped by the root scroll container.
         onNodeWithTag("scan_reread_qr")
             .performScrollTo()
             .performClick()
-        waitForText("QRコードを読み取ってください")
+        waitForText("QRコード読み取り")
         assertSessionCount(2)
 
         // Re-read the correct QR and then submit a different Code 128. A
@@ -330,7 +330,7 @@ class AppFlowInstrumentationTest {
                 timestampMillis = 8_000L,
             ),
         )
-        waitForText("Code 128を読み取ってください")
+        waitForText("バーコード読み取り")
         emitBluetooth(
             ScanPayload.code128(
                 value = barcodePayload,
@@ -597,7 +597,7 @@ class AppFlowInstrumentationTest {
             composeRule.onAllNodesWithTag("scan_countdown").fetchSemanticsNodes().isEmpty() &&
                 composeRule.onAllNodesWithTag("scan_waiting_card").fetchSemanticsNodes().isNotEmpty()
         }
-        onNodeWithText("QRコードを読み取ってください").assertIsDisplayed()
+        onNodeWithText("QRコード読み取り").assertIsDisplayed()
         assertSessionCount(1)
     }
 

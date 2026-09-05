@@ -25,7 +25,7 @@ public final class BundleLanguageVerifier {
 
     private static final Map<String, ExpectedResource> REQUIRED_RESOURCES = Map.of(
             "scan_wait_qr_title",
-            new ExpectedResource("QRコードを読み取ってください", "Scan a QR code"),
+            new ExpectedResource("QRコード読み取り", "Scan a QR code"),
             "settings_title",
             new ExpectedResource("設定", "Settings"),
             "history_title",

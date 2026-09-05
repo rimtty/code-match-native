@@ -6,6 +6,7 @@ import jp.rimtty.codematch.scanner.api.IlluminationState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -30,6 +31,8 @@ import androidx.compose.material.icons.outlined.Bluetooth
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Language
@@ -1102,6 +1105,10 @@ private fun DeviceRow(
 
 @Composable
 private fun DiagnosticsCard(events: List<DiagnosticEvent>) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val toggleLabel = stringResource(
+        if (expanded) R.string.settings_diagnostics_collapse else R.string.settings_diagnostics_expand,
+    )
     val visibleEvents = events.takeLast(MAX_DIAGNOSTIC_EVENTS)
     Card(
         modifier = Modifier
@@ -1115,7 +1122,14 @@ private fun DiagnosticsCard(events: List<DiagnosticEvent>) {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag(SettingsTestTags.DIAGNOSTICS_TOGGLE)
+                    .clickable(role = Role.Button, onClickLabel = toggleLabel) { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Icon(
                     imageVector = Icons.Outlined.Info,
                     contentDescription = null,
@@ -1126,15 +1140,19 @@ private fun DiagnosticsCard(events: List<DiagnosticEvent>) {
                     text = stringResource(R.string.settings_diagnostics_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.semantics { heading() },
+                    modifier = Modifier.weight(1f).semantics { heading() },
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    contentDescription = toggleLabel,
                 )
             }
-            if (visibleEvents.isEmpty()) {
+            if (expanded && visibleEvents.isEmpty()) {
                 Text(
                     text = stringResource(R.string.settings_diagnostics_empty),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            } else {
+            } else if (expanded) {
                 visibleEvents.forEach { event ->
                     DiagnosticRow(event = event)
                 }

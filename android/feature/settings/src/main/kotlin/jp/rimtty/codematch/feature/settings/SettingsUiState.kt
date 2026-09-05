@@ -60,6 +60,7 @@ object SettingsTestTags {
     const val SCANNER_ISSUE = "settings_scanner_issue"
     const val SCANNER_ISSUE_MESSAGE = "settings_scanner_issue_message"
     const val DIAGNOSTICS = "settings_scanner_diagnostics"
+    const val DIAGNOSTICS_TOGGLE = "settings_scanner_diagnostics_toggle"
     const val DIAGNOSTIC_ROW = "settings_scanner_diagnostic"
     const val CAMERA_ONLY = "settings_camera_only"
     const val AUTO_ADVANCE = "settings_auto_advance"

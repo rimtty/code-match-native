@@ -54,6 +54,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -70,6 +71,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.tooling.preview.Preview
 import jp.rimtty.codematch.core.matching.CodeMatcher
 import jp.rimtty.codematch.core.matching.KanbanQrRecord
@@ -360,8 +362,10 @@ private fun ScanSessionContent(
         )
         ScanStepper(state.phase)
 
-        if (state.bluetoothReady && state.expectedFormat != null) {
-            InputSourcePicker(state.inputSource, onAction)
+        // Restoring scanner settings temporarily clears readiness while the
+        // physical link remains connected. Keep the picker in place.
+        if ((state.bluetoothConnected || state.bluetoothReady) && state.expectedFormat != null) {
+            InputSourcePicker(state.inputSource, state.bluetoothReady, onAction)
         }
 
         ScanMessage(state)
@@ -432,7 +436,9 @@ private fun BluetoothConfigurationStatus(state: ScanUiState) {
 
     val messageRes = when (state.bluetoothConfigurationState) {
         ConfigurationState.Unavailable -> return
-        ConfigurationState.Configuring -> R.string.scan_bluetooth_configuration_configuring
+        // Routine configuration is internal; a temporary row here shifts
+        // the waiting card whenever the user switches input sources.
+        ConfigurationState.Configuring -> return
         // Ready guidance belongs inside the waiting card, after the current
         // QR/Code 128 instruction. Keeping it as a separate row above the
         // card can push the primary instruction below a compact viewport.
@@ -548,6 +554,7 @@ private fun StepConnector(active: Boolean, modifier: Modifier) {
 @Composable
 private fun InputSourcePicker(
     selected: InputSource,
+    bluetoothReady: Boolean,
     onAction: (ScanUiAction) -> Unit,
 ) {
     Column(
@@ -568,6 +575,7 @@ private fun InputSourcePicker(
             SourceChoice(
                 source = InputSource.BLUETOOTH,
                 selected = selected == InputSource.BLUETOOTH,
+                enabled = bluetoothReady,
                 modifier = Modifier.weight(1f),
                 onClick = { onAction(ScanUiAction.SelectInputSource(InputSource.BLUETOOTH)) },
             )
@@ -580,6 +588,7 @@ private fun SourceChoice(
     source: InputSource,
     selected: Boolean,
     modifier: Modifier,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val label = stringResource(
@@ -590,6 +599,7 @@ private fun SourceChoice(
             .heightIn(min = 52.dp)
             .selectable(
                 selected = selected,
+                enabled = enabled,
                 onClick = onClick,
                 role = Role.RadioButton,
             )
@@ -606,7 +616,7 @@ private fun SourceChoice(
             modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RadioButton(selected = selected, onClick = null)
+            RadioButton(selected = selected, onClick = null, enabled = enabled)
             Icon(
                 if (source == InputSource.CAMERA) Icons.Outlined.CameraAlt else Icons.Outlined.QrCode2,
                 contentDescription = null,
@@ -716,9 +726,6 @@ private fun ScanWaitingCard(
     val title = stringResource(
         if (expected == ScanFormat.QR) R.string.scan_wait_qr_title else R.string.scan_wait_code128_title,
     )
-    val sourceLabel = stringResource(
-        if (state.inputSource == InputSource.CAMERA) R.string.scan_camera_stage else R.string.scan_bluetooth_stage,
-    )
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -728,28 +735,30 @@ private fun ScanWaitingCard(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Icon(
-                imageVector = if (expected == ScanFormat.QR) Icons.Outlined.QrCode2 else Icons.Outlined.QrCodeScanner,
+                imageVector = if (expected == ScanFormat.QR) {
+                    Icons.Outlined.QrCode2
+                } else {
+                    ImageVector.vectorResource(R.drawable.ic_barcode)
+                },
                 contentDescription = null,
                 modifier = Modifier.size(48.dp),
                 tint = MaterialTheme.colorScheme.primary,
             )
             Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(
-                text = if (state.inputSource == InputSource.BLUETOOTH) {
-                    stringResource(
+            if (state.inputSource == InputSource.BLUETOOTH) {
+                Text(
+                    text = stringResource(
                         R.string.scan_bluetooth_from,
                         state.bluetoothDeviceName ?: stringResource(R.string.scan_bluetooth_device_fallback),
-                    )
-                } else {
-                    sourceLabel
-                },
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (state.inputSource == InputSource.BLUETOOTH &&
                 state.bluetoothConfigurationState === ConfigurationState.Ready
             ) {

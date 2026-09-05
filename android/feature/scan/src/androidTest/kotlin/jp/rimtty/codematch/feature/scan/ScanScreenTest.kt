@@ -2,6 +2,9 @@ package jp.rimtty.codematch.feature.scan
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -36,6 +39,56 @@ class ScanScreenTest {
     private val qrPayload =
         "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private val barcodePayload = "BCJH-52-81GG@1N5X0C"
+
+    @Test
+    fun inputPickerRemainsVisibleDuringCameraSwitchAndScannerRestore() {
+        val state = mutableStateOf(ScanUiState(
+            sessionActive = true,
+            session = ScanSessionState(
+                scan = ScanState.WaitingQr(),
+                inputSource = InputSource.BLUETOOTH,
+            ),
+            bluetoothReady = true,
+            bluetoothConnected = true,
+            bluetoothConfigurationState = ConfigurationState.Ready,
+        ))
+        val actions = mutableListOf<ScanUiAction>()
+        composeRule.setContent { ScanScreen(state.value, actions::add) }
+
+        for (scan in listOf(ScanState.WaitingQr(), ScanState.WaitingCode128(qrPayload))) {
+            composeRule.runOnIdle {
+                state.value = state.value.copy(
+                    session = state.value.session.copy(scan = scan, inputSource = InputSource.BLUETOOTH),
+                    bluetoothReady = true,
+                    bluetoothConfigurationState = ConfigurationState.Ready,
+                )
+            }
+            val camera = composeRule.onNodeWithTag("scan_input_camera")
+            val bluetooth = composeRule.onNodeWithTag("scan_input_bluetooth")
+            camera.performScrollTo().performClick()
+            composeRule.runOnIdle {
+                assertEquals(ScanUiAction.SelectInputSource(InputSource.CAMERA), actions.last())
+                state.value = state.value.copy(
+                    session = state.value.session.copy(inputSource = InputSource.CAMERA),
+                    bluetoothReady = false,
+                    bluetoothConfigurationState = ConfigurationState.Configuring,
+                )
+            }
+            composeRule.onNodeWithTag("scan_input_source_picker").assertIsDisplayed()
+            camera.assertIsDisplayed().assertIsSelected().assertIsEnabled()
+            bluetooth.assertIsDisplayed().assertIsNotEnabled()
+            composeRule.runOnIdle {
+                state.value = state.value.copy(
+                    bluetoothReady = true,
+                    bluetoothConfigurationState = ConfigurationState.Ready,
+                )
+            }
+            bluetooth.assertIsDisplayed().assertIsEnabled().performClick()
+            composeRule.runOnIdle {
+                assertEquals(ScanUiAction.SelectInputSource(InputSource.BLUETOOTH), actions.last())
+            }
+        }
+    }
 
     @Test
     fun invalidCameraQrExplainsWhichLabelToScan() {
@@ -310,7 +363,44 @@ class ScanScreenTest {
     }
 
     @Test
-    fun bluetoothConfigurationStatusReturnsToSessionRestrictionAfterReady() {
+    fun waitingTitleStaysCenteredAcrossInputSwitchAndConfiguration() {
+        val state = mutableStateOf(ScanUiState(
+            sessionActive = true,
+            bluetoothConnected = true,
+            bluetoothReady = true,
+            bluetoothDeviceName = "Scanner",
+        ))
+        composeRule.setContent {
+            ScanScreen(state.value, onAction = {}, language = AppLanguage.JAPANESE)
+        }
+        for ((scan, title) in listOf(
+            ScanState.WaitingQr() to "QRコード読み取り",
+            ScanState.WaitingCode128(qrPayload) to "バーコード読み取り",
+        )) {
+            for ((source, configuration) in listOf(
+                InputSource.CAMERA to ConfigurationState.Ready,
+                InputSource.BLUETOOTH to ConfigurationState.Configuring,
+                InputSource.BLUETOOTH to ConfigurationState.Ready,
+                InputSource.CAMERA to ConfigurationState.Configuring,
+            )) {
+                composeRule.runOnIdle {
+                    state.value = state.value.copy(
+                        session = ScanSessionState(scan = scan, inputSource = source),
+                        bluetoothReady = configuration == ConfigurationState.Ready,
+                        bluetoothConfigurationState = configuration,
+                    )
+                }
+                val cardBounds = composeRule.onNodeWithTag("scan_waiting_card")
+                    .fetchSemanticsNode().boundsInRoot
+                val titleBounds = composeRule.onNodeWithText(title)
+                    .fetchSemanticsNode().boundsInRoot
+                assertEquals(cardBounds.center.x, titleBounds.center.x, 1f)
+            }
+        }
+    }
+
+    @Test
+    fun bluetoothConfigurationStaysSilentAndKeepsWaitingCardPosition() {
         val language = mutableStateOf(AppLanguage.ENGLISH)
         val state = mutableStateOf(
             ScanUiState.fromSession(
@@ -331,17 +421,24 @@ class ScanScreenTest {
             )
         }
 
-        composeRule.onNodeWithTag("scan_bluetooth_configuration_status")
-            .assertIsDisplayed()
-        composeRule.onNodeWithText(
+        composeRule.onAllNodesWithTag("scan_bluetooth_configuration_status")
+            .assertCountEquals(0)
+        composeRule.onAllNodesWithText(
             "Preparing scanner scan targets. Please wait.",
-        ).assertIsDisplayed()
+        ).assertCountEquals(0)
+        val waitingCardTop = composeRule.onNodeWithTag("scan_waiting_card")
+            .fetchSemanticsNode().boundsInRoot.top
 
         composeRule.runOnIdle {
             state.value = state.value.copy(
                 bluetoothConfigurationState = ConfigurationState.Ready,
             )
         }
+
+        assertEquals(
+            waitingCardTop,
+            composeRule.onNodeWithTag("scan_waiting_card").fetchSemanticsNode().boundsInRoot.top,
+        )
 
         composeRule.onNodeWithText(
             "Scan targets: QR and Code 128 (comparison session)",

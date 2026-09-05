@@ -139,7 +139,7 @@ public final class BundleLanguageVerifierTest {
             boolean defaultIsEnglish
     ) {
         Resources.Type.Builder strings = Resources.Type.newBuilder().setName("string");
-        addString(strings, "scan_wait_qr_title", "QRコードを読み取ってください", "Scan a QR code",
+        addString(strings, "scan_wait_qr_title", "QRコード読み取り", "Scan a QR code",
                 includeDefault, includeEnglish, defaultIsEnglish);
         addString(strings, "settings_title", "設定", "Settings",
                 includeDefault, includeEnglish, defaultIsEnglish);
@@ -160,7 +160,7 @@ public final class BundleLanguageVerifierTest {
                 "scan_wait_qr_title",
                 valueWithConfiguration(
                         Configuration.newBuilder().setScreenWidthDp(320).build(),
-                        "QRコードを読み取ってください"
+                        "QRコード読み取り"
                 ),
                 value("en", "Scan a QR code")
         );

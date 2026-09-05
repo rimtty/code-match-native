@@ -415,8 +415,12 @@ class SettingsScreenTest {
         }
 
         composeRule.onAllNodesWithTag(SettingsTestTags.DIAGNOSTICS).assertCountEquals(1)
+        composeRule.onAllNodesWithTag(SettingsTestTags.DIAGNOSTIC_ROW).assertCountEquals(0)
+        composeRule.onNodeWithTag(SettingsTestTags.DIAGNOSTICS_TOGGLE).performScrollTo().performClick()
         composeRule.onAllNodesWithTag(SettingsTestTags.DIAGNOSTIC_ROW).assertCountEquals(1)
         composeRule.onAllNodesWithText(payload).assertCountEquals(0)
+        composeRule.onNodeWithTag(SettingsTestTags.DIAGNOSTICS_TOGGLE).performScrollTo().performClick()
+        composeRule.onAllNodesWithTag(SettingsTestTags.DIAGNOSTIC_ROW).assertCountEquals(0)
     }
 
     @Test
