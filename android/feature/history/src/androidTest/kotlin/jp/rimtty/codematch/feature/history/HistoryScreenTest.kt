@@ -13,6 +13,9 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.mutableStateOf
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -28,6 +31,26 @@ import org.junit.runner.RunWith
 class HistoryScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun englishSessionCountFitsOnOneLineWithoutClipping() {
+        composeRule.setContent {
+            HistoryScreen(
+                sessions = listOf(MatchSession(
+                    id = "count-layout",
+                    startedAt = 1L,
+                    entries = List(123) { MatchEntry(id = "box-$it", code = "PART") },
+                )),
+                language = AppLanguage.ENGLISH,
+            )
+        }
+        val layouts = mutableListOf<TextLayoutResult>()
+        composeRule.onNodeWithText("123 boxes", useUnmergedTree = true)
+            .assertIsDisplayed()
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertEquals(1, layouts.single().lineCount)
+        assertEquals(false, layouts.single().hasVisualOverflow)
+    }
 
     @Test
     fun emptyStateIsDisplayedWithHistorySemantics() {
