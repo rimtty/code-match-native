@@ -15,6 +15,35 @@ class InateckExactReplayGatewayTest {
     ))
     private val command get() = Gson().toJson(items)
 
+    @Test fun newConnectionUsesRetainedBaselineUntilVerifiedRecoveryIsAcknowledged() {
+        val store = InMemorySymbologySnapshotStore(INATECK_ANDROID_SDK_PROFILE_IDENTITY)
+        store.save(snapshot)
+        // A newly created gateway/transport/session represents the next physical
+        // connection. Reuse the old store, never recapture from the new read.
+        val sdk = StubSdk(); val gateway = InateckExactReplayGateway(sdk)
+        val transport = InateckSdkTransport(gateway)
+        val device = jp.rimtty.codematch.scanner.api.ScannerDevice(snapshot.deviceId, "test")
+        assertTrue(gateway.arm(requireNotNull(store.load(device.id))))
+        assertTrue(transport.connect(device))
+        val session = BleSymbologySession(device, transport,
+            BleSymbologyProfile(INATECK_SETTINGS_ENDPOINT, InateckAreaNameSymbologyCodec, INATECK_ANDROID_SDK_PROFILE_IDENTITY), store,
+            nowMillis = { 123L })
+        assertTrue(session.onConnected())
+        sdk.readCallback!!(Result.success(items))
+        assertFalse(session.configurationState.isReady)
+        assertEquals(snapshot, store.load(device.id))
+        sdk.readCallback!!(Result.success(items))
+        sdk.writeCallback!!(Result.success(Unit))
+        assertEquals(BleSymbologySessionState.Restoring, session.state)
+        assertFalse(session.configurationState.isReady)
+        assertEquals(snapshot, store.load(device.id))
+        assertTrue(gateway.releaseCompletedWrite())
+        assertEquals(BleSymbologySessionState.Ready, session.state)
+        assertTrue(session.configurationState.isReady)
+        assertNull(store.load(device.id))
+        assertEquals(snapshot.copy(capturedAtMillis = 123L), session.currentSnapshot)
+    }
+
     @Test fun productionTwentyFiveSecondWriteDeadlineKeepsBaselineAndIgnoresLateSuccess() {
         val sdk = StubSdk(); val gateway = InateckExactReplayGateway(sdk)
         val transport = InateckSdkTransport(gateway)
