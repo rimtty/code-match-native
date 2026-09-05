@@ -238,7 +238,7 @@ private fun SettingsContent(
             )
         }
 
-        DiagnosticsCard(events = state.diagnosticEvents)
+        DiagnosticsCard(events = state.diagnosticEvents, onAction = onAction)
         AutoAdvanceCard(state = state, onAction = onAction)
         VolumeCard(volume = state.feedbackVolume, onVolumeChanged = {
             onAction(SettingsUiAction.SetFeedbackVolume(it))
@@ -1122,7 +1122,10 @@ private fun DeviceRow(
 }
 
 @Composable
-private fun DiagnosticsCard(events: List<DiagnosticEvent>) {
+private fun DiagnosticsCard(
+    events: List<DiagnosticEvent>,
+    onAction: (SettingsUiAction) -> Unit,
+) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val toggleLabel = stringResource(
         if (expanded) R.string.settings_diagnostics_collapse else R.string.settings_diagnostics_expand,
@@ -1173,6 +1176,32 @@ private fun DiagnosticsCard(events: List<DiagnosticEvent>) {
             } else if (expanded) {
                 visibleEvents.forEach { event ->
                     DiagnosticRow(event = event)
+                }
+            }
+            if (events.isNotEmpty()) {
+                Text(
+                    text = stringResource(R.string.settings_diagnostics_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextButton(
+                        onClick = { onAction(SettingsUiAction.ShareDiagnostics) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag(SettingsTestTags.DIAGNOSTICS_SHARE),
+                    ) { Text(stringResource(R.string.settings_diagnostics_share)) }
+                    TextButton(
+                        onClick = { onAction(SettingsUiAction.SaveDiagnostics) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag(SettingsTestTags.DIAGNOSTICS_SAVE),
+                    ) { Text(stringResource(R.string.settings_diagnostics_save)) }
                 }
             }
         }

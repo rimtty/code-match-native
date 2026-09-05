@@ -119,6 +119,7 @@ class SettingsViewModel @Inject constructor(
                 viewModelScope.launch { repository.setFailureSound(action.sound) }
             is SettingsUiAction.PreviewFailureSound ->
                 feedbackPlayer.playFailure(action.sound, state.value.feedbackVolume)
+            SettingsUiAction.ShareDiagnostics, SettingsUiAction.SaveDiagnostics -> Unit // host-owned
             is SettingsUiAction.SetLanguage -> viewModelScope.launch {
                 appLanguageSynchronizer.setLanguage(action.language)
             }
@@ -172,6 +173,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     private companion object {
-        const val MAX_DIAGNOSTICS = 20
+        /** Retained for share/save; the screen itself renders only the latest 20. */
+        const val MAX_DIAGNOSTICS = 300
     }
 }

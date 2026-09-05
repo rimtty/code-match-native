@@ -34,6 +34,8 @@ typealias ScannerPresentationMode = SettingsPresentationState
 /** Stable tags shared by Compose tests and accessibility checks. */
 object SettingsTestTags {
     const val SCREEN = "settings_screen"
+    const val DIAGNOSTICS_SHARE = "settings_diagnostics_share"
+    const val DIAGNOSTICS_SAVE = "settings_diagnostics_save"
     const val SETUP_GUIDE = "settings_scanner_setup_guide"
     const val SETUP_GUIDE_STEP_1 = "settings_setup_step_1"
     const val SETUP_GUIDE_STEP_2 = "settings_setup_step_2"
@@ -157,6 +159,9 @@ sealed interface SettingsUiAction {
     data object Reconnect : SettingsUiAction
     /** Retry the current discovery, connection, or recovery operation. */
     data object RetryScanner : SettingsUiAction
+    /** Host-owned: hand the diagnostic log to the share sheet / a SAF document. */
+    data object ShareDiagnostics : SettingsUiAction
+    data object SaveDiagnostics : SettingsUiAction
 
     data class SetAutoAdvanceEnabled(val enabled: Boolean) : SettingsUiAction
     data class SetAutoAdvanceDelay(val delay: AutoAdvanceDelay) : SettingsUiAction

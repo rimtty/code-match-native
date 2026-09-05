@@ -300,7 +300,8 @@ class BleDiagnosticLog(
     }
 
     private companion object {
-        const val DEFAULT_MAX_EVENTS = 20
+        /** Enough for a long shift; the settings screen shows only the latest 20. */
+        const val DEFAULT_MAX_EVENTS = 300
     }
 }
 
