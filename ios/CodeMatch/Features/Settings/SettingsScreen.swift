@@ -476,9 +476,37 @@ struct SettingsScreen: View {
                     .foregroundStyle(illuminationDescriptionColor)
                     .lineSpacing(3)
                     .accessibilityIdentifier("scannerIlluminationDescription")
+                if let tuningDescription {
+                    Text(tuningDescription)
+                        .font(.caption2)
+                        .foregroundStyle(tuningDescriptionColor)
+                        .lineSpacing(3)
+                        .accessibilityIdentifier("scannerTuningDescription")
+                }
             }
             .padding(.vertical, 4)
         }
+    }
+
+    /// 多コード・反転・赤光消灯時間は接続ごとに差分だけ書く固定プロファイル。UIは状態表示のみ。
+    private var tuningDescription: String? {
+        switch bluetoothScanner.tuningState {
+        case .unknown, .unsupported:
+            nil
+        case .applying:
+            AppLocalization.string("読取チューニングを適用しています…")
+        case .matched(let applied):
+            applied
+                ? AppLocalization.string("読取チューニング: 適用済み（多コードOFF・反転OFF・赤光4秒）")
+                : AppLocalization.string("読取チューニング: 確認済み（変更なし）")
+        case .failed(let message):
+            message
+        }
+    }
+
+    private var tuningDescriptionColor: Color {
+        if case .failed = bluetoothScanner.tuningState { return AppTheme.red }
+        return AppTheme.muted
     }
 
     private var illuminationDescription: String {

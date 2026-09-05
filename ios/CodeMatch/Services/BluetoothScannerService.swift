@@ -69,6 +69,17 @@ enum BluetoothScannerIlluminationState: Equatable {
     case failed(String)
 }
 
+/// 読取チューニング（多コード・反転・赤光消灯時間）の適用状態。
+enum BluetoothScannerTuningState: Equatable {
+    /// inventoryに対象項目が1つもない
+    case unsupported
+    case unknown
+    case applying
+    /// `applied`はこの接続で書込を行ったか。falseは既に一致していた
+    case matched(applied: Bool)
+    case failed(String)
+}
+
 enum BluetoothScannerSymbologyMode: String, Equatable {
     case unrestricted
     case sessionCodes
@@ -147,11 +158,36 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     /// 機器のinventoryが報告する照明設定のname。areaは機器の報告値を使い、汎用flag 1003へ置き換えない。
     static let illuminationSettingName = "lighting_lamp_control"
 
+    struct TuningItem: Equatable {
+        let name: String
+        let value: Int
+    }
+
+    /// 接続ごとに揃える読取チューニング（#59）。inventoryにある項目だけを対象にし、
+    /// 現在値と異なる項目があるときだけ1コマンドで書く。値は機器側に保存され、切断時に復元しない。
+    /// - 多コード認識OFF: 大判ラベル周辺の別コードを拾いにいかせない
+    /// - 反転（正相/反相）OFF: 不要な探索を減らす
+    /// - 赤光消灯までの時間（`auto_close_mode`、汎用flag 1023相当、単位0.2秒）: 既定10（2秒）では
+    ///   位置合わせ中に消えるため20（約4秒）。HPRT-4F5Fで20→約3.8秒を実測して確定した。
+    ///   `time_auto_off`は赤光時間を変えなかった（電源自動OFF時間と推定）ため対象外にする。
+    static let tuningProfile: [TuningItem] = [
+        TuningItem(name: "qrcode_read_more_code", value: 0),
+        TuningItem(name: "datamatrix_read_multi", value: 0),
+        TuningItem(name: "pdf417_read_more_code", value: 0),
+        TuningItem(name: "read_inverse_color", value: 0),
+        TuningItem(name: "qrcode_read_phase", value: 0),
+        TuningItem(name: "datamatrix_read_phase", value: 0),
+        TuningItem(name: "hanxin_read_phase", value: 0),
+        TuningItem(name: "pdf417_read_phase", value: 0),
+        TuningItem(name: "auto_close_mode", value: 20)
+    ]
+
     @Published private(set) var devices: [BluetoothScannerDevice] = []
     @Published private(set) var state: BluetoothScannerConnectionState = .idle
     @Published private(set) var configurationState: BluetoothScannerConfigurationState = .unavailable
     @Published private(set) var diagnosticEvents: [BluetoothScannerDiagnosticEvent] = []
     @Published private(set) var illuminationState: BluetoothScannerIlluminationState = .unknown
+    @Published private(set) var tuningState: BluetoothScannerTuningState = .unknown
 
     var onCode: ((String) -> Void)?
 
@@ -274,6 +310,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             state = .connected(device)
             configurationState = .ready
             illuminationState = .off
+            tuningState = .matched(applied: false)
             clearPersistedSymbologySnapshot()
             recordAppliedSymbologyMode(.unrestricted)
             defaults.set(device.id, forKey: Self.preferredDeviceIDKey)
@@ -423,6 +460,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                     self.connectedLinkBaselineState = sdkDevice.connectState
                     self.illuminationState = .unknown
                     self.pendingIlluminationRequest = nil
+                    self.tuningState = .unknown
                     self.trace(
                         "Connected: \(device.name) [\(device.id)] "
                             + "(SDK link state \(String(describing: sdkDevice.connectState)))"
@@ -450,6 +488,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         configurationState = .ready
         // 実機と同じく、接続ごとに照明OFF（常時消灯）を適用した状態から始める。
         illuminationState = .off
+        tuningState = .matched(applied: false)
         let mode = BluetoothScannerSymbologyMode(expectedCode: expectedCode)
         if mode == .unrestricted {
             clearPersistedSymbologySnapshot()
@@ -486,6 +525,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         recordAppliedSymbologyMode(.unrestricted)
         configurationState = .unavailable
         illuminationState = .unknown
+        tuningState = .unknown
         state = .idle
 #endif
     }
@@ -723,6 +763,9 @@ final class BluetoothScannerService: NSObject, ObservableObject {
                                     )
                                     return
                                 }
+                                // 再取得したinventoryはこの接続の最新値なので、後続の
+                                // チューニング差分判定にも使う。
+                                self.connectedScannerSettings = verifiedSettings
                                 self.finishIllumination(
                                     generation,
                                     state: enabled ? .on : .off,
@@ -963,6 +1006,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         configurationState = .unavailable
         illuminationState = .unknown
         pendingIlluminationRequest = nil
+        tuningState = .unknown
         if manualDisconnectInProgress {
             state = .idle
             trace("Manual disconnect completed")
@@ -1246,6 +1290,8 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             setIllumination(pending)
         } else if illuminationState == .unknown {
             setIllumination(false)
+        } else {
+            applyTuningProfileIfNeeded()
         }
     }
 
@@ -1262,6 +1308,120 @@ final class BluetoothScannerService: NSObject, ObservableObject {
         trace(message)
         // 照明処理中に工程が変わっていれば読み取り設定を先に進め、
         // その後で残っている照明要求を処理する。
+        if configurationState == .configuring, connectedSDKDevice != nil {
+            applyExpectedCodeConfiguration(revision: symbologyConfigurationRevision)
+        }
+        if !symbologyCommandInFlight, let pending = pendingIlluminationRequest {
+            pendingIlluminationRequest = nil
+            setIllumination(pending)
+        }
+        if !symbologyCommandInFlight {
+            applyTuningProfileIfNeeded()
+        }
+    }
+
+    /// 照明の確認が済んだ後、この接続でまだ確認していなければ読取チューニングを揃える。
+    /// 差分がなければ書込を行わず、あれば1コマンドで書いて再取得で確認する。
+    private func applyTuningProfileIfNeeded() {
+        guard tuningState == .unknown,
+              let sdkDevice = connectedSDKDevice,
+              isConnected,
+              configurationState == .ready,
+              !symbologyCommandInFlight,
+              !manualDisconnectInProgress,
+              let settings = connectedScannerSettings else { return }
+        switch illuminationState {
+        case .unknown, .applying:
+            return
+        case .unsupported, .off, .on, .failed:
+            break
+        }
+
+        guard let present = Self.tuningItemsPresent(in: settings), !present.isEmpty else {
+            tuningState = .unsupported
+            trace("Scanner inventory has none of the tuning items")
+            return
+        }
+        let differences = Self.tuningDifferences(settings: settings)
+        guard !differences.isEmpty else {
+            tuningState = .matched(applied: false)
+            trace("Scanner tuning already matches (\(present.count) items)")
+            return
+        }
+        guard let command = Self.tuningCommand(settings: settings, items: differences) else {
+            tuningState = .failed(AppLocalization.string("読取チューニングを適用できませんでした。"))
+            trace("Scanner tuning command could not be built from the inventory")
+            return
+        }
+
+        tuningState = .applying
+        symbologyCommandGeneration += 1
+        let generation = symbologyCommandGeneration
+        symbologyCommandInFlight = true
+        let summary = differences.map { "\($0.name)=\($0.value)" }.joined(separator: ",")
+        trace("Applying scanner tuning (generation \(generation)): \(summary)")
+        scheduleSettingCommandTimeout(
+            generation: generation,
+            sdkDevice: sdkDevice,
+            label: "tuning",
+            duration: Self.illuminationCommandTimeout
+        )
+        let failureMessage = AppLocalization.string("読取チューニングを確認できませんでした。")
+        sdkDevice.messageManager.setSettingInfo(with: command) { [weak self] written in
+            Task { @MainActor in
+                guard let self, generation == self.symbologyCommandGeneration else { return }
+                if case .failure(let error) = written {
+                    self.finishTuning(
+                        generation,
+                        state: .failed(failureMessage),
+                        message: "Scanner tuning write failed: \(error.localizedDescription)"
+                    )
+                    return
+                }
+                sdkDevice.messageManager.getSettingInfo { [weak self] verified in
+                    Task { @MainActor in
+                        guard let self, generation == self.symbologyCommandGeneration else { return }
+                        guard case .success(let verifiedSettings) = verified else {
+                            self.finishTuning(
+                                generation,
+                                state: .failed(failureMessage),
+                                message: "Scanner tuning readback failed"
+                            )
+                            return
+                        }
+                        self.connectedScannerSettings = verifiedSettings
+                        let remaining = Self.tuningDifferences(settings: verifiedSettings)
+                        if remaining.isEmpty {
+                            self.finishTuning(
+                                generation,
+                                state: .matched(applied: true),
+                                message: "Scanner tuning confirmed (\(differences.count) items written)"
+                            )
+                        } else {
+                            let unmatched = remaining.map(\.name).joined(separator: ",")
+                            self.finishTuning(
+                                generation,
+                                state: .failed(failureMessage),
+                                message: "Scanner tuning readback did not match: \(unmatched)"
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func finishTuning(
+        _ generation: Int,
+        state: BluetoothScannerTuningState,
+        message: String
+    ) {
+        guard generation == symbologyCommandGeneration else { return }
+        symbologyCommandTimeoutTask?.cancel()
+        symbologyCommandTimeoutTask = nil
+        symbologyCommandInFlight = false
+        tuningState = state
+        trace(message)
         if configurationState == .configuring, connectedSDKDevice != nil {
             applyExpectedCodeConfiguration(revision: symbologyConfigurationRevision)
         }
@@ -1760,6 +1920,7 @@ final class BluetoothScannerService: NSObject, ObservableObject {
             self.stopLinkLivenessMonitor()
             self.illuminationState = .unknown
             self.pendingIlluminationRequest = nil
+            self.tuningState = .unknown
             self.connectedSDKDevice = nil
             self.sdkOutputConfigurationCompleted = false
             self.connectedScannerSettings = nil
@@ -1899,6 +2060,36 @@ final class BluetoothScannerService: NSObject, ObservableObject {
     struct IlluminationSetting: Equatable {
         let area: String
         let value: Int
+    }
+
+    /// inventoryに存在するチューニング項目（name, 現在値）。inventoryが読めなければnil。
+    static func tuningItemsPresent(in settings: String) -> [TuningItem]? {
+        guard let items = scannerSettingItems(from: settings) else { return nil }
+        var current: [String: Int] = [:]
+        for item in items {
+            guard let name = item["name"] as? String,
+                  let value = integerSettingValue(item["value"]) else { continue }
+            current[name] = value
+        }
+        return tuningProfile.compactMap { desired in
+            current[desired.name].map { TuningItem(name: desired.name, value: $0) }
+        }
+    }
+
+    /// inventoryにあり、現在値がプロファイルと異なる項目（書くべき項目）。
+    static func tuningDifferences(settings: String) -> [TuningItem] {
+        guard let present = tuningItemsPresent(in: settings) else { return [] }
+        let currentByName = Dictionary(uniqueKeysWithValues: present.map { ($0.name, $0.value) })
+        return tuningProfile.filter { desired in
+            guard let current = currentByName[desired.name] else { return false }
+            return current != desired.value
+        }
+    }
+
+    static func tuningCommand(settings: String, items: [TuningItem]) -> String? {
+        guard !items.isEmpty else { return nil }
+        let values = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value) })
+        return symbologySettingCommand(values: values, settings: settings)
     }
 
     /// inventoryの`lighting_lamp_control`をarea付きで読む。項目が1つでない、
