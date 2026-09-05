@@ -5192,6 +5192,38 @@
           }
         }
       }
+    },
+    "納品書兼現品票のQRコードではありません。納品書兼現品票のQRコードを読み取ってください。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This is not a delivery-slip QR code. Scan the delivery-slip QR code."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "納品書兼現品票のQRコードではありません。納品書兼現品票のQRコードを読み取ってください。"
+          }
+        }
+      }
+    },
+    "現品票のCode 128バーコードではありません。現在は現品票のCode 128バーコード待ちです。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This is not a product-tag Code 128 barcode. Waiting for the product-tag Code 128 barcode."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現品票のCode 128バーコードではありません。現在は現品票のCode 128バーコード待ちです。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

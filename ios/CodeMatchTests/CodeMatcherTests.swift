@@ -1613,6 +1613,36 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertEqual(context.viewModel.qrValue, ScannerViewModel.sampleQRPayload)
     }
 
+    func testBluetoothDistinguishesUnrelatedCodesFromWrongOrder() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        // QR待機: Code 128形式は順序違い、それ以外は無関係なコードとして案内する。
+        context.service.simulateScan(ScannerViewModel.sampleBarcodePayload)
+        XCTAssertTrue(context.viewModel.message.contains("読み取り順序が違います"))
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan("https://example.com/tissue")
+        XCTAssertTrue(context.viewModel.message.contains("QRコードではありません"))
+        XCTAssertEqual(context.viewModel.step, .qr)
+
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+
+        // Code 128待機: QR形式は順序違い、それ以外は無関係なコードとして案内する。
+        try? await Task.sleep(for: .milliseconds(800))
+        let otherQR = "DAYA005100DFR55581GA  0001000000010000Y      000000BYBYTLYB16   0*"
+        context.service.simulateScan(otherQR)
+        XCTAssertTrue(context.viewModel.message.contains("読み取り順序が違います"))
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan("https://example.com/tissue")
+        XCTAssertTrue(context.viewModel.message.contains("Code 128バーコードではありません"))
+        XCTAssertEqual(context.viewModel.step, .barcode)
+    }
+
     func testBluetoothScanDuringMismatchResultWarnsWithoutAdvancing() async {
         let context = makeContext()
         defer { context.cleanup() }

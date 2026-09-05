@@ -494,8 +494,11 @@ final class ScannerViewModel: ObservableObject {
         switch expectedCode {
         case .qr:
             guard KanbanQRRecord.isValidScanPayload(value) else {
+                // 相手工程の正しい形式なら順序違い、それ以外は無関係なコードとして案内する。
                 rejectBluetoothScan(
-                    "読み取り順序が違います。先に納品書兼現品票のQRコードを読み取ってください。"
+                    TagBarcodeRecord.isValidScanPayload(value)
+                        ? "読み取り順序が違います。先に納品書兼現品票のQRコードを読み取ってください。"
+                        : "納品書兼現品票のQRコードではありません。納品書兼現品票のQRコードを読み取ってください。"
                 )
                 return
             }
@@ -506,7 +509,9 @@ final class ScannerViewModel: ObservableObject {
             guard value != qrValue else { return }
             guard TagBarcodeRecord.isValidScanPayload(value) else {
                 rejectBluetoothScan(
-                    "読み取り順序が違います。現在は現品票のCode 128バーコード待ちです。"
+                    KanbanQRRecord.isValidScanPayload(value)
+                        ? "読み取り順序が違います。現在は現品票のCode 128バーコード待ちです。"
+                        : "現品票のCode 128バーコードではありません。現在は現品票のCode 128バーコード待ちです。"
                 )
                 return
             }
