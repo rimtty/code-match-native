@@ -3,6 +3,7 @@ package jp.rimtty.codematch.feature.history
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -286,7 +288,7 @@ private fun SessionRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
-                modifier = Modifier.size(52.dp),
+                modifier = Modifier.widthIn(min = 52.dp).width(IntrinsicSize.Max).heightIn(min = 52.dp),
                 shape = RoundedCornerShape(13.dp),
                 color = if (session.isActive) {
                     MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
@@ -295,11 +297,14 @@ private fun SessionRow(
                 },
             ) {
                 Column(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
                         text = HistoryUiResources.boxCount(session.matchedCount, language),
+                        maxLines = 1,
+                        softWrap = false,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )

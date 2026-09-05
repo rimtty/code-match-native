@@ -12,6 +12,9 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationRailItemDefaults
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteDefaults
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
 import androidx.compose.runtime.Composable
@@ -25,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.booleanResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import jp.rimtty.codematch.history.HistoryRoute
 import jp.rimtty.codematch.scan.ScanRoute
 import jp.rimtty.codematch.scan.rememberAndroidCameraHost
@@ -76,13 +80,34 @@ fun CodeMatchApp() {
         Unit
     }
 
+    val navigationColors = NavigationSuiteDefaults.itemColors(
+        navigationBarItemColors = NavigationBarItemDefaults.colors(
+            selectedIconColor = MaterialTheme.colorScheme.onPrimary,
+            selectedTextColor = MaterialTheme.colorScheme.primary,
+            indicatorColor = MaterialTheme.colorScheme.primary,
+            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+        navigationRailItemColors = NavigationRailItemDefaults.colors(
+            selectedIconColor = MaterialTheme.colorScheme.onPrimary,
+            selectedTextColor = MaterialTheme.colorScheme.primary,
+            indicatorColor = MaterialTheme.colorScheme.primary,
+            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+    )
     NavigationSuiteScaffold(
+        navigationSuiteColors = NavigationSuiteDefaults.colors(
+            navigationBarContainerColor = MaterialTheme.colorScheme.surface,
+            navigationRailContainerColor = MaterialTheme.colorScheme.surface,
+        ),
         layoutType = NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(
             androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2(),
         ),
         navigationSuiteItems = {
             AppDestination.entries.forEach { destination ->
                 item(
+                    colors = navigationColors,
                     selected = selected == destination,
                     onClick = { selectedRoute = destination.route },
                     icon = {
@@ -91,7 +116,12 @@ fun CodeMatchApp() {
                             contentDescription = stringResource(destination.labelRes),
                         )
                     },
-                    label = { Text(stringResource(destination.labelRes)) },
+                    label = {
+                        Text(
+                            stringResource(destination.labelRes),
+                            fontWeight = if (selected == destination) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    },
                 )
             }
         },
