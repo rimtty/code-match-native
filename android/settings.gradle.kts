@@ -53,3 +53,8 @@ include(":scanner:inateck")
 // The fake scanner is deliberately a debug-only dependency of :app. Keeping it
 // as a separate module makes the release dependency graph auditable.
 include(":scanner:fake")
+
+// Explicitly opt in to the standalone, local-only SDK diagnostic APK.
+if (providers.gradleProperty("includeSdkProbe").orNull == "true") {
+    include(":tools:sdk-probe")
+}
