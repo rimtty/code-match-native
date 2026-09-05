@@ -29,7 +29,7 @@
     <string name="settings_setup_previous">戻る</string>
     <string name="settings_setup_next">読み取りました・次へ</string>
     <string name="settings_setup_finish">完了</string>
-    <string name="settings_setup_scan_instruction">BCST-47で下のCode 128コードを1回読み取ります。</string>
+    <string name="settings_setup_scan_instruction">BCST-36で下のCode 128コードを1回読み取ります。</string>
     <string name="settings_setup_barcode_accessibility">%1$sのCode 128設定コード</string>
     <string name="settings_setup_enlarge">全画面で大きく表示</string>
     <string name="settings_setup_scanner_display_label">スキャナ表示の目安</string>

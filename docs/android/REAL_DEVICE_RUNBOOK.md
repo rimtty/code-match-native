@@ -180,6 +180,19 @@ adb install -r app/build/outputs/apk/scannerPoc/app-scannerPoc.apk
 
 この記録はDocumentProvider保存と共有画面起動の部分証拠です。外部viewerと共有先の受入が未実施のため、PDF実機受入完了とは扱いません。
 
+## 2026-09-05 追加受入記録（Pixel 7限定）
+
+- 対象: Pixel 7 / Android 16（API 36）、非配布`scannerPoc`。ユーザー指定でBCST-36とのローカル運用に限定し、Samsung・ストア配布は対象外。iOSは変更していない。
+- ユーザー実機承認: カメラ復帰後のCode128、タップfocus、OS設定からのカメラ権限拒否・再許可、ガイド枠内外の読取境界、縦向き固定、4:3枠内のプレビュー（PR #41）。
+- ユーザー実機承認: 日英切替、英語Historyの箱数表示と下部ナビ選択表示（PR #42）。PDFは1ページ・複数ページの最終ページまでの表示、Downloads保存、共有先での表示を確認済み。上記の古いPDF部分証拠に対する追加確認であり、全viewerへの対応保証ではない。
+- ユーザー実機承認: 音量0で無音かつ一致時に振動、通常音量で読取短音と一致通知音。無効・不一致通知の体感確認は別途残る。
+- ユーザー実機承認: font_scale=1.3で主要表示・操作、結果画面の品番ラベルと値の縦配置（PR #43）。
+- 自動確認: PR #43のfeature単位のPixel connected testはScan font scale 3件、Settings 1件、History 3件が失敗・skipなし。これは実TalkBack/Switch Accessの証拠ではない。製品アプリのfont_scaleを一時2.0で確認後、元の1.3へ戻してreadbackした。
+- 自動確認: PR #43統合相当のインストール済みアプリで、初期状態の閉じた設定ガイドを開き、AndroidシステムBackで閉じることをUI hierarchyで確認。スキャン開始画面へ戻した。製品アプリの履歴・設定の消去は実施していない。
+- 自動確認時の表示所見: ガイドの旧機種名BCST-47を今回の対象BCST-36へ日英とも訂正。この記録はスキャナーで設定コードを実読取した証拠ではない。
+- 残り: 恒久権限拒否、カメラ各工程でのOS process kill、無効・不一致通知、font scale 2.0の実主要フロー、TalkBack/Switch Access、実行時通信観測。BLEの完全復元・timeout異常系・firmware記録はIssue #19に残る。
+- 追跡: [Issue #23](https://github.com/rimtty/code-match-native/issues/23)、[Issue #19](https://github.com/rimtty/code-match-native/issues/19)。ユーザー承認と自動確認を区別し、未実施項目は完了扱いにしない。
+
 ## 6. 証跡テンプレート
 
 ```text
