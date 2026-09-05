@@ -25,6 +25,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -51,7 +52,7 @@ class ScanViewModelCheckpointInstrumentationTest {
             val firstViewModel = first.second
 
             firstViewModel.onAction(jp.rimtty.codematch.feature.scan.ScanUiAction.StartSession)
-            awaitState(firstViewModel) { state ->
+            awaitState(firstViewModel, "session-start") { state ->
                 state.sessionActive && state.phase == ScanPhase.WAITING_QR
             }
             val sessionId = requireNotNull(fixture.history.activeSession.first()?.id)
@@ -66,7 +67,7 @@ class ScanViewModelCheckpointInstrumentationTest {
                     ),
                 ),
             )
-            val afterQr = awaitState(firstViewModel) { state ->
+            val afterQr = awaitState(firstViewModel, "qr-transition") { state ->
                 state.sessionActive &&
                     state.phase == ScanPhase.WAITING_CODE_128 &&
                     state.qrPayload == qrPayload
@@ -87,7 +88,7 @@ class ScanViewModelCheckpointInstrumentationTest {
 
             val second = fixture.createViewModel()
             secondOwner = second.first
-            val restored = awaitState(second.second) { state ->
+            val restored = awaitState(second.second, "checkpoint-restoration") { state ->
                 state.sessionActive &&
                     state.phase == ScanPhase.WAITING_CODE_128 &&
                     state.qrPayload == qrPayload
@@ -156,9 +157,15 @@ class ScanViewModelCheckpointInstrumentationTest {
 
     private suspend fun awaitState(
         viewModel: ScanViewModel,
+        stage: String = "result-restoration",
         predicate: (jp.rimtty.codematch.feature.scan.ScanUiState) -> Boolean,
-    ): jp.rimtty.codematch.feature.scan.ScanUiState =
+    ): jp.rimtty.codematch.feature.scan.ScanUiState = try {
         withTimeout(10_000L) { viewModel.state.first(predicate) }
+    } catch (timeout: TimeoutCancellationException) {
+        // Do not print state.toString(): it contains accepted payloads.
+        val state = viewModel.state.value
+        throw AssertionError("Timed out at $stage: active=${state.sessionActive}, phase=${state.phase}", timeout)
+    }
 
     private suspend fun awaitCheckpoint(
         history: HistoryRepository,
