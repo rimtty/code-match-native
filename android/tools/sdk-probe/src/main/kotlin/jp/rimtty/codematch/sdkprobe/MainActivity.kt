@@ -30,6 +30,7 @@ class MainActivity : Activity() {
     private var busy = false
     private var ready = false
     private var visible = false
+    private var activeAssembly: ReassembledVersion? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,6 +51,7 @@ class MainActivity : Activity() {
         firmware = label("本体ファームウェア：未取得")
         button("Bluetoothバージョン取得 (getHardwareInfo)") { read(true) }
         button("本体ファームウェア取得 (getVersion)") { read(false) }
+        button("本体ファームウェア取得（分割再構成）") { read(false, true) }
         button("切断") { close("切断しました") }
         BleListManager.disconnectHandler = { disconnected, _ ->
             runOnUiThread {
@@ -137,12 +139,14 @@ class MainActivity : Activity() {
         } } }.onFailure { close("SDK接続呼び出し失敗") }
         handler.postDelayed({ if (generation == token && busy) close("接続タイムアウト") }, 30_000)
     }
-    private fun read(bluetooth: Boolean) {
+    private fun read(bluetooth: Boolean, reassemble: Boolean = false) {
         val scanner = device
         if (!ready || scanner == null) { status.text = "先に接続してください。"; return }
         val target = if (bluetooth) hardware else firmware
         val title = if (bluetooth) "Bluetoothバージョン" else "本体ファームウェア"
-        val observation = if (bluetooth) null else VersionObservation { ModernVersionParser.inspect(it) }
+        val observation = if (bluetooth || reassemble) null else VersionObservation { ModernVersionParser.inspect(it) }
+        val assembly = if (reassemble) ReassembledVersion() else null
+        activeAssembly = assembly
         val token = ++generation
         val started = SystemClock.elapsedRealtime()
         setBusy(true)
@@ -165,6 +169,8 @@ class MainActivity : Activity() {
                     else -> "$value（${elapsed}ms）"
                 }
                 observation?.let { target.append("\n${it.summary()}") }
+                assembly?.let { target.append("\n${it.summary()}"); it.cancel() }
+                activeAssembly = null
                 commandComparison?.let { target.append("\n$it") }
                 status.text = "取得処理終了。設定書き込みは行っていません。"
                 if (result.isFailure || value == null) close("取得に失敗したため切断します。")
@@ -175,6 +181,7 @@ class MainActivity : Activity() {
             else {
                 scanner.messager.getVersion(completion)
                 observation?.attach(scanner.messager)
+                assembly?.attach(scanner.messager)
             }
         }.onFailure { close("SDK取得呼び出し失敗") }
         handler.postDelayed({ if (generation == token) {
@@ -183,6 +190,8 @@ class MainActivity : Activity() {
         } }, 6_000)
     }
     private fun close(message: String) {
+        activeAssembly?.cancel()
+        activeAssembly = null
         generation++
         ready = false
         runCatching { BleListManager.stopScan() }

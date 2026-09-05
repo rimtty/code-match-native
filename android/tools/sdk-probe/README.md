@@ -102,3 +102,29 @@ first response as incomplete (`notify_status=0`), while the SDK handler had
 already declared reception complete. This provides a concrete reassembly gap
 to test next. It does not yet establish that a complete response will contain a
 valid firmware version. Eight unit tests/build/lint passed before installation.
+
+## Reassembly experiment
+
+The separate `本体ファームウェア取得（分割再構成）` button keeps the original
+SDK command and completion but changes only the probe task's parse handler:
+native notification status 0 retains native-returned data and returns Loading;
+status 1 must pass the original SDK native firmware-result parser on either the
+assembled response or the native-returned message before the original completion
+is allowed. Buffer cap 8192 bytes; six-second application deadline; error, screen
+departure and completion discard pending bytes. Arbitrary scan text is never
+used as a version. The baseline getVersion button remains unchanged for comparison.
+Three tests cover retained native prefixes, complete-but-invalid version,
+malformed/oversize/cancelled input. This experiment is not in the production app.
+
+**Physical success (2026-09-05, Pixel 7 + BCST-36):**
+
+- `getHardwareInfo`: `OTA_D_V0.3.7` (52 ms).
+- Reassembled firmware: `BCST-36 V2.6.16 AI JP` (154 ms).
+- UI confirmed `再構成：分割結合して版解析成功` and identical generated commands.
+- Same request and original SDK firmware parser/completion succeeded after
+  reconstruction, whereas the baseline API failed on the incomplete first reply.
+  This identifies the premature completion/reassembly defect for this observed
+  device/firmware pair, not a blanket verdict about all SDK models.
+- Eleven unit tests, build/lint passed. The normal scannerPoc app remains
+  unchanged. Its recorded settings profile remains
+  `inateck-android-sdk-2.0.0-area-name-v1`.
