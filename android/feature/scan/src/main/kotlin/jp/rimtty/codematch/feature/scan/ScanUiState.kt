@@ -42,6 +42,9 @@ data class ScanUiState(
     val bluetoothIssue: ScannerIssue = ScannerIssue.NONE,
     /** True when the current logical step was moved to camera after BLE loss. */
     val bluetoothFallbackActive: Boolean = false,
+    /** Physical link only; never a substitute for verified scan readiness. */
+    val bluetoothConnected: Boolean = false,
+    val bluetoothReconnecting: Boolean = false,
 ) {
     val scan: ScanState get() = session.scan
     val phase: ScanPhase get() = session.phase

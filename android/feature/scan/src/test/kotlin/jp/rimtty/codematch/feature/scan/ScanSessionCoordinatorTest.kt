@@ -19,9 +19,51 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScanSessionCoordinatorTest {
+    @Test
+    fun repeatedReconnectDoesNotInterruptConnectingOrConfiguringAndFailureAllowsRetry() {
+        val scanner = TestScanner()
+        val coordinator = ScanSessionCoordinator(scanner)
+        scanner.markConnecting()
+        repeat(20) { assertEquals(false, coordinator.reconnectKnownDevice()) }
+        scanner.markReady()
+        scanner.configurationState = ConfigurationState.Configuring
+        repeat(20) { assertEquals(false, coordinator.reconnectKnownDevice()) }
+        assertEquals(0, scanner.reconnectCalls)
+        assertEquals(0, scanner.disconnectCalls)
+        scanner.markDisconnected()
+        assertTrue(coordinator.reconnectKnownDevice())
+        assertEquals(1, scanner.reconnectCalls)
+    }
+
     private val qrPayload =
         "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private val barcodePayload = "BCJH-52-81GG@1N5X0C"
+
+    @Test
+    fun restartOnMatchKeepsResultAndCountThenManualNextResumesQr() {
+        val scanner = TestScanner().apply {
+            requireExpectedFormatForPayloadReadiness = true
+            markReady()
+        }
+        val coordinator = ScanSessionCoordinator(scanner)
+        coordinator.startSession()
+        coordinator.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.BLUETOOTH))
+        coordinator.submitScanPayload(ScanPayload.code128(barcodePayload, InputSource.BLUETOOTH))
+        val matched = coordinator.state
+        assertEquals(ScanPhase.RESULT, matched.phase)
+        assertEquals(1, matched.matchedCount)
+        scanner.markDisconnected()
+        assertEquals(InputSource.CAMERA, coordinator.inputSource)
+        scanner.markConnecting()
+        scanner.markReady()
+        assertEquals(InputSource.BLUETOOTH, coordinator.inputSource)
+        assertEquals(matched.scan, coordinator.state.scan)
+        assertEquals(matched.matchedCount, coordinator.state.matchedCount)
+        assertNull(scanner.expectedFormat)
+        coordinator.dispatch(ScanEvent.ManualNext)
+        assertEquals(ScanPhase.WAITING_QR, coordinator.state.phase)
+        assertEquals(ScanFormat.QR, scanner.expectedFormat)
+    }
 
     @Test
     fun readyBluetoothIsSelectedAtSessionStart() {
@@ -450,6 +492,8 @@ class ScanSessionCoordinatorTest {
         override var expectedFormat: ScanFormat? = null
         override var listener: ExternalScannerListener? = null
         var reconnectSynchronously: Boolean = true
+        var reconnectCalls = 0
+        var disconnectCalls = 0
         var requireExpectedFormatForPayloadReadiness: Boolean = false
         override val isReadyForScanning: Boolean
             get() = super.isReadyForScanning &&
@@ -464,11 +508,13 @@ class ScanSessionCoordinatorTest {
         }
 
         override fun disconnect(): Boolean {
+            disconnectCalls++
             markDisconnected()
             return true
         }
 
         override fun reconnectKnownDevice(): Boolean {
+            reconnectCalls++
             if (reconnectSynchronously) markReady()
             return true
         }

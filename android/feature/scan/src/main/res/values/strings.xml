@@ -48,6 +48,7 @@
     <string name="scan_bluetooth_restriction_session">読み取り対象：QR・Code 128（照合セッション）</string>
     <string name="scan_bluetooth_configuration_failed">スキャナの読み取り設定を確認できません。カメラへ切り替えて続けます。</string>
     <string name="scan_bluetooth_fallback_title">Bluetoothスキャナからカメラへ切り替えました</string>
+    <string name="scan_bluetooth_reconnected_checking">Bluetoothに再接続しました。読み取り設定を確認しています…</string>
     <string name="scan_bluetooth_fallback_connection">スキャナとの接続が失われたため、現在の工程を保ったままカメラで続けます。</string>
     <string name="scan_bluetooth_fallback_permission">Bluetoothの利用が許可されていないため、カメラで続けます。</string>
     <string name="scan_bluetooth_fallback_powered_off">Bluetoothがオフのため、カメラで続けます。</string>
@@ -55,6 +56,7 @@
     <string name="scan_bluetooth_fallback_restore_failed">スキャナ設定を復元できないため、カメラで続けます。</string>
     <string name="scan_bluetooth_fallback_configuration">スキャナの読み取り設定を適用できないため、現在の工程を保ったままカメラで続けます。</string>
     <string name="scan_bluetooth_reconnect">Bluetoothへ再接続</string>
+    <string name="scan_bluetooth_reconnecting">Bluetoothへ再接続中…</string>
     <string name="scan_bluetooth_open_settings">Bluetooth設定</string>
     <string name="scan_input_source_label">入力元</string>
     <string name="scan_input_camera">カメラ</string>

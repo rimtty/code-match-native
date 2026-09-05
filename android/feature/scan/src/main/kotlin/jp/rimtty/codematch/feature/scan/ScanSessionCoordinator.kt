@@ -81,6 +81,7 @@ class ScanSessionCoordinator(
     var onBluetoothFallbackIssue: ((ScannerIssue) -> Unit)? = null
     /** Publishes scanner configuration transitions without exposing adapter details. */
     var onScannerConfigurationStateChanged: ((ConfigurationState) -> Unit)? = null
+    var onScannerConnectionStateChanged: ((ConnectionState) -> Unit)? = null
 
     init {
         // Settings and Scan are separate destinations but observe the same
@@ -233,8 +234,13 @@ class ScanSessionCoordinator(
      * success. The adapter still owns every protocol operation.
      */
     fun reconnectKnownDevice(): Boolean {
+        // Do not tear down an in-flight handshake or settings recovery on a
+        // repeated tap. The connection/configuration callbacks unlock retry.
+        if (scanner.connectionState.isConnectionPending ||
+            scanner.configurationState == ConfigurationState.Configuring
+        ) return false
         if (scanner.isConnected &&
-            (!scanner.isReadyForScanning || bluetoothFallbackBlocksPromotion)
+            (!scanner.isReadyToStartSession || bluetoothFallbackBlocksPromotion)
         ) {
             scanner.disconnect()
         }
@@ -282,6 +288,7 @@ class ScanSessionCoordinator(
 
     override fun onConnectionStateChanged(state: ConnectionState) {
         handleConnectionState(state)
+        onScannerConnectionStateChanged?.invoke(state)
     }
 
     override fun onConfigurationStateChanged(state: ConfigurationState) {
