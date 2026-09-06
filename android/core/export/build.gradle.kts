@@ -21,6 +21,9 @@ dependencies {
     implementation(project(":core:matching"))
 
     testImplementation(libs.junit)
+    // Parses the generated history JSON back in unit tests; the exporter itself
+    // stays dependency-free so it can run without Android's org.json stubs.
+    testImplementation(libs.gson)
 
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)

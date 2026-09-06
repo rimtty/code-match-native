@@ -15,6 +15,7 @@
     <string name="history_inspection_boxes">Boxes</string>
     <string name="history_part_count">Part numbers</string>
     <string name="history_name_placeholder">Name (optional)</string>
+    <string name="history_share_all">Share all history</string>
     <string name="history_save_pdf">Save PDF</string>
     <string name="history_share_pdf">Share</string>
     <string name="history_matched_codes">Matched codes</string>

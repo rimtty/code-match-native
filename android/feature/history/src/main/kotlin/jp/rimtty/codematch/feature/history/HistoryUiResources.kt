@@ -41,6 +41,7 @@ object HistoryUiResources {
         inspectionBoxes = stringResource(R.string.history_inspection_boxes),
         partCount = stringResource(R.string.history_part_count),
         namePlaceholder = stringResource(R.string.history_name_placeholder),
+        shareAll = stringResource(R.string.history_share_all),
         savePdf = stringResource(R.string.history_save_pdf),
         sharePdf = stringResource(R.string.history_share_pdf),
         matchedCodes = stringResource(R.string.history_matched_codes),

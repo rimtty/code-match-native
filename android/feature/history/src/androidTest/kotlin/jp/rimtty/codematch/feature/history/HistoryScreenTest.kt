@@ -2,7 +2,10 @@ package jp.rimtty.codematch.feature.history
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.SemanticsMatcher
@@ -67,6 +70,49 @@ class HistoryScreenTest {
 
         composeRule.onNodeWithTag(HistoryTestTags.SCREEN).assertIsDisplayed()
         composeRule.onNodeWithText("No history yet").assertIsDisplayed()
+    }
+
+    @Test
+    fun shareAllHistoryActionIsDisabledWhileThereIsNothingToExport() {
+        var shared = 0
+        composeRule.setContent {
+            HistoryScreen(
+                sessions = emptyList(),
+                language = AppLanguage.ENGLISH,
+                onShareAllHistory = { shared += 1 },
+            )
+        }
+
+        composeRule.onNodeWithTag(HistoryTestTags.SHARE_ALL)
+            .assertIsDisplayed()
+            .assertContentDescriptionEquals("Share all history")
+            .assertIsNotEnabled()
+            .performClick()
+
+        assertEquals(0, shared)
+    }
+
+    @Test
+    fun shareAllHistoryActionExportsEverySessionAndIsLabelledInJapanese() {
+        var shared = 0
+        composeRule.setContent {
+            HistoryScreen(
+                sessions = listOf(
+                    MatchSession(id = "old", startedAt = 1L, name = "Old"),
+                    MatchSession(id = "new", startedAt = 2L, name = "New"),
+                ),
+                onShareAllHistory = { shared += 1 },
+            )
+        }
+
+        composeRule.onNodeWithTag(HistoryTestTags.SHARE_ALL)
+            .assertIsDisplayed()
+            .assertHeightIsAtLeast(48.dp)
+            .assertContentDescriptionEquals("照合履歴をすべて共有")
+            .assertIsEnabled()
+            .performClick()
+
+        assertEquals(1, shared)
     }
 
     @Test

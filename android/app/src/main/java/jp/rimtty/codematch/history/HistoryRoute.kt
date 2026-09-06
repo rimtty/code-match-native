@@ -71,6 +71,7 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
     val retryLabel = androidx.compose.ui.res.stringResource(R.string.history_pdf_retry)
     val saveErrorMessage = androidx.compose.ui.res.stringResource(R.string.history_pdf_save_error)
     val shareErrorMessage = androidx.compose.ui.res.stringResource(R.string.history_pdf_share_error)
+    val shareAllErrorMessage = androidx.compose.ui.res.stringResource(R.string.history_share_all_failed)
 
     fun reportPdfFailure(message: String, retry: (() -> Unit)?) {
         feedback = HistoryPdfFeedback(message = message, retry = retry)
@@ -127,6 +128,39 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
                 }
                 is HistoryPdfResult.Failure -> {
                     reportPdfFailure(shareErrorMessage) { startShare(session) }
+                }
+            }
+        }
+    }
+
+    /**
+     * Share every session — active and ended, with their raw payloads — as one
+     * JSON file. The document is built from the same repository state the list
+     * shows, so no extra query can disagree with what the operator sees.
+     */
+    fun startShareAllHistory() {
+        feedback = null
+        val generation = exportGeneration + 1L
+        exportGeneration = generation
+        pendingDocument = null
+        val sessions = state.sessions
+        scope.launch(Dispatchers.IO) {
+            val result = when (
+                val cacheResult = HistoryJsonBridge.writeShareCache(context, sessions)
+            ) {
+                is HistoryJsonResult.Success ->
+                    HistoryJsonBridge.createShareChooser(context, cacheResult.value)
+
+                is HistoryJsonResult.Failure -> HistoryJsonResult.Failure(cacheResult.reason)
+            }
+            withContext(Dispatchers.Main.immediate) {
+                if (generation != exportGeneration) return@withContext
+                val launched = when (result) {
+                    is HistoryJsonResult.Success -> HistoryJsonBridge.launchShare(context, result.value)
+                    is HistoryJsonResult.Failure -> result
+                }
+                if (launched is HistoryJsonResult.Failure) {
+                    reportPdfFailure(shareAllErrorMessage) { startShareAllHistory() }
                 }
             }
         }
@@ -253,6 +287,7 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
                 onBack = goBack,
                 onSavePdf = ::startSave,
                 onSharePdf = ::startShare,
+                onShareAllHistory = ::startShareAllHistory,
                 modifier = Modifier.fillMaxSize(),
             )
         }

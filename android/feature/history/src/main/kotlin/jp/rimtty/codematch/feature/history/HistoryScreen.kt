@@ -94,6 +94,7 @@ object HistoryTestTags {
     const val BOX_ROW = "boxEntryRow"
     const val ENTRY_DETAIL = "historyEntryDetail"
     const val NAME_FIELD = "sessionNameEditField"
+    const val SHARE_ALL = "shareAllHistoryButton"
     const val SAVE_PDF = "savePDFButton"
     const val SHARE_PDF = "sharePDFButton"
 }
@@ -108,6 +109,7 @@ fun HistoryScreen(
     language: AppLanguage = AppLanguage.JAPANESE,
     onSessionSelected: (String) -> Unit = {},
     onDeleteSession: (String) -> Unit = {},
+    onShareAllHistory: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     HistoryLocalized(language) {
@@ -117,6 +119,7 @@ fun HistoryScreen(
             language = language,
             onSessionSelected = onSessionSelected,
             onDeleteSession = onDeleteSession,
+            onShareAllHistory = onShareAllHistory,
             modifier = modifier,
         )
     }
@@ -143,6 +146,7 @@ fun HistoryContent(
     onBack: () -> Unit = {},
     onSavePdf: (MatchSession) -> Unit = {},
     onSharePdf: (MatchSession) -> Unit = {},
+    onShareAllHistory: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     HistoryLocalized(language) {
@@ -155,6 +159,7 @@ fun HistoryContent(
                 language = language,
                 onSessionSelected = onSessionSelected,
                 onDeleteSession = onDeleteSession,
+                onShareAllHistory = onShareAllHistory,
                 modifier = listModifier,
             )
         }
@@ -204,6 +209,7 @@ private fun HistorySessionList(
     language: AppLanguage,
     onSessionSelected: (String) -> Unit,
     onDeleteSession: (String) -> Unit,
+    onShareAllHistory: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val labels = HistoryUiResources.labels()
@@ -212,11 +218,30 @@ private fun HistorySessionList(
             .testTag(HistoryTestTags.SCREEN)
             .semantics { contentDescription = labels.title },
     ) {
-        Text(
-            text = labels.title,
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = labels.title,
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+            )
+            // Exports every session, so it is disabled while there is nothing
+            // to export rather than sharing an empty document.
+            IconButton(
+                onClick = onShareAllHistory,
+                enabled = sessions.isNotEmpty(),
+                modifier = Modifier.size(48.dp).testTag(HistoryTestTags.SHARE_ALL),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Share,
+                    contentDescription = labels.shareAll,
+                )
+            }
+        }
         if (sessions.isEmpty()) {
             EmptyHistoryState(labels, Modifier.fillMaxSize())
         } else {
