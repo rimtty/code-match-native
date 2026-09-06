@@ -462,7 +462,9 @@ class AppFlowInstrumentationTest {
             "このセッションは仕向地「モルテック」で照合中です",
             substring = true,
         ).performScrollTo().assertIsDisplayed()
-        onNodeWithText("QRコード読み取り").assertIsDisplayed()
+        // Scrolling to the message above can push the waiting card out of the
+        // compact CI emulator viewport; bring the title back before asserting.
+        onNodeWithText("QRコード読み取り").performScrollTo().assertIsDisplayed()
         assertSessionCount(2)
 
         // A different delivery number restarts the box count and quantity.
