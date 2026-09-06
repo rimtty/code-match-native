@@ -728,6 +728,292 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertEqual(context.viewModel.qrValue, ScannerViewModel.sampleQRPayload)
     }
 
+    func testMoltecQRThenFourTwoThreeBarcodeMatchesAndReportsDeliveryBox() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        // 末尾の空白まで含めて61桁が1レコード。1文字でも欠けると別の値になる。
+        XCTAssertEqual(ScannerViewModel.sampleMoltecQRPayload.count, 61)
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleMoltecQRPayload)
+
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.viewModel.destination, .moltec)
+        XCTAssertEqual(context.store.activeSession?.destination, .moltec)
+
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleMoltecBarcodePayload)
+
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+        XCTAssertEqual(context.viewModel.sessionBoxNumber, 1)
+        XCTAssertEqual(
+            context.viewModel.deliverySummary,
+            DeliveryBoxSummary(deliveryNumber: "UAG5560", boxCount: 1, totalQuantity: 120)
+        )
+        XCTAssertTrue(context.viewModel.message.contains("納品番号 UAG5560"))
+        XCTAssertTrue(context.viewModel.message.contains("累計 120個"))
+    }
+
+    func testMoltecSecondBoxSameQRDifferentLabelIsCountedNotDuplicate() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleMoltecQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleMoltecBarcodePayload)
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+
+        // モルテックのQRは箱を区別しないため、現品票が別ラベルなら2箱目として数える。
+        context.viewModel.reset()
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleMoltecQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleMoltecSecondBoxBarcodePayload)
+
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 2)
+        XCTAssertEqual(context.viewModel.sessionBoxNumber, 2)
+        XCTAssertEqual(
+            context.viewModel.deliverySummary,
+            DeliveryBoxSummary(deliveryNumber: "UAG5560", boxCount: 2, totalQuantity: 240)
+        )
+        XCTAssertTrue(context.viewModel.message.contains("累計 240個"))
+    }
+
+    func testMoltecRescanOfSameBoxIsDuplicate() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleMoltecQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleMoltecBarcodePayload)
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+
+        // 同じQRと同じ現品票（=同じ箱）を読み直しても件数には加えない。
+        context.viewModel.reset()
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleMoltecQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleMoltecBarcodePayload)
+
+        XCTAssertEqual(context.viewModel.step, .result(.duplicate))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+        XCTAssertEqual(context.viewModel.sessionBoxNumber, 0)
+        XCTAssertNil(context.viewModel.deliverySummary)
+    }
+
+    func testMoltecMismatchIsNotCounted() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleMoltecQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+        // 同じ4-2-3の並びでも末尾ブロックが違えば別品番として扱う。
+        context.service.simulateScan(ScannerViewModel.sampleMoltecMismatchBarcodePayload)
+
+        XCTAssertEqual(context.viewModel.step, .result(.mismatch))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+        XCTAssertNil(context.viewModel.deliverySummary)
+        XCTAssertEqual(context.viewModel.destination, .moltec)
+    }
+
+    func testSessionLocksToFirstDestinationAndRejectsOtherDestinationQR() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleMoltecQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.viewModel.destination, .moltec)
+
+        // QRの読み取りなおしでは仕向地の固定を解除しない。
+        context.viewModel.rereadQR()
+        XCTAssertEqual(context.viewModel.step, .qr)
+        XCTAssertEqual(context.viewModel.destination, .moltec)
+
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+
+        XCTAssertEqual(context.viewModel.step, .qr)
+        XCTAssertTrue(context.viewModel.qrValue.isEmpty)
+        XCTAssertTrue(context.viewModel.message.contains("モルテック"))
+        XCTAssertTrue(context.viewModel.message.contains("読み取った値は照合に使用していません"))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+
+        // 同じ仕向地のQRはそのまま受理する。
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleMoltecQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.viewModel.destination, .moltec)
+    }
+
+    func testSawaiSessionRejectsMoltecQRViaCameraNamingSawai() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        let camera = context.viewModel.camera
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+
+        context.viewModel.cameraScanner(camera, didRead: ScannerViewModel.sampleQRPayload, type: .qr)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.viewModel.destination, .sawai)
+
+        context.viewModel.rereadQR()
+        XCTAssertEqual(context.viewModel.step, .qr)
+
+        context.viewModel.cameraScanner(
+            camera,
+            didRead: ScannerViewModel.sampleMoltecQRPayload,
+            type: .qr
+        )
+
+        XCTAssertEqual(context.viewModel.step, .qr)
+        XCTAssertTrue(context.viewModel.qrValue.isEmpty)
+        XCTAssertTrue(context.viewModel.message.contains("澤井製作所"))
+        XCTAssertEqual(context.viewModel.destination, .sawai)
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+    }
+
+    func testFourTwoThreeBarcodeIsRejectedInSawaiSession() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        let camera = context.viewModel.camera
+
+        context.viewModel.cameraScanner(camera, didRead: ScannerViewModel.sampleQRPayload, type: .qr)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.viewModel.destination, .sawai)
+        try? await Task.sleep(for: .milliseconds(300))
+
+        // 澤井製作所の現品票は品番末尾が4桁固定。モルテックの4-2-3品番は受理しない。
+        context.viewModel.cameraScanner(
+            camera,
+            didRead: ScannerViewModel.sampleMoltecBarcodePayload,
+            type: .code128
+        )
+        context.viewModel.cameraScanner(
+            camera,
+            didRead: ScannerViewModel.sampleMoltecBarcodePayload,
+            type: .code128
+        )
+
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertTrue(context.viewModel.barcodeValue.isEmpty)
+        XCTAssertTrue(context.viewModel.message.contains("Code 128バーコードではありません"))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+    }
+
+    func testMoltecQRAtBarcodeStepIsWrongOrder() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleMoltecQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+
+        // 別の納品書QR（同じ仕向地）を現品票の代わりに読んだ場合は順序違いとして案内する。
+        let otherMoltecQR = "AK6805BCKE34716B         UAG7530000FA3P20F-DAM000010809080500"
+        XCTAssertEqual(otherMoltecQR.count, 61)
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(otherMoltecQR)
+
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertTrue(context.viewModel.barcodeValue.isEmpty)
+        XCTAssertTrue(context.viewModel.message.contains("読み取り順序が違います"))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+    }
+
+    func testDestinationIsRestoredFromActiveSessionOnViewModelCreation() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleMoltecQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleMoltecBarcodePayload)
+        XCTAssertEqual(context.store.activeSession?.destination, .moltec)
+
+        // 照合画面が作り直されても、セッションの仕向地は固定されたままにする。
+        let restored = ScannerViewModel(
+            historyStore: context.store,
+            bluetoothScanner: context.service,
+            camera: CameraScanner()
+        )
+
+        XCTAssertEqual(restored.destination, .moltec)
+    }
+
+    func testStrippedTrailingSpacesStillMatchAndDoNotCreateSecondBox() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        let fullQR = "AK6805D10E50N10B         U543820000MB    S600700000020908    "
+        // 末尾の空白が落ちた読取値も同じレコードとして扱う。
+        let strippedQR = "AK6805D10E50N10B         U543820000MB    S600700000020908"
+        let firstBoxTag = "D10E-50-N10B@0UBL00"
+        // 実ラベルは1箱分しか判明していないため、2箱目は管理コードだけを変えた想定値を使う。
+        let secondBoxTag = "D10E-50-N10B@0UBL01"
+        XCTAssertEqual(fullQR.count, 61)
+        XCTAssertEqual(strippedQR.count, 57)
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(fullQR)
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(firstBoxTag)
+
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.viewModel.destination, .moltec)
+        XCTAssertEqual(
+            context.viewModel.deliverySummary,
+            DeliveryBoxSummary(deliveryNumber: "U543820", boxCount: 1, totalQuantity: 2)
+        )
+
+        context.viewModel.reset()
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(strippedQR)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(firstBoxTag)
+
+        XCTAssertEqual(context.viewModel.step, .result(.duplicate))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+
+        context.viewModel.reset()
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(strippedQR)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(secondBoxTag)
+
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 2)
+        XCTAssertEqual(context.viewModel.sessionBoxNumber, 2)
+        XCTAssertEqual(
+            context.viewModel.deliverySummary,
+            DeliveryBoxSummary(deliveryNumber: "U543820", boxCount: 2, totalQuantity: 4)
+        )
+    }
+
     private func makeContext(
         camera: CameraScanner = CameraScanner(),
         autoAdvanceEnabled: Bool = false,

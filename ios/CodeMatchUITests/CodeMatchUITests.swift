@@ -100,6 +100,57 @@ final class CodeMatchUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
     }
 
+    func testMockBluetoothScannerMoltecFlowLocksDestination() {
+        let app = launchApp(["-resetHistory", "-resetAutoAdvance", "-demoBluetoothConnected"])
+
+        app.buttons["startSessionButton"].tap()
+        let inputPicker = app.segmentedControls["scanInputSourcePicker"]
+        XCTAssertTrue(inputPicker.waitForExistence(timeout: 5))
+        XCTAssertTrue(inputPicker.buttons["Bluetooth"].isSelected)
+        XCTAssertTrue(app.staticTexts["1  四角いQRコード"].waitForExistence(timeout: 3))
+
+        app.swipeUp()
+        let demoToggle = app.staticTexts["カメラなしで判定をテスト"]
+        XCTAssertTrue(demoToggle.waitForExistence(timeout: 3))
+        demoToggle.tap()
+
+        let moltecQRButton = app.buttons["demoBluetoothMoltecQRButton"]
+        XCTAssertTrue(moltecQRButton.waitForExistence(timeout: 3))
+        moltecQRButton.tap()
+        XCTAssertTrue(app.staticTexts["2  横長のCode 128"].waitForExistence(timeout: 3))
+
+        app.buttons["demoBluetoothMoltecBarcodeButton"].tap()
+        XCTAssertTrue(app.staticTexts["一致しました"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
+        XCTAssertEqual(app.staticTexts["sessionDestination"].label, "モルテック")
+
+        // 仕向地はセッション終了まで固定され、別の仕向地のQRは照合へ進めない。
+        app.buttons["resetButton"].tap()
+        let scannerTitle = app.staticTexts["scannerTitle"]
+        let backToQRStep = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", "QRコードを読み取る"),
+            object: scannerTitle
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [backToQRStep], timeout: 5), .completed)
+
+        let sawaiQRButton = app.buttons["demoBluetoothQRButton"]
+        var scrollAttempts = 0
+        while !(sawaiQRButton.exists && sawaiQRButton.isHittable), scrollAttempts < 5 {
+            app.swipeUp()
+            scrollAttempts += 1
+        }
+        XCTAssertTrue(sawaiQRButton.waitForExistence(timeout: 3))
+        sawaiQRButton.tap()
+
+        XCTAssertTrue(
+            app.staticTexts[
+                "このセッションは仕向地「モルテック」で照合中です。別の仕向地のQRコードは照合できません。仕向地を変えるにはセッションを終了してください。 読み取った値は照合に使用していません。"
+            ].waitForExistence(timeout: 3)
+        )
+        XCTAssertEqual(scannerTitle.label, "QRコードを読み取る")
+        XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
+    }
+
     func testSettingsDiscoversAndConnectsMockScanner() {
         let app = launchApp(["-resetHistory", "-resetAutoAdvance", "-resetBluetoothScanner"])
 

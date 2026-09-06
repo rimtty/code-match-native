@@ -195,6 +195,22 @@
         }
       }
     },
+    "%@（納品番号 %@・このセッションで%lld箱目・累計 %lld個）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ (delivery no. %2$@, box %3$lld in this session, %4$lld pcs so far)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@（納品番号 %2$@・このセッションで%3$lld箱目・累計 %4$lld個）"
+          }
+        }
+      }
+    },
     "%@%@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1678,6 +1694,22 @@
         }
       }
     },
+    "このセッションは仕向地「%@」で照合中です。別の仕向地のQRコードは照合できません。仕向地を変えるにはセッションを終了してください。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This session is matching for ship-to \"%@\". QR codes of another ship-to cannot be matched. End the session to change the ship-to."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このセッションは仕向地「%@」で照合中です。別の仕向地のQRコードは照合できません。仕向地を変えるにはセッションを終了してください。"
+          }
+        }
+      }
+    },
     "このセッションを終了しますか？" : {
       "localizations" : {
         "en" : {
@@ -2444,6 +2476,54 @@
         }
       }
     },
+    "モックCode 128（モルテック）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mock Code 128 (Moltec)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モックCode 128（モルテック）"
+          }
+        }
+      }
+    },
+    "モックQR（モルテック）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mock QR (Moltec)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モックQR（モルテック）"
+          }
+        }
+      }
+    },
+    "モルテック" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moltec"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モルテック"
+          }
+        }
+      }
+    },
     "一致が0件のため、このセッションは履歴に保存されません。" : {
       "localizations" : {
         "en" : {
@@ -2644,6 +2724,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "今すぐ次の照合へ"
+          }
+        }
+      }
+    },
+    "仕向地" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ship-to"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仕向地"
           }
         }
       }
@@ -3174,6 +3270,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "品目番号が一致しています。この品番は本セッションで%lld箱目です。"
+          }
+        }
+      }
+    },
+    "品目番号が一致しています。納品番号 %@ は本セッションで%lld箱目です（累計 %lld個）。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Item numbers match. Delivery number %1$@ is box %2$lld in this session (%3$lld pcs so far)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "品目番号が一致しています。納品番号 %1$@ は本セッションで%2$lld箱目です（累計 %3$lld個）。"
           }
         }
       }
@@ -3719,6 +3831,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正方形のQRコードを枠に合わせてください。"
+          }
+        }
+      }
+    },
+    "澤井製作所" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sawai Seisakusho"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "澤井製作所"
           }
         }
       }
