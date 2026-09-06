@@ -3,6 +3,7 @@ package jp.rimtty.codematch.feature.history
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -10,8 +11,13 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performSemanticsAction
@@ -20,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.mutableStateOf
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import jp.rimtty.codematch.core.model.AppLanguage
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchEntry
 import jp.rimtty.codematch.core.model.MatchSession
 import org.junit.Assert.assertEquals
@@ -192,5 +199,140 @@ class HistoryScreenTest {
         composeRule.onNodeWithText("2箱").performScrollTo().assertIsDisplayed()
         composeRule.onAllNodesWithText("1 box").assertCountEquals(0)
         composeRule.onAllNodesWithText("2 boxes").assertCountEquals(0)
+    }
+
+    @Test
+    fun moltecEntryDetailDisplaysAllParsedFields() {
+        assertEquals(61, MOLTEC_QR_2.length)
+        val entry = MatchEntry(
+            code = "PAF1-15-422",
+            qrPayload = MOLTEC_QR_2,
+            barcodePayload = "PAF1-15-422@0NKD3C",
+        )
+        composeRule.setContent {
+            HistoryEntryDetail(entry = entry, language = AppLanguage.ENGLISH)
+        }
+
+        composeRule.onNodeWithTag(HistoryTestTags.ENTRY_DETAIL).assertIsDisplayed()
+        composeRule.onNodeWithText("Delivery information (QR)").assertIsDisplayed()
+        composeRule.onNodeWithText("AK6805").assertIsDisplayed()
+        composeRule.onNodeWithText("UAG5560").assertIsDisplayed()
+        composeRule.onNodeWithText("FA2").assertIsDisplayed()
+        composeRule.onNodeWithText("P59").assertIsDisplayed()
+        composeRule.onNodeWithText("01FEM").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("120").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("09/08").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("00:00").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("0NKD3C").performScrollTo().assertIsDisplayed()
+        // The Sawai record has no delivery number, so its rows must stay away.
+        composeRule.onAllNodesWithText("Card number").assertCountEquals(0)
+    }
+
+    @Test
+    fun moltecGroupDetailShowsPerDeliveryNumberSummary() {
+        assertEquals(61, MOLTEC_QR_2.length)
+        assertEquals(61, MOLTEC_QR_3.length)
+        val group = MatchSession(
+            entries = listOf(
+                MatchEntry(
+                    id = "box-1",
+                    code = "PAF1-15-422",
+                    matchedAt = 1_000L,
+                    qrPayload = MOLTEC_QR_2,
+                    barcodePayload = "PAF1-15-422@0NKD3C",
+                ),
+                MatchEntry(
+                    id = "box-2",
+                    code = "PAF1-15-422",
+                    matchedAt = 2_000L,
+                    qrPayload = MOLTEC_QR_2,
+                    barcodePayload = "PAF1-15-422@0NLL3C",
+                ),
+                MatchEntry(
+                    id = "box-3",
+                    code = "PAF1-15-422",
+                    matchedAt = 3_000L,
+                    qrPayload = MOLTEC_QR_3,
+                    barcodePayload = "PAF1-15-422@0NMM3C",
+                ),
+            ),
+        ).groupedEntries.single()
+        composeRule.setContent {
+            HistoryGroupDetail(group = group, language = AppLanguage.ENGLISH)
+        }
+
+        composeRule.onNodeWithTag(HistoryTestTags.GROUP_DETAIL).assertIsDisplayed()
+        composeRule.onNodeWithText("Boxes per delivery number").performScrollTo().assertIsDisplayed()
+        composeRule.onAllNodesWithTag(HistoryTestTags.DELIVERY_GROUP_ROW).assertCountEquals(2)
+        composeRule.onNodeWithText("Delivery number UAG5560 (2 boxes, 240 pcs total)")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Delivery number UAG5561 (1 box, 60 pcs total)")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun sessionDetailAndRowShowDestination() {
+        val session = MatchSession(
+            id = "moltec-session",
+            startedAt = 1_000L,
+            endedAt = 2_000L,
+            destination = Destination.MOLTEC,
+            entries = listOf(
+                MatchEntry(
+                    id = "box-1",
+                    code = "PAF1-15-422",
+                    matchedAt = 1_100L,
+                    qrPayload = MOLTEC_QR_2,
+                    barcodePayload = "PAF1-15-422@0NKD3C",
+                ),
+                MatchEntry(
+                    id = "box-2",
+                    code = "PAF1-15-422",
+                    matchedAt = 1_200L,
+                    qrPayload = MOLTEC_QR_3,
+                    barcodePayload = "PAF1-15-422@0NMM3C",
+                ),
+            ),
+        )
+        // The row and the overview are stacked at full width: the expanded
+        // layout's list pane is too narrow to display the row's own text.
+        composeRule.setContent {
+            Column(Modifier.fillMaxSize()) {
+                HistoryScreen(
+                    sessions = listOf(session),
+                    language = AppLanguage.ENGLISH,
+                    modifier = Modifier.weight(1f),
+                )
+                HistorySessionDetail(
+                    session = session,
+                    language = AppLanguage.ENGLISH,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(HistoryTestTags.SESSION_DESTINATION, useUnmergedTree = true)
+            .assertIsDisplayed()
+            .assertTextEquals("Moltec")
+        // Scoped to the overview so the row's own "Moltec" cannot satisfy it.
+        composeRule.onNodeWithTag(HistoryTestTags.SESSION_DETAIL)
+            .performScrollToNode(hasText("Ship-to"))
+        composeRule.onNodeWithTag(HistoryTestTags.SESSION_DETAIL)
+            .performScrollToNode(hasText("Moltec"))
+        composeRule.onNodeWithText("Ship-to").assertIsDisplayed()
+        composeRule.onNodeWithTag(HistoryTestTags.SESSION_DETAIL)
+            .performScrollToNode(hasText("Delivery numbers"))
+        composeRule.onNodeWithText("Delivery numbers").assertIsDisplayed()
+    }
+
+    private companion object {
+        // Trailing spaces are part of the fixed-position record; the length
+        // assertions in the tests fail first if they are ever trimmed away.
+        const val MOLTEC_QR_2 =
+            "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+        const val MOLTEC_QR_3 =
+            "AK6805PAF115422          UAG5561000FA2P5901FEM000006009080000"
     }
 }

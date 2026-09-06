@@ -51,6 +51,19 @@ data class HistoryUiLabels(
     val warehouse: String,
     val supplyPoint: String,
     val managementCode: String,
+    val destination: String,
+    val destinationSawai: String,
+    val destinationMoltec: String,
+    val deliveryNumberCount: String,
+    val ordererCode: String,
+    val moltecPartNumber: String,
+    val deliveryNumber: String,
+    val deliveryDestination: String,
+    val tyLocation: String,
+    val packQuantity: String,
+    val instructionDate: String,
+    val instructionTime: String,
+    val deliveryGroups: String,
 )
 
 object HistoryUiText {
