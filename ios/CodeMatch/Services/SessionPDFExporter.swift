@@ -102,14 +102,32 @@ enum SessionPDFExporter {
                     spacing: 2
                 )
             }
+            if let destination = session.resolvedDestination {
+                draw(
+                    AppLocalization.string("仕向地: \(destination.displayName)"),
+                    font: bodyFont,
+                    color: gray,
+                    spacing: 2
+                )
+            }
+            // モルテックは同じ品番でも納品番号ごとに納品書が分かれるため、種類数も添える
+            let showsDeliveryNumberCount = session.resolvedDestination == .moltec
             draw(
                 AppLocalization.string(
                     "検査箱数: \(session.matchedCount)箱（品番数: \(session.groupedEntries.count)）"
                 ),
                 font: bodyFont,
                 color: gray,
-                spacing: 8
+                spacing: showsDeliveryNumberCount ? 2 : 8
             )
+            if showsDeliveryNumberCount {
+                draw(
+                    AppLocalization.string("納品番号数: \(session.deliveryNumberCount)"),
+                    font: bodyFont,
+                    color: gray,
+                    spacing: 8
+                )
+            }
             drawDivider()
 
             if session.entries.isEmpty {
@@ -119,6 +137,36 @@ enum SessionPDFExporter {
             func quantityText(_ value: Double?) -> String {
                 guard let value else { return "-" }
                 return appLanguage.formatQuantity(value)
+            }
+
+            /// 1箱分の読み取り記録。箱番号は呼び出し側の並び（品番ごと／納品番号ごと）に従う。
+            func drawBoxEntry(_ entry: MatchHistoryEntry, number: Int) {
+                // 箱ごとの見出し＋全文2行はまとめて改ページ判定する
+                ensureSpace(48)
+                let managementCode = entry.barcodePayload.flatMap(TagBarcodeRecord.parse)?.managementCode
+                draw(
+                    AppLocalization.string(
+                        "\(number)箱目　照合時刻: \(appLanguage.formatDateTime(entry.matchedAt))　管理コード: \(managementCode ?? "-")"
+                    ),
+                    font: bodyFont,
+                    spacing: 2
+                )
+                draw(
+                    AppLocalization.string(
+                        "QR全文: \(entry.qrPayload ?? AppLocalization.string("記録なし（旧バージョンで照合）"))"
+                    ),
+                    font: monoFont,
+                    color: gray,
+                    spacing: 2
+                )
+                draw(
+                    AppLocalization.string(
+                        "Code 128全文: \(entry.barcodePayload ?? AppLocalization.string("記録なし（旧バージョンで照合）"))"
+                    ),
+                    font: monoFont,
+                    color: gray,
+                    spacing: 5
+                )
             }
 
             // 同一品番は1グループにまとめ、何箱検査したかがひと目でわかるようにする
@@ -149,6 +197,56 @@ enum SessionPDFExporter {
                     )
                 }
 
+                // deliveryGroups はアクセスのたびにQR全文を解析し直すため、1度だけ取り出す
+                let deliveryGroups = group.deliveryGroups
+                // 納品番号を持たない記録が1件でも混ざるグループは、記録を落とさないよう従来どおり1塊で出す
+                let showsDeliveryGroups = !deliveryGroups.isEmpty
+                    && deliveryGroups.reduce(0) { $0 + $1.entries.count } == group.entries.count
+
+                if showsDeliveryGroups {
+                    // モルテックは同じ品番でも納品書(納品番号)ごとに納入先や指示日が変わる
+                    for deliveryGroup in deliveryGroups {
+                        // 納品番号1件分の見出し＋納品書情報3行はまとめて改ページ判定する
+                        ensureSpace(110)
+                        let record = deliveryGroup.record
+                        draw(
+                            AppLocalization.string(
+                                "納品番号 \(deliveryGroup.deliveryNumber)（\(deliveryGroup.boxCount)箱・累計 \(deliveryGroup.totalQuantity)個）"
+                            ),
+                            font: headFont,
+                            spacing: 2
+                        )
+                        draw(
+                            AppLocalization.string(
+                                "受注者: \(record.ordererCode)　部品番号: \(CodeMatcher.format(partNumber: record.partNumber))　納品番号: \(record.deliveryNumber)"
+                            ),
+                            font: bodyFont,
+                            spacing: 2
+                        )
+                        draw(
+                            AppLocalization.string(
+                                "納入先: \(record.deliveryDestination)　TYロケーション: \(record.tyLocation ?? "-")　供給先: \(record.supplyPoint)"
+                            ),
+                            font: bodyFont,
+                            spacing: 2
+                        )
+                        draw(
+                            AppLocalization.string(
+                                "収容数: \(record.packQuantity)　納入指示日(JUMP): \(record.formattedInstructionDate)　時刻: \(record.formattedInstructionTime ?? "-")"
+                            ),
+                            font: bodyFont,
+                            spacing: 4
+                        )
+
+                        draw(AppLocalization.string("各箱の読み取り記録"), font: headFont, spacing: 2)
+                        for (boxIndex, entry) in deliveryGroup.entries.enumerated() {
+                            drawBoxEntry(entry, number: boxIndex + 1)
+                        }
+                    }
+                    drawDivider()
+                    continue
+                }
+
                 if let qr = group.entries.compactMap({ $0.qrPayload.flatMap(KanbanQRRecord.parse) }).first {
                     let suffix = qr.partSuffix.map { AppLocalization.string("（枝番 \($0)）") } ?? ""
                     draw(AppLocalization.string("納品書情報"), font: headFont, spacing: 2)
@@ -177,32 +275,7 @@ enum SessionPDFExporter {
 
                 draw(AppLocalization.string("各箱の読み取り記録"), font: headFont, spacing: 2)
                 for (boxIndex, entry) in group.entries.enumerated() {
-                    // 箱ごとの見出し＋全文2行はまとめて改ページ判定する
-                    ensureSpace(48)
-                    let managementCode = entry.barcodePayload.flatMap(TagBarcodeRecord.parse)?.managementCode
-                    draw(
-                        AppLocalization.string(
-                            "\(boxIndex + 1)箱目　照合時刻: \(appLanguage.formatDateTime(entry.matchedAt))　管理コード: \(managementCode ?? "-")"
-                        ),
-                        font: bodyFont,
-                        spacing: 2
-                    )
-                    draw(
-                        AppLocalization.string(
-                            "QR全文: \(entry.qrPayload ?? AppLocalization.string("記録なし（旧バージョンで照合）"))"
-                        ),
-                        font: monoFont,
-                        color: gray,
-                        spacing: 2
-                    )
-                    draw(
-                        AppLocalization.string(
-                            "Code 128全文: \(entry.barcodePayload ?? AppLocalization.string("記録なし（旧バージョンで照合）"))"
-                        ),
-                        font: monoFont,
-                        color: gray,
-                        spacing: 5
-                    )
+                    drawBoxEntry(entry, number: boxIndex + 1)
                 }
                 drawDivider()
             }

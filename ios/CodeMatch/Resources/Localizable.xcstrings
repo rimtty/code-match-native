@@ -5368,6 +5368,262 @@
           }
         }
       }
+    },
+    "仕向地: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ship-to: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仕向地: %@"
+          }
+        }
+      }
+    },
+    "受注者" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orderer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受注者"
+          }
+        }
+      }
+    },
+    "部品番号" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Part number"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部品番号"
+          }
+        }
+      }
+    },
+    "納品番号" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delivery number"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "納品番号"
+          }
+        }
+      }
+    },
+    "納入先" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delivery point"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "納入先"
+          }
+        }
+      }
+    },
+    "TYロケーション" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TY location"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TYロケーション"
+          }
+        }
+      }
+    },
+    "収容数" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pack quantity"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "収容数"
+          }
+        }
+      }
+    },
+    "納入指示日(JUMP)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instruction date (JUMP)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "納入指示日(JUMP)"
+          }
+        }
+      }
+    },
+    "時刻" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Time"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "時刻"
+          }
+        }
+      }
+    },
+    "納品番号数" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delivery numbers"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "納品番号数"
+          }
+        }
+      }
+    },
+    "納品番号数: %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delivery numbers: %lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "納品番号数: %lld"
+          }
+        }
+      }
+    },
+    "納品番号 %@（%lld箱・累計 %lld個）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delivery number %1$@ (%2$lld boxes, %3$lld pcs total)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "納品番号 %1$@（%2$lld箱・累計 %3$lld個）"
+          }
+        }
+      }
+    },
+    "受注者: %@　部品番号: %@　納品番号: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orderer: %1$@, part number: %2$@, delivery number: %3$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受注者: %1$@　部品番号: %2$@　納品番号: %3$@"
+          }
+        }
+      }
+    },
+    "納入先: %@　TYロケーション: %@　供給先: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delivery point: %1$@, TY location: %2$@, supply point: %3$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "納入先: %1$@　TYロケーション: %2$@　供給先: %3$@"
+          }
+        }
+      }
+    },
+    "収容数: %lld　納入指示日(JUMP): %@　時刻: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pack quantity: %1$lld, instruction date (JUMP): %2$@, time: %3$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "収容数: %1$lld　納入指示日(JUMP): %2$@　時刻: %3$@"
+          }
+        }
+      }
+    },
+    "%@、%@、%@、%@、%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@, %3$@, %4$@, %5$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@、%2$@、%3$@、%4$@、%5$@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

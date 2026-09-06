@@ -328,6 +328,24 @@ struct MoltecQRRecord: Equatable {
     }
 }
 
+extension MoltecQRRecord {
+    /// 納入指示日(JUMP)の表示形。`0908` → `09/08`。
+    var formattedInstructionDate: String {
+        Self.pairs(instructionDate, separator: "/")
+    }
+
+    /// 時刻の表示形。`0000` → `00:00`。時刻欄が空欄の記録ではnilのまま返す。
+    var formattedInstructionTime: String? {
+        instructionTime.map { Self.pairs($0, separator: ":") }
+    }
+
+    /// 4桁の値を2桁ずつに区切る。4桁でない値は整形せずそのまま返す。
+    private static func pairs(_ value: String, separator: String) -> String {
+        guard value.count == 4 else { return value }
+        return "\(value.prefix(2))\(separator)\(value.suffix(2))"
+    }
+}
+
 /// 「同じ箱を二重に検査していないか」を判定するための箱固有キー。
 ///
 /// 澤井製作所はカード番号がQRに含まれるためQR単体で箱を識別できるが、

@@ -72,6 +72,11 @@ private struct SessionHistoryRow: View {
                 Text(appLanguage.formatDateTime(session.startedAt))
                     .font(session.displayName.isEmpty ? .subheadline.weight(.semibold) : .caption)
                     .foregroundStyle(session.displayName.isEmpty ? AppTheme.ink : AppTheme.muted)
+                if let destination = session.resolvedDestination {
+                    Text(AppLocalization.string("仕向地: \(destination.displayName)"))
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.muted)
+                }
                 Text(session.isActive ? AppLocalization.string("照合中のセッション") : sessionDurationText)
                     .font(.caption)
                     .foregroundStyle(session.isActive ? AppTheme.green : AppTheme.muted)
@@ -93,10 +98,18 @@ private struct SessionHistoryRow: View {
         let date = appLanguage.formatDateTime(session.startedAt)
         let boxCount = AppLocalization.string("\(session.matchedCount)箱")
         let status = session.isActive ? AppLocalization.string("照合中") : AppLocalization.string("終了済み")
-        guard !session.displayName.isEmpty else {
+        switch (session.displayName.isEmpty, session.resolvedDestination?.displayName) {
+        case (true, nil):
             return AppLocalization.string("\(date)、\(boxCount)、\(status)")
+        case (true, let destination?):
+            return AppLocalization.string("\(date)、\(destination)、\(boxCount)、\(status)")
+        case (false, nil):
+            return AppLocalization.string("\(session.displayName)、\(date)、\(boxCount)、\(status)")
+        case (false, let destination?):
+            return AppLocalization.string(
+                "\(session.displayName)、\(date)、\(destination)、\(boxCount)、\(status)"
+            )
         }
-        return AppLocalization.string("\(session.displayName)、\(date)、\(boxCount)、\(status)")
     }
 }
 
@@ -150,6 +163,13 @@ private struct SessionHistoryDetail: View {
                             )
                             .foregroundStyle(AppTheme.green)
                         }
+                        if let destination = session.resolvedDestination {
+                            LabeledContent(
+                                AppLocalization.string("仕向地"),
+                                value: destination.displayName
+                            )
+                            .accessibilityIdentifier("historySessionDestination")
+                        }
                         LabeledContent(
                             AppLocalization.string("検査箱数"),
                             value: AppLocalization.string("\(session.matchedCount)箱")
@@ -158,6 +178,13 @@ private struct SessionHistoryDetail: View {
                             AppLocalization.string("品番数"),
                             value: AppLocalization.string("\(session.groupedEntries.count)品番")
                         )
+                        // モルテックは同じ品番でも納品番号ごとに納品書が分かれるため、種類数も添える
+                        if session.resolvedDestination == .moltec {
+                            LabeledContent(
+                                AppLocalization.string("納品番号数"),
+                                value: appLanguage.formatInteger(session.deliveryNumberCount)
+                            )
+                        }
                     }
 
                     Section {
@@ -300,6 +327,12 @@ private struct GroupedMatchDetail: View {
     }
 
     var body: some View {
+        // deliveryGroups はアクセスのたびにQR全文を解析し直すため、body先頭で1度だけ取り出す
+        let deliveryGroups = group.deliveryGroups
+        // 納品番号を持たない記録が1件でも混ざるグループは、記録を落とさないよう従来どおり1節にまとめる
+        let showsDeliveryGroups = !deliveryGroups.isEmpty
+            && deliveryGroups.reduce(0) { $0 + $1.entries.count } == group.entries.count
+
         List {
             Section {
                 LabeledContent(AppLocalization.string("番号"), value: "#\(number)")
@@ -325,28 +358,63 @@ private struct GroupedMatchDetail: View {
                     .textSelection(.enabled)
             }
 
-            Section(AppLocalization.string("各箱の照合記録")) {
-                ForEach(Array(group.entries.enumerated()), id: \.element.id) { index, entry in
-                    NavigationLink {
-                        MatchEntryDetail(entry: entry, number: index + 1)
-                    } label: {
-                        HStack {
-                            Text(AppLocalization.string("\(index + 1)箱目"))
-                                .font(.subheadline.weight(.bold))
-                                .foregroundStyle(AppTheme.green)
-                            Spacer()
-                            Text(appLanguage.formatTime(entry.matchedAt))
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.muted)
+            if showsDeliveryGroups {
+                // モルテックは同じ品番でも納品書(納品番号)ごとに箱数と累計が分かれる
+                ForEach(deliveryGroups) { deliveryGroup in
+                    Section(
+                        AppLocalization.string(
+                            "納品番号 \(deliveryGroup.deliveryNumber)（\(deliveryGroup.boxCount)箱・累計 \(deliveryGroup.totalQuantity)個）"
+                        )
+                    ) {
+                        ForEach(Array(deliveryGroup.entries.enumerated()), id: \.element.id) { index, entry in
+                            boxEntryRow(entry: entry, number: index + 1, showsManagementCode: true)
                         }
-                        .padding(.vertical, 3)
                     }
-                    .accessibilityIdentifier("boxEntryRow")
+                }
+            } else {
+                Section(AppLocalization.string("各箱の照合記録")) {
+                    ForEach(Array(group.entries.enumerated()), id: \.element.id) { index, entry in
+                        boxEntryRow(entry: entry, number: index + 1)
+                    }
                 }
             }
         }
         .navigationTitle(group.code)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// 1箱分の行。モルテックは同じ納品番号の箱をQRでは区別できないため、管理コードを添える。
+    private func boxEntryRow(
+        entry: MatchHistoryEntry,
+        number: Int,
+        showsManagementCode: Bool = false
+    ) -> some View {
+        let managementCode = showsManagementCode
+            ? entry.barcodePayload.flatMap(TagBarcodeRecord.parse)?.managementCode
+            : nil
+
+        return NavigationLink {
+            MatchEntryDetail(entry: entry, number: number)
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(AppLocalization.string("\(number)箱目"))
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(AppTheme.green)
+                    Spacer()
+                    Text(appLanguage.formatTime(entry.matchedAt))
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.muted)
+                }
+                if let managementCode {
+                    Text(AppLocalization.string("管理コード") + ": \(managementCode)")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.muted)
+                }
+            }
+            .padding(.vertical, 3)
+        }
+        .accessibilityIdentifier("boxEntryRow")
     }
 }
 
@@ -391,6 +459,30 @@ private struct MatchEntryDetail: View {
                     LabeledContent(AppLocalization.string("工場"), value: qr.factoryCode ?? "-")
                     LabeledContent(AppLocalization.string("受入部品庫"), value: qr.warehouseCode ?? "-")
                     LabeledContent(AppLocalization.string("供給先"), value: qr.supplyPointCode ?? "-")
+                }
+            } else if let qr = entry.moltecRecord {
+                Section(AppLocalization.string("納品書情報（QR解析）")) {
+                    LabeledContent(AppLocalization.string("受注者"), value: qr.ordererCode)
+                    LabeledContent(
+                        AppLocalization.string("部品番号"),
+                        value: CodeMatcher.format(partNumber: qr.partNumber)
+                    )
+                    LabeledContent(AppLocalization.string("納品番号"), value: qr.deliveryNumber)
+                    LabeledContent(AppLocalization.string("納入先"), value: qr.deliveryDestination)
+                    LabeledContent(AppLocalization.string("TYロケーション"), value: qr.tyLocation ?? "-")
+                    LabeledContent(AppLocalization.string("供給先"), value: qr.supplyPoint)
+                    LabeledContent(
+                        AppLocalization.string("収容数"),
+                        value: appLanguage.formatInteger(qr.packQuantity)
+                    )
+                    LabeledContent(
+                        AppLocalization.string("納入指示日(JUMP)"),
+                        value: qr.formattedInstructionDate
+                    )
+                    LabeledContent(
+                        AppLocalization.string("時刻"),
+                        value: qr.formattedInstructionTime ?? "-"
+                    )
                 }
             }
 
