@@ -15,6 +15,11 @@ final class ScannerViewModel: ObservableObject {
     @Published private(set) var focusPoint: CGPoint?
     /// 一致した品番がこのセッションで何箱目の照合かを示す通し番号。結果表示中以外は0。
     @Published private(set) var sessionBoxNumber = 0
+    /// セッションの仕向地。最初に受理したQRで固定し、以後は別仕向地のQRを拒否する。
+    /// セッション終了まで解除しない。
+    @Published private(set) var destination: Destination?
+    /// モルテックの一致結果でだけ設定する納品番号ごとの集計。結果表示中以外は nil。
+    @Published private(set) var deliverySummary: DeliveryBoxSummary?
     @Published private(set) var isAutoAdvanceEnabled: Bool
     @Published private(set) var autoAdvanceDelay: AutoAdvanceDelay
     @Published private(set) var autoAdvanceSecondsRemaining: Int?
@@ -63,10 +68,17 @@ final class ScannerViewModel: ObservableObject {
         }
     }
 
-    /// 実ラベル由来のサンプルペイロード(品番 BCJH-52-81GG)。デモ判定に使用する。
+    /// 実ラベル由来のサンプルペイロード(仕向地 澤井製作所・品番 BCJH-52-81GG)。デモ判定に使用する。
     static let sampleQRPayload = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     static let sampleBarcodePayload = "BCJH-52-81GG@1N5X0C"
     static let sampleMismatchBarcodePayload = "BCJH-55-81GG@1KVV0C"
+    /// 実ラベル由来のサンプルペイロード(仕向地 モルテック・品番 PAF1-15-422・納品番号 UAG5560)。
+    /// 61桁固定長レコードなので、末尾の空白まで含めて1文字も削らない。
+    static let sampleMoltecQRPayload = "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+    static let sampleMoltecBarcodePayload = "PAF1-15-422@0NKD3C"
+    /// 同じ納品書QRの2箱目。モルテックのQRは箱を区別しないため、現品票の管理コードだけが異なる。
+    static let sampleMoltecSecondBoxBarcodePayload = "PAF1-15-422@0NLL3C"
+    static let sampleMoltecMismatchBarcodePayload = "PAF1-15-423@0N5L3C"
 
     var qrPartNumber: String? {
         CodeMatcher.partNumber(fromQR: qrValue)
@@ -90,6 +102,8 @@ final class ScannerViewModel: ObservableObject {
         self.isAutoAdvanceEnabled = isAutoAdvanceEnabled
         self.autoAdvanceDelay = autoAdvanceDelay
         self.autoAdvanceTickDuration = autoAdvanceTickDuration
+        // 画面が作り直されても、セッションで確定済みの仕向地は引き継ぐ。
+        destination = historyStore.activeSession?.resolvedDestination
         camera.delegate = self
         bluetoothScanner.onCode = { [weak self] value in
             self?.handleBluetoothScan(value)
@@ -103,8 +117,14 @@ final class ScannerViewModel: ObservableObject {
             barcodeValue = Self.sampleBarcodePayload
             step = .result(.match)
             setLocalizedMessage { AppLocalization.string("品目番号が一致しています。") }
-            historyStore.recordMatch(code: recordedCode, qrPayload: qrValue, barcodePayload: barcodeValue)
+            historyStore.recordMatch(
+                code: recordedCode,
+                qrPayload: qrValue,
+                barcodePayload: barcodeValue,
+                destination: .sawai
+            )
             sessionBoxNumber = historyStore.activeSessionMatchCount(code: recordedCode)
+            destination = .sawai
         } else if ProcessInfo.processInfo.arguments.contains("-demoMismatch") {
             qrValue = Self.sampleQRPayload
             barcodeValue = Self.sampleMismatchBarcodePayload
@@ -171,6 +191,8 @@ final class ScannerViewModel: ObservableObject {
         rejectedCameraCode = nil
         focusPoint = nil
         sessionBoxNumber = 0
+        // 仕向地はセッション単位の固定なので、次の照合へ進んでも解除しない。
+        deliverySummary = nil
         if inputSource == .bluetooth, bluetoothScanner.isConnected {
             bluetoothScanner.setExpectedCode(.qr)
             setLocalizedMessage { AppLocalization.string("BCST-47で納品書兼現品票のQRコードを読み取ってください。") }
@@ -196,6 +218,8 @@ final class ScannerViewModel: ObservableObject {
         scanLocked = false
         barcodeCandidate = nil
         focusPoint = nil
+        // 仕向地はセッション単位の固定なので、QRを取り直しても解除しない。
+        deliverySummary = nil
 
         if inputSource == .bluetooth, bluetoothScanner.isConnected {
             bluetoothScanner.setExpectedCode(.qr)
@@ -404,7 +428,12 @@ final class ScannerViewModel: ObservableObject {
         finishComparison()
     }
 
-    private func acceptQR(_ value: String) {
+    private func acceptQR(_ value: String, destination: Destination) {
+        // 最初に受理したQRでセッションの仕向地を確定し、履歴側にも同じ値を残す。
+        if self.destination == nil {
+            self.destination = destination
+            historyStore.setActiveSessionDestinationIfNeeded(destination)
+        }
         scanLocked = true
         qrValue = value
         step = .barcode
@@ -494,23 +523,29 @@ final class ScannerViewModel: ObservableObject {
 
         switch expectedCode {
         case .qr:
-            guard KanbanQRRecord.isValidScanPayload(value) else {
+            guard let detected = Destination.detect(qrPayload: value) else {
                 // 相手工程の正しい形式なら順序違い、それ以外は無関係なコードとして案内する。
+                // 仕向地が未確定でも取りこぼさないよう、現品票の判定は緩い方を使う。
                 rejectBluetoothScan(
-                    TagBarcodeRecord.isValidScanPayload(value, destination: .sawai)
+                    TagBarcodeRecord.isValidScanPayload(value, destination: nil)
                         ? "読み取り順序が違います。先に納品書兼現品票のQRコードを読み取ってください。"
                         : "納品書兼現品票のQRコードではありません。納品書兼現品票のQRコードを読み取ってください。"
                 )
                 return
             }
-            acceptQR(value)
+            // セッションの仕向地が確定していれば、別仕向地のQRは照合へ進めない。
+            if let locked = destination, locked != detected {
+                rejectBluetoothScan(Self.destinationLockMessage(locked))
+                return
+            }
+            acceptQR(value, destination: detected)
         case .barcode:
             // BCST-47は1回の読取結果を複数回通知することがある。
             // QR確定後に同じペイロードが再通知されてもバーコードとして扱わない。
             guard value != qrValue else { return }
-            guard TagBarcodeRecord.isValidScanPayload(value, destination: .sawai) else {
+            guard TagBarcodeRecord.isValidScanPayload(value, destination: destination) else {
                 rejectBluetoothScan(
-                    KanbanQRRecord.isValidScanPayload(value)
+                    Destination.detect(qrPayload: value) != nil
                         ? "読み取り順序が違います。現在は現品票のCode 128バーコード待ちです。"
                         : "現品票のCode 128バーコードではありません。現在は現品票のCode 128バーコード待ちです。"
                 )
@@ -528,7 +563,7 @@ final class ScannerViewModel: ObservableObject {
         feedback.invalidScan()
     }
 
-    /// カメラのQRもBLEと同じ業務QR（66桁固定長）の検証を通す。無関係なQRは
+    /// カメラのQRもBLEと同じ業務QR（仕向地ごとの固定長レコード）の検証を通す。無関係なQRは
     /// 警告してQR待機と件数を保持し、履歴や診断へ値を残さない。
     private func rejectCameraQR(_ value: String) {
         rejectCameraCode(value) {
@@ -536,12 +571,25 @@ final class ScannerViewModel: ObservableObject {
         }
     }
 
-    /// カメラのCode 128もBLEと同じ現品票の業務形式（4-2-4の品番@管理コード）の検証を通す。
+    /// カメラのCode 128もBLEと同じ現品票の業務形式（品番@管理コード）の検証を通す。
     /// 業務外のCode 128は2フレーム確認の候補に入れず、Code 128待機と件数を保持する。
     private func rejectCameraBarcode(_ value: String) {
         rejectCameraCode(value) {
             AppLocalization.string("現品票のCode 128バーコードではありません。現品票のCode 128バーコードを枠に合わせてください。")
         }
+    }
+
+    /// 仕向地を固定した後に別仕向地のQRが届いたときの案内。カメラは同じQRが
+    /// フレームごとに届くため、`rejectCameraCode`の再通知抑制を通す。
+    private func rejectCameraDestinationLock(_ value: String, locked: Destination) {
+        rejectCameraCode(value) {
+            AppLocalization.string(Self.destinationLockMessage(locked))
+        }
+    }
+
+    /// 仕向地を固定中に別仕向地のQRを拒否する文言。Bluetoothとカメラで同じキーを使う。
+    private static func destinationLockMessage(_ locked: Destination) -> String.LocalizationValue {
+        "このセッションは仕向地「\(locked.displayName)」で照合中です。別の仕向地のQRコードは照合できません。仕向地を変えるにはセッションを終了してください。"
     }
 
     private func rejectCameraCode(_ value: String, message: @escaping () -> String) {
@@ -603,9 +651,10 @@ final class ScannerViewModel: ObservableObject {
         // 結果表示と次の照合の間もQR・Code 128のセッション固定モードを維持する。
         // 工程ごとのGATT設定変更をなくし、連続トリガーと設定通信の競合を防ぐ。
         let comparison = CodeMatcher.compare(qrPayload: qrValue, barcodePayload: barcodeValue)
+        let detected = Destination.detect(qrPayload: qrValue)
         let result: MatchResult
         if comparison == .match,
-           historyStore.activeSessionContainsMatchedQRPayload(qrValue) {
+           historyStore.activeSessionContainsMatchedBox(qrPayload: qrValue, barcodePayload: barcodeValue) {
             result = .duplicate
         } else {
             result = comparison
@@ -614,28 +663,50 @@ final class ScannerViewModel: ObservableObject {
 
         switch result {
         case .match:
+            // デモ判定などQRの受理を経ない経路でも、記録する仕向地と表示を一致させる。
+            if destination == nil, let detected {
+                destination = detected
+            }
             historyStore.recordMatch(
                 code: recordedCode,
                 qrPayload: qrValue,
-                barcodePayload: barcodeValue
+                barcodePayload: barcodeValue,
+                destination: detected
             )
-            let boxNumber = historyStore.activeSessionMatchCount(code: recordedCode)
-            sessionBoxNumber = boxNumber
-            setLocalizedMessage {
-                boxNumber >= 2
-                    ? AppLocalization.string("品目番号が一致しています。この品番は本セッションで\(boxNumber)箱目です。")
-                    : AppLocalization.string("品目番号が一致しています。")
+            if detected == .moltec, let record = MoltecQRRecord.parse(qrValue) {
+                // モルテックは納品番号ごとに箱を数え、収容数を積み上げて報告する。
+                let summary = historyStore.activeSessionDeliverySummary(
+                    deliveryNumber: record.deliveryNumber
+                )
+                sessionBoxNumber = summary.boxCount
+                deliverySummary = summary
+                setLocalizedMessage {
+                    AppLocalization.string(
+                        "品目番号が一致しています。納品番号 \(summary.deliveryNumber) は本セッションで\(summary.boxCount)箱目です（累計 \(summary.totalQuantity)個）。"
+                    )
+                }
+            } else {
+                deliverySummary = nil
+                let boxNumber = historyStore.activeSessionMatchCount(code: recordedCode)
+                sessionBoxNumber = boxNumber
+                setLocalizedMessage {
+                    boxNumber >= 2
+                        ? AppLocalization.string("品目番号が一致しています。この品番は本セッションで\(boxNumber)箱目です。")
+                        : AppLocalization.string("品目番号が一致しています。")
+                }
             }
             feedback.success(after: resultSoundDelay)
             startAutoAdvanceCountdownIfNeeded()
         case .mismatch:
             sessionBoxNumber = 0
+            deliverySummary = nil
             setLocalizedMessage {
                 AppLocalization.string("品目番号が一致しません。納品書と現品の取り違えを確認してください。")
             }
             feedback.failure()
         case .duplicate:
             sessionBoxNumber = 0
+            deliverySummary = nil
             setLocalizedMessage {
                 AppLocalization.string("すでに照合済みです。このコードは照合件数に加えていません。")
             }
@@ -717,13 +788,18 @@ extension ScannerViewModel: CameraScannerDelegate {
 
         switch (expectedCode, type) {
         case (.qr, .qr):
-            guard KanbanQRRecord.isValidScanPayload(value) else {
+            guard let detected = Destination.detect(qrPayload: value) else {
                 rejectCameraQR(value)
                 return
             }
-            acceptQR(value)
+            // セッションの仕向地が確定していれば、別仕向地のQRは照合へ進めない。
+            if let locked = destination, locked != detected {
+                rejectCameraDestinationLock(value, locked: locked)
+                return
+            }
+            acceptQR(value, destination: detected)
         case (.barcode, .code128):
-            guard TagBarcodeRecord.isValidScanPayload(value, destination: .sawai) else {
+            guard TagBarcodeRecord.isValidScanPayload(value, destination: destination) else {
                 rejectCameraBarcode(value)
                 return
             }

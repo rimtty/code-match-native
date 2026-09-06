@@ -131,11 +131,26 @@ struct ScannerScreen: View {
         VStack(spacing: 0) {
             HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(sessionTitle)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.66))
-                        .lineLimit(1)
-                Text(AppLocalization.string("\(matchedCount)件照合済み"))
+                    HStack(spacing: 6) {
+                        Text(sessionTitle)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.white.opacity(0.66))
+                            .lineLimit(1)
+
+                        // 仕向地はQRを受理した時点で確定し、セッション終了まで変わらない。
+                        if let destination = viewModel.destination {
+                            Text(destination.displayName)
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(AppTheme.ink)
+                                .lineLimit(1)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(AppTheme.lime)
+                                .clipShape(Capsule())
+                                .accessibilityIdentifier("sessionDestination")
+                        }
+                    }
+                    Text(AppLocalization.string("\(matchedCount)件照合済み"))
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.white)
                         .contentTransition(.numericText())
@@ -244,6 +259,7 @@ struct ScannerScreen: View {
                     ResultView(
                         result: result,
                         sessionBoxNumber: viewModel.sessionBoxNumber,
+                        deliverySummary: viewModel.deliverySummary,
                         qrPartNumber: viewModel.qrPartNumber.map { CodeMatcher.format(partNumber: $0) },
                         barcodePartNumber: viewModel.barcodePartNumber.map { CodeMatcher.format(partNumber: $0) }
                     )
@@ -614,6 +630,17 @@ struct ScannerScreen: View {
                         }
                         .accessibilityIdentifier("demoBluetoothBarcodeButton")
                     }
+
+                    HStack {
+                        Button(AppLocalization.string("モックQR（モルテック）")) {
+                            bluetoothScanner.simulateScan(ScannerViewModel.sampleMoltecQRPayload)
+                        }
+                        .accessibilityIdentifier("demoBluetoothMoltecQRButton")
+                        Button(AppLocalization.string("モックCode 128（モルテック）")) {
+                            bluetoothScanner.simulateScan(ScannerViewModel.sampleMoltecBarcodePayload)
+                        }
+                        .accessibilityIdentifier("demoBluetoothMoltecBarcodeButton")
+                    }
                 }
             }
             .buttonStyle(.borderedProminent)
@@ -845,6 +872,8 @@ private struct ResultView: View {
     let result: MatchResult
     /// 一致した品番がこのセッションで何箱目か。2箱目以降のときだけ補足表示する。
     let sessionBoxNumber: Int
+    /// モルテックの納品番号ごとの集計。澤井製作所の結果ではnil。
+    let deliverySummary: DeliveryBoxSummary?
     let qrPartNumber: String?
     let barcodePartNumber: String?
 
@@ -914,6 +943,12 @@ private struct ResultView: View {
             let base = (barcodePartNumber ?? qrPartNumber).map {
                 AppLocalization.string("品目番号 \($0) の組み合わせは正しいです。")
             } ?? AppLocalization.string("この組み合わせは正しいです。")
+            // モルテックは納品番号ごとの箱数と収容数の累計を添える。
+            if let summary = deliverySummary {
+                return AppLocalization.string(
+                    "\(base)（納品番号 \(summary.deliveryNumber)・このセッションで\(summary.boxCount)箱目・累計 \(summary.totalQuantity)個）"
+                )
+            }
             return sessionBoxNumber >= 2 ? AppLocalization.string("\(base)（このセッションで\(sessionBoxNumber)箱目）") : base
         case .mismatch:
             return AppLocalization.string("品目番号が一致しません。対象を確認して、もう一度読み取ってください。")

@@ -112,6 +112,16 @@ enum Destination: String, Codable, CaseIterable, Equatable {
     }
 }
 
+extension Destination {
+    /// 画面に出す仕向地の名称。表示のたびに現在の言語で解決する。
+    var displayName: String {
+        switch self {
+        case .sawai: AppLocalization.string("澤井製作所")
+        case .moltec: AppLocalization.string("モルテック")
+        }
+    }
+}
+
 /// 現場ラベルの実データ仕様に基づく品番照合。
 ///
 /// - 現品票のCode 128: `品番(ハイフン付き)@管理コード` 例: `BCJH-52-81GG@1N5X0C`
