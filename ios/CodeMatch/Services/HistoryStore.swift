@@ -45,6 +45,7 @@ final class HistoryStore: ObservableObject {
         code: String,
         qrPayload: String? = nil,
         barcodePayload: String? = nil,
+        destination: Destination? = nil,
         at date: Date = Date()
     ) {
         guard let index = sessions.firstIndex(where: \.isActive) else { return }
@@ -57,6 +58,21 @@ final class HistoryStore: ObservableObject {
                 barcodePayload: barcodePayload
             )
         )
+        // 仕向地はセッションで最初に確定した値を保つ。後続の記録では上書きしない。
+        if sessions[index].destination == nil,
+           let resolved = destination ?? qrPayload.flatMap(Destination.detect(qrPayload:)) {
+            sessions[index].destination = resolved
+        }
+        persist()
+    }
+
+    /// アクティブセッションの仕向地を確定する。すでに確定していれば何もしない。
+    /// 一致を記録する前でも、QRを受理した時点で確定できるようにするための入口。
+    func setActiveSessionDestinationIfNeeded(_ destination: Destination) {
+        guard let index = sessions.firstIndex(where: \.isActive),
+              sessions[index].destination == nil
+        else { return }
+        sessions[index].destination = destination
         persist()
     }
 
@@ -74,6 +90,27 @@ final class HistoryStore: ObservableObject {
         return activeSession?.entries.contains { entry in
             entry.qrPayload.map(Self.normalizedPayload) == normalizedQR
         } ?? false
+    }
+
+    /// アクティブセッションの成功履歴に、今回の箱がすでに含まれるかを確認する。
+    /// 澤井製作所のQRは箱ごとにカード番号が異なるためQR全文だけで箱を識別できるが、
+    /// モルテックのQRは同じ納品番号の全箱で同一なので、現品票のCode 128全文まで含めて識別する。
+    func activeSessionContainsMatchedBox(qrPayload: String, barcodePayload: String) -> Bool {
+        guard Destination.detect(qrPayload: qrPayload) == .moltec else {
+            return activeSessionContainsMatchedQRPayload(qrPayload)
+        }
+        guard
+            let identity = BoxIdentity.make(qrPayload: qrPayload, barcodePayload: barcodePayload)
+        else { return false }
+
+        return activeSession?.entries.contains { $0.boxIdentity == identity } ?? false
+    }
+
+    /// アクティブセッションでこの納品番号（モルテック）を何箱検査し、収容数が何個になったか。
+    /// アクティブセッションがなければ0箱・0個を返す。
+    func activeSessionDeliverySummary(deliveryNumber: String) -> DeliveryBoxSummary {
+        activeSession?.deliverySummary(deliveryNumber: deliveryNumber)
+            ?? DeliveryBoxSummary.empty(deliveryNumber: deliveryNumber)
     }
 
     func renameSession(id: UUID, name: String?) {
