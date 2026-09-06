@@ -2,6 +2,7 @@ package jp.rimtty.codematch.core.model
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -33,5 +34,19 @@ class HistoryModelsTest {
         assertEquals("", session.displayName)
         assertFalse(session.isActive)
         assertEquals(EndSessionOutcome.Ended("id", 300L), EndSessionOutcome.Ended("id", 300L))
+    }
+
+    @Test
+    fun destinationDefaultsToNullForLegacySessions() {
+        // Sessions recorded before destinations existed stay constructible and
+        // report no destination rather than being assumed to be 澤井製作所.
+        val legacy = MatchSession(id = "legacy", startedAt = 100L, name = "午前")
+
+        assertNull(legacy.destination)
+        assertEquals("午前", legacy.displayName)
+        assertEquals(
+            Destination.MOLTEC,
+            legacy.copy(destination = Destination.MOLTEC).destination,
+        )
     }
 }

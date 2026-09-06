@@ -1,6 +1,7 @@
 package jp.rimtty.codematch.core.data
 
 import androidx.room.withTransaction
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchEntry
 import jp.rimtty.codematch.core.model.MatchSession
 import jp.rimtty.codematch.core.model.EndSessionOutcome
@@ -50,6 +51,8 @@ class HistoryRepository(
                     startedAt = at,
                     endedAt = null,
                     name = normalizeName(name),
+                    // Locked later by the first accepted QR, not at begin time.
+                    destination = null,
                 )
                 sessionDao.insert(session)
                 session.id
@@ -64,6 +67,14 @@ class HistoryRepository(
      * returned. Otherwise the one-based box number for this part number is
      * returned. When [sessionId] is supplied it must identify that same active
      * session, which prevents a stale screen from writing into a newer one.
+     *
+     * The returned number counts boxes carrying the same part number, which is
+     * the 澤井製作所 rule. Moltec numbers boxes per 納品番号 instead; that
+     * grouping is decided by the scan state machine, so this return value is
+     * deliberately left unchanged by [destination].
+     *
+     * [destination] only locks the session: the first non-null value wins and
+     * later ones are ignored, so a session can never mix two destinations.
      */
     suspend fun recordMatch(
         code: String,
@@ -72,12 +83,16 @@ class HistoryRepository(
         at: Long = now(),
         sessionId: String? = null,
         checkpoint: ScanSessionCheckpoint? = null,
+        destination: Destination? = null,
     ): Int? = database.withTransaction {
         val active = sessionDao.findActive()
             ?: return@withTransaction null
         if (sessionId != null && sessionId != active.id) {
             return@withTransaction null
         }
+        // Same transaction as the insert, so a recorded box and the session
+        // label describing how it was matched can never diverge.
+        destination?.let { sessionDao.lockDestination(active.id, it.id) }
 
         val normalizedCode = code.trim()
         val boxNumber = entryDao.countForCode(active.id, normalizedCode) + 1
@@ -154,12 +169,19 @@ class HistoryRepository(
      * The primary key in [ScanCheckpointEntity] makes this an upsert: one
      * session can have exactly one current checkpoint. The count is normalized
      * from the entries table inside the same transaction.
+     *
+     * A destination carried by the checkpoint also reaches the session row, so
+     * the lock acquired by an accepted QR survives even when the comparison
+     * that follows it is a mismatch and never records a box.
      */
     suspend fun saveScanCheckpoint(checkpoint: ScanSessionCheckpoint): Boolean =
         database.withTransaction {
             val active = sessionDao.findById(checkpoint.sessionId)
             if (active == null || active.endedAt != null || !checkpoint.isSupportedAndValid()) {
                 return@withTransaction false
+            }
+            checkpoint.destination?.let {
+                sessionDao.lockDestination(checkpoint.sessionId, it.id)
             }
             val normalized = checkpoint.copy(
                 matchedCount = entryDao.countForSession(checkpoint.sessionId),
@@ -261,6 +283,7 @@ class HistoryRepository(
             matchedCount = matchedCount,
             inputSource = inputSource.name,
             cameraWasSelectedByUser = cameraWasSelectedByUser,
+            destination = destination?.id,
         )
 
     private fun ScanCheckpointEntity.toModel(): ScanSessionCheckpoint? =
@@ -275,6 +298,10 @@ class HistoryRepository(
                 inputSource = ScanCheckpointInputSource.valueOf(inputSource),
                 cameraWasSelectedByUser = cameraWasSelectedByUser,
                 version = version,
+                // An id written by a newer build is unknown here and reads as
+                // null, which restarts destination detection instead of
+                // discarding an otherwise resumable checkpoint.
+                destination = Destination.fromId(destination),
             )
         }.getOrNull()?.takeIf { it.isSupportedAndValid() }
 
@@ -284,6 +311,7 @@ class HistoryRepository(
             startedAt = session.startedAt,
             endedAt = session.endedAt,
             name = session.name,
+            destination = Destination.fromId(session.destination),
             entries = entries
                 .sortedWith(compareBy<EntryEntity> { it.sequence }
                     .thenBy { it.matchedAt }

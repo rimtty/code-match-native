@@ -18,13 +18,21 @@ data class MatchEntry(
     val sequence: Long = 0L,
 )
 
-/** A comparison session, including only successful match entries. */
+/**
+ * A comparison session, including only successful match entries.
+ *
+ * [destination] is the delivery destination locked by the session's first
+ * accepted QR. It stays null for a session recorded before destinations
+ * existed and for one whose first QR has not been accepted yet, so a null
+ * means "not recorded" and never a default destination.
+ */
 data class MatchSession(
     val id: String = UUID.randomUUID().toString(),
     val startedAt: Long = System.currentTimeMillis(),
     val endedAt: Long? = null,
     val entries: List<MatchEntry> = emptyList(),
     val name: String? = null,
+    val destination: Destination? = null,
 ) {
     val isActive: Boolean
         get() = endedAt == null
