@@ -43,6 +43,19 @@
     <string name="history_warehouse">受入部品庫</string>
     <string name="history_supply_point">供給先</string>
     <string name="history_management_code">管理コード</string>
+    <string name="history_destination">仕向地</string>
+    <string name="history_destination_sawai">澤井製作所</string>
+    <string name="history_destination_moltec">モルテック</string>
+    <string name="history_delivery_number_count">納品番号数</string>
+    <string name="history_orderer_code">受注者</string>
+    <string name="history_moltec_part_number">部品番号</string>
+    <string name="history_delivery_number">納品番号</string>
+    <string name="history_delivery_destination">納入先</string>
+    <string name="history_ty_location">TYロケーション</string>
+    <string name="history_pack_quantity">収容数</string>
+    <string name="history_instruction_date">納入指示日(JUMP)</string>
+    <string name="history_instruction_time">時刻</string>
+    <string name="history_delivery_groups">納品番号ごとの箱</string>
     <string name="history_not_available">-</string>
 
     <string name="history_accessibility_separator">、</string>
@@ -57,4 +70,5 @@
     <string name="history_entry_box_number">#%1$d箱目</string>
     <string name="history_group_number">#%1$d</string>
     <string name="history_part_with_suffix">%1$s（%2$s %3$s）</string>
+    <string name="history_delivery_group_summary">納品番号 %1$s（%2$s・累計 %3$d個）</string>
 </resources>

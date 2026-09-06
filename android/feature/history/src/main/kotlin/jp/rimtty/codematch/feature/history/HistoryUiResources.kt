@@ -10,6 +10,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalConfiguration
 import jp.rimtty.codematch.core.export.HistoryExportTextFormatter
 import jp.rimtty.codematch.core.model.AppLanguage
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchSession
 import java.time.ZoneId
 import java.util.Locale
@@ -68,6 +69,42 @@ object HistoryUiResources {
         warehouse = stringResource(R.string.history_warehouse),
         supplyPoint = stringResource(R.string.history_supply_point),
         managementCode = stringResource(R.string.history_management_code),
+        destination = stringResource(R.string.history_destination),
+        destinationSawai = stringResource(R.string.history_destination_sawai),
+        destinationMoltec = stringResource(R.string.history_destination_moltec),
+        deliveryNumberCount = stringResource(R.string.history_delivery_number_count),
+        ordererCode = stringResource(R.string.history_orderer_code),
+        moltecPartNumber = stringResource(R.string.history_moltec_part_number),
+        deliveryNumber = stringResource(R.string.history_delivery_number),
+        deliveryDestination = stringResource(R.string.history_delivery_destination),
+        tyLocation = stringResource(R.string.history_ty_location),
+        packQuantity = stringResource(R.string.history_pack_quantity),
+        instructionDate = stringResource(R.string.history_instruction_date),
+        instructionTime = stringResource(R.string.history_instruction_time),
+        deliveryGroups = stringResource(R.string.history_delivery_groups),
+    )
+
+    /** The display name of the delivery destination a session was locked to. */
+    @Composable
+    fun destinationName(destination: Destination): String {
+        val labels = labels()
+        return when (destination) {
+            Destination.SAWAI -> labels.destinationSawai
+            Destination.MOLTEC -> labels.destinationMoltec
+        }
+    }
+
+    /** `納品番号 UAG5560（2箱・累計 240個）`, one Moltec delivery number. */
+    @Composable
+    fun deliveryGroupSummary(
+        deliveryNumber: String,
+        boxCountText: String,
+        quantity: Int,
+    ): String = stringResource(
+        R.string.history_delivery_group_summary,
+        deliveryNumber,
+        boxCountText,
+        quantity,
     )
 
     @Composable

@@ -1,6 +1,7 @@
 package jp.rimtty.codematch.core.export
 
 import jp.rimtty.codematch.core.model.AppLanguage
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchSession
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
@@ -49,6 +50,19 @@ class HistoryExportTextTest {
         assertEquals("-", HistoryExportTextFormatter.quantity(null, AppLanguage.JAPANESE))
         assertTrue(HistoryExportTextFormatter.time(0L, AppLanguage.ENGLISH, utc).isNotBlank())
         assertTrue(HistoryExportTextFormatter.dateTime(0L, AppLanguage.JAPANESE, utc).isNotBlank())
+    }
+
+    @Test
+    fun destinationNamesAreLocalized() {
+        val japanese = HistoryExportTextFormatter.labels(AppLanguage.JAPANESE)
+        val english = HistoryExportTextFormatter.labels(AppLanguage.ENGLISH)
+
+        assertEquals("仕向地", japanese.destination)
+        assertEquals("澤井製作所", japanese.destinationName(Destination.SAWAI))
+        assertEquals("モルテック", japanese.destinationName(Destination.MOLTEC))
+        assertEquals("Ship-to", english.destination)
+        assertEquals("Sawai Seisakusho", english.destinationName(Destination.SAWAI))
+        assertEquals("Moltec", english.destinationName(Destination.MOLTEC))
     }
 
     @Test

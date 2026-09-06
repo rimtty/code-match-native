@@ -1,9 +1,11 @@
 package jp.rimtty.codematch.core.export
 
 import jp.rimtty.codematch.core.model.AppLanguage
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchEntry
 import jp.rimtty.codematch.core.model.MatchSession
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -11,6 +13,13 @@ class HistoryPdfContentTest {
     private val qrPayload =
         "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private val barcodePayload = "BCJH-52-81GG@1N5X0C"
+
+    // Trailing spaces are part of the fixed-position Moltec record; the length
+    // assertions below fail first if an editor ever trims them away.
+    private val moltecQr1 =
+        "AK6805D10E50N10B         U543820000MB    S600700000020908    "
+    private val moltecQr2 =
+        "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
 
     @Test
     fun contentPreservesFirstSeenGroupsParsedFieldsManagementAndRawPayloads() {
@@ -99,6 +108,92 @@ class HistoryPdfContentTest {
     }
 
     @Test
+    fun moltecReportGroupsBoxesPerDeliveryNumberWithCumulativeQuantityAndAllFields() {
+        assertEquals(61, moltecQr1.length)
+        assertEquals(61, moltecQr2.length)
+
+        val text = HistoryPdfContent.build(moltecSession(), AppLanguage.JAPANESE)
+            .joinToString("\n") { it.text }
+
+        assertTrue(text.contains("仕向地: モルテック"))
+        assertTrue(text.contains("検査箱数: 3箱（品番数: 2）"))
+        assertTrue(text.contains("納品番号数: 2"))
+        assertTrue(text.contains("#1 PAF1-15-422 (2箱)"))
+        assertTrue(text.contains("納品番号: UAG5560（2箱、累計 240 個）"))
+        assertTrue(text.contains("部品番号: PAF1-15-422; 受注者: AK6805"))
+        assertTrue(text.contains("納入先: FA2; TYロケーション: P59; 供給先: 01FEM"))
+        assertTrue(text.contains("納入指示日(JUMP): 09/08; 時刻: 00:00"))
+        assertTrue(text.contains("収容数: 120; 管理コード: 0NKD3C"))
+        assertTrue(text.contains("収容数: 120; 管理コード: 0NLL3C"))
+        assertTrue(text.contains("#2 D10E-50-N10B (1箱)"))
+        assertTrue(text.contains("納品番号: U543820（1箱、累計 2 個）"))
+        assertTrue(text.contains("納入先: MB; TYロケーション: -; 供給先: S6007"))
+        assertTrue(text.contains("納入指示日(JUMP): 09/08; 時刻: -"))
+        assertTrue(text.contains("収容数: 2; 管理コード: 0UBL00"))
+        assertTrue(text.contains("QR全文: $moltecQr1"))
+        assertTrue(text.contains("QR全文: $moltecQr2"))
+    }
+
+    @Test
+    fun englishMoltecReportUsesEnglishLabels() {
+        val text = HistoryPdfContent.build(moltecSession(), AppLanguage.ENGLISH)
+            .joinToString("\n") { it.text }
+
+        assertTrue(text.contains("Ship-to: Moltec"))
+        assertTrue(text.contains("Delivery numbers: 2"))
+        assertTrue(text.contains("Delivery number: UAG5560 (2 boxes, Total 240 pcs)"))
+        assertTrue(text.contains("Delivery number: U543820 (1 box, Total 2 pcs)"))
+        assertTrue(text.contains("Part number: PAF1-15-422; Orderer: AK6805"))
+        assertTrue(text.contains("Delivery point: FA2; TY location: P59; Supply point: 01FEM"))
+        assertTrue(text.contains("Instruction date (JUMP): 09/08; Time: 00:00"))
+        assertTrue(text.contains("Instruction date (JUMP): 09/08; Time: -"))
+        assertTrue(text.contains("Pack quantity: 120; Management code: 0NKD3C"))
+    }
+
+    @Test
+    fun legacySawaiReportIsUnchangedWhenDestinationIsNull() {
+        val session = MatchSession(
+            startedAt = 1_700_000_000_000L,
+            endedAt = 1_700_000_120_000L,
+            destination = null,
+            entries = listOf(
+                MatchEntry(
+                    id = "one",
+                    code = "BCJH-52-81GG",
+                    matchedAt = 1_700_000_001_000L,
+                    qrPayload = qrPayload,
+                    barcodePayload = barcodePayload,
+                    sequence = 0,
+                ),
+            ),
+        )
+
+        val text = HistoryPdfContent.build(session, AppLanguage.JAPANESE)
+            .joinToString("\n") { it.text }
+
+        assertTrue(text.contains("検査箱数: 1箱（品番数: 1）"))
+        assertTrue(text.contains("#1 BCJH-52-81GG (1箱)"))
+        assertTrue(text.contains("納品書情報"))
+        assertTrue(text.contains("品目番号: BCJH-52-81GG"))
+        assertTrue(text.contains("カード番号: DCLP675300"))
+        assertTrue(text.contains("管理コード: 1N5X0C"))
+        assertTrue(text.contains("QR全文: $qrPayload"))
+        assertTrue(text.contains("Code 128全文: $barcodePayload"))
+        // The Moltec delivery block must never leak into a Sawai report.
+        assertFalse(text.contains("納品番号"))
+        assertFalse(text.contains("収容数"))
+        // A legacy session stores no destination, so the label is derived from
+        // the recorded QR instead.
+        assertTrue(text.contains("仕向地: 澤井製作所"))
+
+        val unresolved = MatchSession(entries = listOf(MatchEntry(id = "legacy", code = "LEGACY")))
+        val unresolvedText = HistoryPdfContent.build(unresolved, AppLanguage.JAPANESE)
+            .joinToString("\n") { it.text }
+
+        assertFalse(unresolvedText.contains("仕向地:"))
+    }
+
+    @Test
     fun oneBlockIsEmittedPerPayloadSoLongRawValuesCannotBeDropped() {
         val rawQr = "Q".repeat(2_000)
         val rawBarcode = "B".repeat(2_000)
@@ -113,4 +208,37 @@ class HistoryPdfContentTest {
         assertTrue(text.contains(rawQr))
         assertTrue(text.contains(rawBarcode))
     }
+
+    /** Two boxes of one delivery number plus a second part on another slip. */
+    private fun moltecSession() = MatchSession(
+        startedAt = 1_700_000_000_000L,
+        endedAt = 1_700_000_120_000L,
+        destination = Destination.MOLTEC,
+        entries = listOf(
+            MatchEntry(
+                id = "moltec-1",
+                code = "PAF1-15-422",
+                matchedAt = 1_700_000_001_000L,
+                qrPayload = moltecQr2,
+                barcodePayload = "PAF1-15-422@0NKD3C",
+                sequence = 0,
+            ),
+            MatchEntry(
+                id = "moltec-2",
+                code = "PAF1-15-422",
+                matchedAt = 1_700_000_002_000L,
+                qrPayload = moltecQr2,
+                barcodePayload = "PAF1-15-422@0NLL3C",
+                sequence = 1,
+            ),
+            MatchEntry(
+                id = "moltec-3",
+                code = "D10E-50-N10B",
+                matchedAt = 1_700_000_003_000L,
+                qrPayload = moltecQr1,
+                barcodePayload = "D10E-50-N10B@0UBL00",
+                sequence = 2,
+            ),
+        ),
+    )
 }

@@ -43,6 +43,19 @@
     <string name="history_warehouse">Receiving warehouse</string>
     <string name="history_supply_point">Supply point</string>
     <string name="history_management_code">Management code</string>
+    <string name="history_destination">Ship-to</string>
+    <string name="history_destination_sawai">Sawai Seisakusho</string>
+    <string name="history_destination_moltec">Moltec</string>
+    <string name="history_delivery_number_count">Delivery numbers</string>
+    <string name="history_orderer_code">Orderer</string>
+    <string name="history_moltec_part_number">Part number</string>
+    <string name="history_delivery_number">Delivery number</string>
+    <string name="history_delivery_destination">Delivery point</string>
+    <string name="history_ty_location">TY location</string>
+    <string name="history_pack_quantity">Pack quantity</string>
+    <string name="history_instruction_date">Instruction date (JUMP)</string>
+    <string name="history_instruction_time">Time</string>
+    <string name="history_delivery_groups">Boxes per delivery number</string>
     <string name="history_not_available">-</string>
 
     <string name="history_accessibility_separator">, </string>
@@ -58,4 +71,5 @@
     <string name="history_entry_box_number">#%1$d</string>
     <string name="history_group_number">#%1$d</string>
     <string name="history_part_with_suffix">%1$s (%2$s %3$s)</string>
+    <string name="history_delivery_group_summary">Delivery number %1$s (%2$s, %3$d pcs total)</string>
 </resources>

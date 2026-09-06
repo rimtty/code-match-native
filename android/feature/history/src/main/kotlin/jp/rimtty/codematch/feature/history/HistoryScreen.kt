@@ -60,10 +60,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import jp.rimtty.codematch.core.export.HistoryExportTextFormatter
+import jp.rimtty.codematch.core.export.MoltecDeliveryGroup
+import jp.rimtty.codematch.core.export.formatMoltecDate
+import jp.rimtty.codematch.core.export.formatMoltecTime
+import jp.rimtty.codematch.core.export.moltecDeliveryGroups
+import jp.rimtty.codematch.core.export.resolvedDestination
 import jp.rimtty.codematch.core.matching.CodeMatcher
 import jp.rimtty.codematch.core.matching.KanbanQrRecord
+import jp.rimtty.codematch.core.matching.MoltecQrRecord
 import jp.rimtty.codematch.core.matching.TagBarcodeRecord
 import jp.rimtty.codematch.core.model.AppLanguage
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.GroupedMatchEntry
 import jp.rimtty.codematch.core.model.MatchEntry
 import jp.rimtty.codematch.core.model.MatchSession
@@ -79,8 +86,10 @@ object HistoryTestTags {
     const val SCREEN = "historyScreen"
     const val CONTENT = "historyContent"
     const val SESSION_ROW = "historySessionRow"
+    const val SESSION_DESTINATION = "historySessionDestination"
     const val SESSION_DETAIL = "historySessionDetail"
     const val GROUP_ROW = "matchEntryRow"
+    const val DELIVERY_GROUP_ROW = "deliveryGroupRow"
     const val GROUP_DETAIL = "historyGroupDetail"
     const val BOX_ROW = "boxEntryRow"
     const val ENTRY_DETAIL = "historyEntryDetail"
@@ -329,6 +338,15 @@ private fun SessionRow(
                         MaterialTheme.typography.bodySmall
                     },
                 )
+                val destination = session.resolvedDestination()
+                if (destination != null) {
+                    Text(
+                        text = HistoryUiResources.destinationName(destination),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag(HistoryTestTags.SESSION_DESTINATION),
+                    )
+                }
                 Text(
                     text = if (session.isActive) labels.sessionInProgress
                     else HistoryUiResources.durationText(session, language),
@@ -419,6 +437,16 @@ private fun SessionOverview(
     var editedName by remember(session.id, session.displayName) {
         mutableStateOf(session.displayName)
     }
+    val destination = remember(session) { session.resolvedDestination() }
+    // A Moltec part repeats across delivery numbers, so the number of slips is
+    // what the operator reconciles against.
+    val deliveryNumberCount = remember(session) {
+        if (destination == Destination.MOLTEC) {
+            session.entries.moltecDeliveryGroups().size
+        } else {
+            null
+        }
+    }
 
     fun commitName() {
         val normalized = editedName.trim().ifBlank { null }
@@ -455,6 +483,9 @@ private fun SessionOverview(
                 } else {
                     SummaryRow(labels.status, labels.sessionInProgress, valueColor = MaterialTheme.colorScheme.primary)
                 }
+                if (destination != null) {
+                    SummaryRow(labels.destination, HistoryUiResources.destinationName(destination))
+                }
                 SummaryRow(
                     labels.inspectionBoxes,
                     HistoryUiResources.boxCount(session.matchedCount, language),
@@ -463,6 +494,12 @@ private fun SessionOverview(
                     labels.partCount,
                     HistoryExportTextFormatter.integer(session.groupedEntries.size, language),
                 )
+                if (deliveryNumberCount != null) {
+                    SummaryRow(
+                        labels.deliveryNumberCount,
+                        HistoryExportTextFormatter.integer(deliveryNumberCount, language),
+                    )
+                }
             }
         }
         item {
@@ -587,6 +624,9 @@ fun HistoryGroupDetail(
 ) {
     HistoryLocalized(language) {
         val labels = HistoryUiResources.labels()
+        // Grouping stays by part number, but a Moltec part repeats across
+        // slips, so its boxes are also summarized per delivery number.
+        val deliveryGroups = remember(group) { group.entries.moltecDeliveryGroups() }
         LazyColumn(
             modifier = modifier.fillMaxSize().testTag(HistoryTestTags.GROUP_DETAIL),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
@@ -609,6 +649,19 @@ fun HistoryGroupDetail(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                 )
                 SelectionContainerText(group.code, Modifier.padding(horizontal = 20.dp))
+            }
+            if (deliveryGroups.isNotEmpty()) {
+                item {
+                    Text(
+                        text = labels.deliveryGroups,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                    )
+                }
+                items(deliveryGroups, key = { "delivery-${it.deliveryNumber}" }) { delivery ->
+                    DeliveryGroupRow(delivery = delivery, language = language)
+                }
             }
             item {
                 Text(
@@ -657,6 +710,28 @@ fun HistoryGroupDetail(
     }
 }
 
+/** One Moltec delivery number: its box count and cumulative pack quantity. */
+@Composable
+private fun DeliveryGroupRow(delivery: MoltecDeliveryGroup, language: AppLanguage) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 3.dp)
+            .heightIn(min = 52.dp)
+            .testTag(HistoryTestTags.DELIVERY_GROUP_ROW),
+    ) {
+        Text(
+            text = HistoryUiResources.deliveryGroupSummary(
+                deliveryNumber = delivery.deliveryNumber,
+                boxCountText = HistoryUiResources.boxCount(delivery.boxCount, language),
+                quantity = delivery.cumulativeQuantity,
+            ),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
 /** Box detail including parsed QR/Code 128 fields and both raw payloads. */
 @Composable
 fun HistoryEntryDetail(
@@ -667,7 +742,19 @@ fun HistoryEntryDetail(
 ) {
     HistoryLocalized(language) {
         val labels = HistoryUiResources.labels()
-        val qr = entry.qrPayload?.let(KanbanQrRecord::parse)
+        // The two destinations put different fields at different positions, so
+        // the detected destination decides which record is read and shown.
+        val destination = entry.qrPayload?.let(CodeMatcher::detectDestination)
+        val moltecQr = if (destination == Destination.MOLTEC) {
+            entry.qrPayload?.let(MoltecQrRecord::parse)
+        } else {
+            null
+        }
+        val qr = if (destination == Destination.MOLTEC) {
+            null
+        } else {
+            entry.qrPayload?.let(KanbanQrRecord::parse)
+        }
         val barcode = entry.barcodePayload?.let(TagBarcodeRecord::parse)
         LazyColumn(
             modifier = modifier.fillMaxSize().testTag(HistoryTestTags.ENTRY_DETAIL),
@@ -690,6 +777,37 @@ fun HistoryEntryDetail(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                 )
                 SelectionContainerText(entry.code, Modifier.padding(horizontal = 20.dp))
+            }
+            if (moltecQr != null) {
+                item {
+                    SectionCard(title = labels.qrParsed) {
+                        SummaryRow(labels.ordererCode, moltecQr.ordererCode)
+                        SummaryRow(
+                            labels.moltecPartNumber,
+                            CodeMatcher.formatPartNumber(moltecQr.partNumber),
+                        )
+                        SummaryRow(labels.deliveryNumber, moltecQr.deliveryNumber)
+                        SummaryRow(labels.deliveryDestination, moltecQr.deliveryDestination)
+                        SummaryRow(
+                            labels.tyLocation,
+                            moltecQr.tyLocation ?: HistoryUiResources.notAvailable(),
+                        )
+                        SummaryRow(labels.supplyPoint, moltecQr.supplyPoint)
+                        SummaryRow(
+                            labels.packQuantity,
+                            HistoryExportTextFormatter.integer(moltecQr.packQuantity, language),
+                        )
+                        SummaryRow(
+                            labels.instructionDate,
+                            formatMoltecDate(moltecQr.instructionDate),
+                        )
+                        SummaryRow(
+                            labels.instructionTime,
+                            formatMoltecTime(moltecQr.instructionTime)
+                                ?: HistoryUiResources.notAvailable(),
+                        )
+                    }
+                }
             }
             if (qr != null) {
                 item {

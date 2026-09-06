@@ -4,7 +4,9 @@ import jp.rimtty.codematch.core.matching.CodeMatcher
 import jp.rimtty.codematch.core.matching.KanbanQrRecord
 import jp.rimtty.codematch.core.matching.TagBarcodeRecord
 import jp.rimtty.codematch.core.model.AppLanguage
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.GroupedMatchEntry
+import jp.rimtty.codematch.core.model.MatchEntry
 import jp.rimtty.codematch.core.model.MatchSession
 import java.time.ZoneId
 
@@ -68,11 +70,34 @@ object HistoryPdfContent {
                 spacingAfter = 2f,
             )
         }
+        val destination = session.resolvedDestination()
+        if (destination != null) {
+            blocks += HistoryPdfBlock(
+                text = "${labels.destination}: ${labels.destinationName(destination)}",
+                style = PdfTextStyle.MUTED,
+                spacingAfter = 2f,
+            )
+        }
+        // Sawai slips are counted per part number, so only a Moltec report adds
+        // the delivery-number total; the Sawai header stays exactly as before.
+        val deliveryNumberCount = if (destination == Destination.MOLTEC) {
+            session.entries.moltecDeliveryGroups().size
+        } else {
+            null
+        }
         blocks += HistoryPdfBlock(
             text = sessionSummary(session, language, labels),
             style = PdfTextStyle.MUTED,
-            spacingAfter = 8f,
+            spacingAfter = if (deliveryNumberCount == null) 8f else 2f,
         )
+        if (deliveryNumberCount != null) {
+            blocks += HistoryPdfBlock(
+                text = "${labels.deliveryNumberCount}: " +
+                    HistoryExportTextFormatter.integer(deliveryNumberCount, language),
+                style = PdfTextStyle.MUTED,
+                spacingAfter = 8f,
+            )
+        }
         blocks += HistoryPdfBlock("", PdfTextStyle.DIVIDER, spacingAfter = 6f)
 
         if (session.entries.isEmpty()) {
@@ -117,60 +142,180 @@ object HistoryPdfContent {
             spacingAfter = 4f,
         )
 
+        // The group is a part number, but a Moltec part repeats across delivery
+        // numbers, so its boxes are reported per delivery number instead.
+        val destination = group.entries.asSequence()
+            .mapNotNull { it.qrPayload }
+            .firstOrNull()
+            ?.let(CodeMatcher::detectDestination)
+        if (destination == Destination.MOLTEC) {
+            appendMoltecDeliveries(blocks, group, language, zoneId, labels)
+        } else {
+            appendSawaiDelivery(blocks, group, language, labels)
+            blocks += HistoryPdfBlock(labels.boxRecords, PdfTextStyle.SECTION, spacingAfter = 2f)
+            group.entries.forEachIndexed { boxIndex, entry ->
+                appendBoxRecord(blocks, entry, boxIndex + 1, null, language, zoneId, labels)
+            }
+        }
+    }
+
+    private fun appendSawaiDelivery(
+        blocks: MutableList<HistoryPdfBlock>,
+        group: GroupedMatchEntry,
+        language: AppLanguage,
+        labels: HistoryExportLabels,
+    ) {
         val qr = group.entries.asSequence()
             .mapNotNull { it.qrPayload?.let(KanbanQrRecord::parse) }
             .firstOrNull()
-        if (qr != null) {
+            ?: return
+
+        blocks += HistoryPdfBlock(labels.deliveryInformation, PdfTextStyle.SECTION, spacingAfter = 2f)
+        val suffix = qr.partSuffix?.let { " (${labels.suffix} $it)" }.orEmpty()
+        blocks += HistoryPdfBlock(
+            text = "${labels.itemNumber}: ${CodeMatcher.formatPartNumber(qr.partNumber)}$suffix; " +
+                "${labels.cardNumber}: ${qr.cardNumber}",
+            style = PdfTextStyle.BODY,
+            spacingAfter = 2f,
+        )
+        blocks += HistoryPdfBlock(
+            text = "${labels.deliveryQuantity}: " +
+                "${HistoryExportTextFormatter.quantity(qr.deliveryQuantity, language)}; " +
+                "${labels.instructedQuantity}: " +
+                HistoryExportTextFormatter.quantity(qr.instructedQuantity, language),
+            style = PdfTextStyle.BODY,
+            spacingAfter = 2f,
+        )
+        blocks += HistoryPdfBlock(
+            text = "${labels.factory}: ${qr.factoryCode ?: "-"}; " +
+                "${labels.warehouse}: ${qr.warehouseCode ?: "-"}; " +
+                "${labels.supplyPoint}: ${qr.supplyPointCode ?: "-"}",
+            style = PdfTextStyle.BODY,
+            spacingAfter = 4f,
+        )
+    }
+
+    /**
+     * One delivery block per delivery number, each followed by its own boxes.
+     * The box index restarts inside a delivery number because that is the unit
+     * an operator counts against the slip.
+     */
+    private fun appendMoltecDeliveries(
+        blocks: MutableList<HistoryPdfBlock>,
+        group: GroupedMatchEntry,
+        language: AppLanguage,
+        zoneId: ZoneId,
+        labels: HistoryExportLabels,
+    ) {
+        val deliveries = group.entries.moltecDeliveryGroups()
+        deliveries.forEach { delivery ->
+            val record = delivery.record
             blocks += HistoryPdfBlock(labels.deliveryInformation, PdfTextStyle.SECTION, spacingAfter = 2f)
-            val suffix = qr.partSuffix?.let { " (${labels.suffix} $it)" }.orEmpty()
             blocks += HistoryPdfBlock(
-                text = "${labels.itemNumber}: ${CodeMatcher.formatPartNumber(qr.partNumber)}$suffix; " +
-                    "${labels.cardNumber}: ${qr.cardNumber}",
+                text = "${labels.deliveryNumber}: ${delivery.deliveryNumber}" +
+                    deliverySummary(delivery, language, labels),
                 style = PdfTextStyle.BODY,
                 spacingAfter = 2f,
             )
             blocks += HistoryPdfBlock(
-                text = "${labels.deliveryQuantity}: " +
-                    "${HistoryExportTextFormatter.quantity(qr.deliveryQuantity, language)}; " +
-                    "${labels.instructedQuantity}: " +
-                    HistoryExportTextFormatter.quantity(qr.instructedQuantity, language),
+                text = "${labels.moltecPartNumber}: ${CodeMatcher.formatPartNumber(record.partNumber)}; " +
+                    "${labels.ordererCode}: ${record.ordererCode}",
                 style = PdfTextStyle.BODY,
                 spacingAfter = 2f,
             )
             blocks += HistoryPdfBlock(
-                text = "${labels.factory}: ${qr.factoryCode ?: "-"}; " +
-                    "${labels.warehouse}: ${qr.warehouseCode ?: "-"}; " +
-                    "${labels.supplyPoint}: ${qr.supplyPointCode ?: "-"}",
+                text = "${labels.deliveryDestination}: ${record.deliveryDestination}; " +
+                    "${labels.tyLocation}: ${record.tyLocation ?: "-"}; " +
+                    "${labels.supplyPoint}: ${record.supplyPoint}",
+                style = PdfTextStyle.BODY,
+                spacingAfter = 2f,
+            )
+            blocks += HistoryPdfBlock(
+                text = "${labels.instructionDate}: ${formatMoltecDate(record.instructionDate)}; " +
+                    "${labels.instructionTime}: ${formatMoltecTime(record.instructionTime) ?: "-"}",
                 style = PdfTextStyle.BODY,
                 spacingAfter = 4f,
             )
+            delivery.entries.forEachIndexed { boxIndex, entry ->
+                appendBoxRecord(
+                    blocks,
+                    entry,
+                    boxIndex + 1,
+                    entry.moltecRecord()?.packQuantity,
+                    language,
+                    zoneId,
+                    labels,
+                )
+            }
         }
 
-        blocks += HistoryPdfBlock(labels.boxRecords, PdfTextStyle.SECTION, spacingAfter = 2f)
-        group.entries.forEachIndexed { boxIndex, entry ->
-            val boxNumber = HistoryExportTextFormatter.integer(boxIndex + 1, language)
-            val managementCode = entry.barcodePayload
-                ?.let(TagBarcodeRecord::parse)
-                ?.managementCode
-                ?: "-"
-            blocks += HistoryPdfBlock(
-                text = "${boxLabel(boxNumber, language, labels)}  ${labels.matchTime}: " +
-                    "${HistoryExportTextFormatter.dateTime(entry.matchedAt, language, zoneId)}; " +
-                    "${labels.managementCode}: $managementCode",
-                style = PdfTextStyle.BODY,
-                spacingAfter = 2f,
-            )
-            blocks += HistoryPdfBlock(
-                text = "${labels.qrFullText}: ${entry.qrPayload ?: labels.legacyPayload}",
-                style = PdfTextStyle.MONOSPACE,
-                spacingAfter = 2f,
-            )
-            blocks += HistoryPdfBlock(
-                text = "${labels.code128FullText}: ${entry.barcodePayload ?: labels.legacyPayload}",
-                style = PdfTextStyle.MONOSPACE,
-                spacingAfter = 5f,
-            )
+        // A box saved without its QR payload belongs to no delivery number, but
+        // the report must never drop a recorded box.
+        val reported = deliveries.flatMapTo(mutableSetOf()) { delivery ->
+            delivery.entries.map(MatchEntry::id)
         }
+        val remaining = group.entries.filterNot { it.id in reported }
+        if (remaining.isNotEmpty()) {
+            blocks += HistoryPdfBlock(labels.boxRecords, PdfTextStyle.SECTION, spacingAfter = 2f)
+            remaining.forEachIndexed { boxIndex, entry ->
+                appendBoxRecord(blocks, entry, boxIndex + 1, null, language, zoneId, labels)
+            }
+        }
+    }
+
+    /**
+     * One box: its match time, optional pack quantity, management code, and
+     * both raw payloads. [packQuantity] is null for a Sawai box, whose slip
+     * carries the quantity in the delivery block instead.
+     */
+    private fun appendBoxRecord(
+        blocks: MutableList<HistoryPdfBlock>,
+        entry: MatchEntry,
+        boxIndex: Int,
+        packQuantity: Int?,
+        language: AppLanguage,
+        zoneId: ZoneId,
+        labels: HistoryExportLabels,
+    ) {
+        val boxNumber = HistoryExportTextFormatter.integer(boxIndex, language)
+        val managementCode = entry.barcodePayload
+            ?.let(TagBarcodeRecord::parse)
+            ?.managementCode
+            ?: "-"
+        val quantity = packQuantity
+            ?.let { "${labels.packQuantity}: ${HistoryExportTextFormatter.integer(it, language)}; " }
+            .orEmpty()
+        blocks += HistoryPdfBlock(
+            text = "${boxLabel(boxNumber, language, labels)}  ${labels.matchTime}: " +
+                "${HistoryExportTextFormatter.dateTime(entry.matchedAt, language, zoneId)}; " +
+                quantity +
+                "${labels.managementCode}: $managementCode",
+            style = PdfTextStyle.BODY,
+            spacingAfter = 2f,
+        )
+        blocks += HistoryPdfBlock(
+            text = "${labels.qrFullText}: ${entry.qrPayload ?: labels.legacyPayload}",
+            style = PdfTextStyle.MONOSPACE,
+            spacingAfter = 2f,
+        )
+        blocks += HistoryPdfBlock(
+            text = "${labels.code128FullText}: ${entry.barcodePayload ?: labels.legacyPayload}",
+            style = PdfTextStyle.MONOSPACE,
+            spacingAfter = 5f,
+        )
+    }
+
+    /** `（2箱、累計 240 個）`, following the language's parenthesis convention. */
+    private fun deliverySummary(
+        delivery: MoltecDeliveryGroup,
+        language: AppLanguage,
+        labels: HistoryExportLabels,
+    ): String {
+        val boxes = HistoryExportTextFormatter.boxCount(delivery.boxCount, language)
+        val total = "${labels.cumulativeQuantity} " +
+            "${HistoryExportTextFormatter.integer(delivery.cumulativeQuantity, language)} " +
+            labels.pieceUnit
+        return if (language == AppLanguage.JAPANESE) "（$boxes、$total）" else " ($boxes, $total)"
     }
 
     private fun sessionSummary(
