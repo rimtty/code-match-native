@@ -163,7 +163,7 @@ class CodeMatcherTest {
         val fixture = SharedFixtureJson.decode(json)
 
         assertEquals(1, fixture.schemaVersion)
-        assertEquals(5, fixture.cases.size)
+        assertEquals(21, fixture.cases.size)
         assertEquals(
             "Shared fixture IDs must be unique",
             fixture.cases.size,
@@ -197,6 +197,30 @@ class CodeMatcherTest {
             MatchResult.MISMATCH,
             CodeMatcher.compare(emptyCase.qrPayload, emptyCase.barcodePayload)
         )
+    }
+
+    /**
+     * The 12 field label pairs (label-NN) from the customer spec must pass the
+     * scan boundaries shared by camera and Bluetooth (66-character QR record,
+     * 4-2-4@code tag format), and the QR item number must equal the tag part
+     * number. Labels 9 and 10 carry a blank suffix.
+     */
+    @Test
+    fun sharedLabelPairsPassBothScanBoundaries() {
+        val resource = javaClass.getResourceAsStream("/matching-cases.json")
+        assertNotNull("matching-cases.json must be on the test runtime classpath", resource)
+        val fixture = SharedFixtureJson.decode(resource!!.bufferedReader().use { it.readText() })
+        val labelPairs = fixture.cases.filter { it.id.startsWith("label-") && it.expected == "match" }
+        assertEquals(12, labelPairs.size)
+
+        labelPairs.forEach { pair ->
+            assertTrue(pair.id, KanbanQrRecord.isValidScanPayload(pair.qrPayload))
+            assertTrue(pair.id, TagBarcodeRecord.isValidScanPayload(pair.barcodePayload))
+            val record = KanbanQrRecord.parse(pair.qrPayload)
+            assertEquals(pair.id, CodeMatcher.partNumberFromBarcode(pair.barcodePayload), record?.partNumber)
+            val expectsBlankSuffix = pair.id.startsWith("label-09") || pair.id.startsWith("label-10")
+            assertEquals(pair.id, if (expectsBlankSuffix) null else "02", record?.partSuffix)
+        }
     }
 
     private object SharedFixtureJson {
