@@ -1,5 +1,6 @@
 package jp.rimtty.codematch.feature.scan
 
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.core.model.ScanCheckpointInputSource
 import jp.rimtty.codematch.core.model.ScanCheckpointPhase
@@ -49,9 +50,62 @@ class ScanCheckpointMappingTest {
     }
 
     @Test
+    fun destinationRoundTripsInEveryPhase() {
+        val states = listOf(
+            ScanState.WaitingQr(matchedCount = 2),
+            ScanState.WaitingCode128(qrPayload = moltecQr, matchedCount = 2),
+            ScanState.Result(
+                qrPayload = moltecQr,
+                barcodePayload = moltecTag,
+                result = MatchResult.MATCH,
+                matchedCount = 3,
+            ),
+        )
+
+        for (scan in states) {
+            val state = ScanSessionState(scan = scan, destination = Destination.MOLTEC)
+            val checkpoint = state.toScanSessionCheckpoint("session")
+            assertEquals(scan.phase.name, Destination.MOLTEC, checkpoint?.destination)
+            assertEquals(
+                scan.phase.name,
+                Destination.MOLTEC,
+                checkpoint?.toScanSessionState(false, stateDelay())?.destination,
+            )
+        }
+    }
+
+    @Test
+    fun checkpointWithoutDestinationDerivesItFromAcceptedQr() {
+        val checkpoint = ScanSessionCheckpoint(
+            sessionId = "session",
+            phase = ScanCheckpointPhase.WAITING_CODE_128,
+            qrPayload = moltecQr,
+            matchedCount = 0,
+        )
+
+        assertNull(checkpoint.destination)
+        assertEquals(
+            Destination.MOLTEC,
+            checkpoint.toScanSessionState(false, stateDelay())?.destination,
+        )
+
+        val waitingQr = ScanSessionCheckpoint(
+            sessionId = "session",
+            phase = ScanCheckpointPhase.WAITING_QR,
+            matchedCount = 0,
+        )
+        assertNull(waitingQr.toScanSessionState(false, stateDelay())?.destination)
+    }
+
+    @Test
     fun idleStateDoesNotCreateACheckpoint() {
         assertNull(ScanSessionState().toScanSessionCheckpoint("session"))
     }
 
     private fun stateDelay() = jp.rimtty.codematch.core.model.AutoAdvanceDelay.FIVE_SECONDS
+
+    // Destination Moltec; the trailing spaces are record data.
+    private val moltecQr =
+        "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+    private val moltecTag = "PAF1-15-422@0NKD3C"
 }

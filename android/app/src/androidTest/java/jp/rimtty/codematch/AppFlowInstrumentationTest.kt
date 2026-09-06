@@ -361,6 +361,154 @@ class AppFlowInstrumentationTest {
     }
 
     /**
+     * The Moltec destination end to end: the first accepted QR locks the
+     * session, boxes are counted per delivery number with a running quantity,
+     * a repeated QR+tag pair is a duplicate, and a Sawai slip is refused with
+     * a message naming the locked destination.
+     */
+    @Test
+    fun fakeScannerMoltecFlowCountsBoxesPerDeliveryNumberAndLocksDestination() {
+        connectFakeScannerThroughSettings()
+        openDestination(R.string.destination_scan)
+        onNodeWithTag("scan_start_session").performClick()
+        waitForTag("scan_waiting_card")
+
+        // Box 1 of delivery number UAG5560 (pack quantity 120).
+        emitBluetooth(
+            ScanPayload.qr(
+                value = moltecDeliveryQrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 1_000L,
+            ),
+        )
+        emitBluetooth(
+            ScanPayload.code128(
+                value = moltecFirstBoxBarcodePayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 2_000L,
+            ),
+        )
+        waitForTag("scan_result_card")
+        onNodeWithText("一致").assertIsDisplayed()
+        onNodeWithTag("scan_result_qr_part.value").assertTextEquals("PAF1-15-422")
+        onNodeWithTag("scan_result_moltec_box_summary")
+            .performScrollTo()
+            .assertTextEquals("納品番号 UAG5560 は本セッションで1箱目（累計 120個）")
+        onNodeWithTag("scan_session_destination")
+            .performScrollTo()
+            .assertTextEquals("仕向地：モルテック")
+        assertSessionCount(1)
+        awaitActiveEntryCount(1)
+
+        // The same slip with a different management code is the next box of
+        // the same delivery number, so the quantity accumulates.
+        onNodeWithTag("scan_manual_next").performClick()
+        waitForText("QRコード読み取り")
+        emitBluetooth(
+            ScanPayload.qr(
+                value = moltecDeliveryQrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 3_000L,
+            ),
+        )
+        emitBluetooth(
+            ScanPayload.code128(
+                value = moltecSecondBoxBarcodePayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 4_000L,
+            ),
+        )
+        waitForTag("scan_result_card")
+        onNodeWithText("一致").assertIsDisplayed()
+        onNodeWithTag("scan_result_moltec_box_summary")
+            .performScrollTo()
+            .assertTextEquals("納品番号 UAG5560 は本セッションで2箱目（累計 240個）")
+        assertSessionCount(2)
+        awaitActiveEntryCount(2)
+
+        // Re-reading the same QR and the same tag is the same physical box.
+        onNodeWithTag("scan_manual_next").performClick()
+        waitForText("QRコード読み取り")
+        emitBluetooth(
+            ScanPayload.qr(
+                value = moltecDeliveryQrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 5_000L,
+            ),
+        )
+        emitBluetooth(
+            ScanPayload.code128(
+                value = moltecFirstBoxBarcodePayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 6_000L,
+            ),
+        )
+        waitForTag("scan_result_card")
+        onNodeWithText("すでに照合済みです").assertIsDisplayed()
+        assertSessionCount(2)
+        awaitActiveEntryCount(2)
+
+        // A Sawai slip cannot join a Moltec session; the step never advances.
+        onNodeWithTag("scan_manual_next").performClick()
+        waitForText("QRコード読み取り")
+        emitBluetooth(
+            ScanPayload.qr(
+                value = qrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 7_000L,
+            ),
+        )
+        composeRule.onNodeWithText(
+            "このセッションは仕向地「モルテック」で照合中です",
+            substring = true,
+        ).performScrollTo().assertIsDisplayed()
+        // Scrolling to the message above can push the waiting card out of the
+        // compact CI emulator viewport; bring the title back before asserting.
+        onNodeWithText("QRコード読み取り").performScrollTo().assertIsDisplayed()
+        assertSessionCount(2)
+
+        // A different delivery number restarts the box count and quantity.
+        emitBluetooth(
+            ScanPayload.qr(
+                value = moltecSecondDeliveryQrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 8_000L,
+            ),
+        )
+        waitForText("バーコード読み取り")
+        emitBluetooth(
+            ScanPayload.code128(
+                value = moltecSecondDeliveryBarcodePayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 9_000L,
+            ),
+        )
+        waitForTag("scan_result_card")
+        onNodeWithTag("scan_result_moltec_box_summary")
+            .performScrollTo()
+            .assertTextEquals("納品番号 U543820 は本セッションで1箱目（累計 2個）")
+        assertSessionCount(3)
+        awaitActiveEntryCount(3)
+        assertActiveEntries(
+            expectedCodes = listOf(
+                "PAF1-15-422",
+                "PAF1-15-422",
+                "D10E-50-N10B",
+            ),
+        )
+
+        onNodeWithTag("scan_end_session").performClick()
+        onNodeWithText(composeRule.activity.getString(R.string.end_session_confirm))
+            .performClick()
+        waitForTag("scan_start_session")
+        awaitHistoryEntryCount(expectedSessions = 1, expectedEntries = 3)
+        openDestination(R.string.destination_history)
+        waitForTag(HistoryTestTags.SESSION_ROW)
+        onNodeWithTag(HistoryTestTags.SESSION_ROW).performClick()
+        waitForTag(HistoryTestTags.SESSION_DETAIL)
+    }
+
+    /**
      * An active session with no successful boxes is discarded at the same
      * application boundary that a non-empty session uses. The assertion is
      * made through both the repository and the rendered History destination.
@@ -794,5 +942,16 @@ class AppFlowInstrumentationTest {
             "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
         const val barcodePayload = "BCJH-52-81GG@1N5X0C"
         const val mismatchBarcodePayload = "BCJH-55-81GG@1KVV0C"
+
+        // Destination Moltec. Trailing spaces are record data, so these
+        // literals must never be reformatted: delivery UAG5560 carries pack
+        // quantity 120 with a nine-character part, U543820 carries 2.
+        const val moltecDeliveryQrPayload =
+            "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+        const val moltecSecondDeliveryQrPayload =
+            "AK6805D10E50N10B         U543820000MB    S600700000020908    "
+        const val moltecFirstBoxBarcodePayload = "PAF1-15-422@0NKD3C"
+        const val moltecSecondBoxBarcodePayload = "PAF1-15-422@0NLL3C"
+        const val moltecSecondDeliveryBarcodePayload = "D10E-50-N10B@0UBL00"
     }
 }

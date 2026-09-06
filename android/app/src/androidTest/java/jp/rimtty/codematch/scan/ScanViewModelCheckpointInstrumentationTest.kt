@@ -12,8 +12,10 @@ import jp.rimtty.codematch.core.data.CodeMatchDatabase
 import jp.rimtty.codematch.core.data.CodeMatchDatabaseFactory
 import jp.rimtty.codematch.core.data.HistoryRepository
 import jp.rimtty.codematch.core.data.SettingsRepository
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.feedback.FeedbackPlayer
+import jp.rimtty.codematch.feature.scan.InvalidScanReason
 import jp.rimtty.codematch.feature.scan.ScanPhase
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.fake.FakeExternalScanner
@@ -151,6 +153,90 @@ class ScanViewModelCheckpointInstrumentationTest {
             )
         } finally {
             owner?.viewModelStore?.clear()
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun moltecDestinationLockSurvivesIsolatedDatabaseReopen() = runBlocking {
+        val fixture = IsolatedScanFixture.open()
+        var firstOwner: TestViewModelOwner? = null
+        var secondOwner: TestViewModelOwner? = null
+        try {
+            val first = fixture.createViewModel()
+            firstOwner = first.first
+            val firstViewModel = first.second
+
+            firstViewModel.onAction(jp.rimtty.codematch.feature.scan.ScanUiAction.StartSession)
+            awaitState(firstViewModel, "session-start") { state ->
+                state.sessionActive && state.phase == ScanPhase.WAITING_QR
+            }
+            val sessionId = requireNotNull(fixture.history.activeSession.first()?.id)
+
+            // Destination Moltec; the trailing spaces are record data.
+            val moltecQrPayload =
+                "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+            assertEquals(61, moltecQrPayload.length)
+            firstViewModel.onAction(
+                jp.rimtty.codematch.feature.scan.ScanUiAction.ScanReceived(
+                    jp.rimtty.codematch.scanner.api.ScanPayload.qr(
+                        value = moltecQrPayload,
+                        source = InputSource.CAMERA,
+                        timestampMillis = 1_000L,
+                    ),
+                ),
+            )
+            val afterQr = awaitState(firstViewModel, "moltec-qr-transition") { state ->
+                state.phase == ScanPhase.WAITING_CODE_128 &&
+                    state.qrPayload == moltecQrPayload
+            }
+            assertEquals(Destination.MOLTEC, afterQr.destination)
+
+            val persisted = awaitCheckpoint(fixture.history, sessionId, moltecQrPayload)
+            assertEquals(Destination.MOLTEC, persisted?.destination)
+
+            firstOwner.viewModelStore.clear()
+            firstOwner = null
+            fixture.reopenDatabase()
+
+            val second = fixture.createViewModel()
+            secondOwner = second.first
+            val secondViewModel = second.second
+            val restored = awaitState(secondViewModel, "moltec-lock-restoration") { state ->
+                state.sessionActive && state.phase == ScanPhase.WAITING_CODE_128
+            }
+            assertEquals(Destination.MOLTEC, restored.destination)
+
+            // A reread drops the accepted QR but must not drop the lock.
+            secondViewModel.onAction(jp.rimtty.codematch.feature.scan.ScanUiAction.RereadQr)
+            val afterReread = awaitState(secondViewModel, "reread") { state ->
+                state.phase == ScanPhase.WAITING_QR
+            }
+            assertEquals(Destination.MOLTEC, afterReread.destination)
+
+            secondViewModel.onAction(
+                jp.rimtty.codematch.feature.scan.ScanUiAction.ScanReceived(
+                    jp.rimtty.codematch.scanner.api.ScanPayload.qr(
+                        value =
+                            "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
+                        source = InputSource.CAMERA,
+                        timestampMillis = 5_000L,
+                    ),
+                ),
+            )
+            val rejected = awaitState(secondViewModel, "wrong-destination") { state ->
+                state.lastInvalidReason == InvalidScanReason.WRONG_DESTINATION
+            }
+            assertEquals(ScanPhase.WAITING_QR, rejected.phase)
+            assertEquals(Destination.MOLTEC, rejected.destination)
+
+            assertEquals(
+                Destination.MOLTEC,
+                fixture.history.activeSession.first { it?.id == sessionId }?.destination,
+            )
+        } finally {
+            secondOwner?.viewModelStore?.clear()
+            firstOwner?.viewModelStore?.clear()
             fixture.close()
         }
     }

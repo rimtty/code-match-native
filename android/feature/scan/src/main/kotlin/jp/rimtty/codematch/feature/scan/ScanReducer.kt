@@ -2,8 +2,10 @@ package jp.rimtty.codematch.feature.scan
 
 import jp.rimtty.codematch.core.matching.CodeMatcher
 import jp.rimtty.codematch.core.matching.KanbanQrRecord
+import jp.rimtty.codematch.core.matching.MoltecQrRecord
 import jp.rimtty.codematch.core.matching.TagBarcodeRecord
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
@@ -71,6 +73,9 @@ class ScanReducer(
                 scan = ScanState.Idle,
                 autoAdvanceSecondsRemaining = null,
                 inputSource = InputSource.CAMERA,
+                // Ending the session is the only way to change destination.
+                destination = null,
+                recordedBoxes = emptyList(),
             ),
             effects = listOf(
                 ScanEffect.AutoAdvanceCancelled,
@@ -96,7 +101,8 @@ class ScanReducer(
                 reject(current, ScanFormat.QR, InvalidScanReason.WRONG_ORDER)
             } else {
                 val value = normalizeTransportTerminators(payload.value)
-                val invalidReason = invalidPayloadReason(payload, value)
+                val detected = CodeMatcher.detectDestination(value)
+                val invalidReason = invalidPayloadReason(payload, value, current.destination)
                 if (value.isEmpty()) {
                     reject(current, ScanFormat.QR, InvalidScanReason.EMPTY_PAYLOAD)
                 } else if (invalidReason != null) {
@@ -104,7 +110,17 @@ class ScanReducer(
                         current,
                         ScanFormat.QR,
                         invalidReason,
-                        observedLength = value.trim().length,
+                        observedLength = observedQrLength(value, current.destination),
+                    )
+                } else if (current.destination != null && detected != current.destination) {
+                    // A session matches one destination from its first accepted
+                    // QR onwards. Mixing slips would make the box identity, the
+                    // box numbering, and the saved session label inconsistent.
+                    reject(
+                        current,
+                        ScanFormat.QR,
+                        InvalidScanReason.WRONG_DESTINATION,
+                        observedLength = value.length,
                     )
                 } else {
                     ScanReduction(
@@ -114,6 +130,7 @@ class ScanReducer(
                                 matchedCount = scan.matchedCount,
                             ),
                             autoAdvanceSecondsRemaining = null,
+                            destination = current.destination ?: detected,
                         ),
                         effects = listOf(
                             ScanEffect.ScanAccepted,
@@ -129,7 +146,7 @@ class ScanReducer(
                 reject(current, ScanFormat.CODE_128, InvalidScanReason.WRONG_ORDER)
             } else {
                 val value = normalizeTransportTerminators(payload.value)
-                val invalidReason = invalidPayloadReason(payload, value)
+                val invalidReason = invalidPayloadReason(payload, value, current.destination)
                 if (value.isEmpty()) {
                     reject(current, ScanFormat.CODE_128, InvalidScanReason.EMPTY_PAYLOAD)
                 } else if (invalidReason != null) {
@@ -156,10 +173,12 @@ class ScanReducer(
         barcodePayload: String,
     ): ScanReduction {
         val comparison = compare(qrPayload, barcodePayload)
-        val qrIdentity = CodeMatcher.payloadIdentity(qrPayload)
+        // The box key is destination aware: a Sawai slip identifies its own
+        // box, a Moltec slip needs the tag's management code as well.
+        val identity = CodeMatcher.boxIdentity(qrPayload, barcodePayload)
         val result = if (comparison == MatchResult.MATCH &&
-            qrIdentity.isNotEmpty() &&
-            qrIdentity in current.matchedQrPayloadIdentities
+            identity != null &&
+            identity in current.matchedBoxIdentities
         ) {
             MatchResult.DUPLICATE
         } else {
@@ -172,6 +191,12 @@ class ScanReducer(
         } else {
             null
         }
+        val code = recordedCode(qrPayload, barcodePayload)
+        val recordedBox = if (result == MatchResult.MATCH) {
+            RecordedBox.fromPayloads(qrPayload, barcodePayload, code)
+        } else {
+            null
+        }
         val next = current.copy(
             scan = ScanState.Result(
                 qrPayload = qrPayload,
@@ -180,22 +205,37 @@ class ScanReducer(
                 matchedCount = matchNumber,
             ),
             autoAdvanceSecondsRemaining = remaining,
-            matchedQrPayloadIdentities = if (result == MatchResult.MATCH) {
-                current.matchedQrPayloadIdentities + qrIdentity
+            recordedBoxes = if (recordedBox != null) {
+                current.recordedBoxes + recordedBox
             } else {
-                current.matchedQrPayloadIdentities
+                current.recordedBoxes
             },
         )
 
         val effects = buildList {
             add(ScanEffect.ScanAccepted)
             if (result == MatchResult.MATCH) {
+                val destination = current.destination
+                    ?: CodeMatcher.detectDestination(qrPayload)
+                    ?: Destination.SAWAI
+                val summary = if (destination == Destination.MOLTEC) {
+                    recordedBox?.deliveryNumber?.let(next::moltecSummary)
+                } else {
+                    null
+                }
                 add(
                     ScanEffect.RecordMatch(
                         qrPayload = qrPayload,
                         barcodePayload = barcodePayload,
-                        code = recordedCode(qrPayload, barcodePayload),
+                        code = code,
                         matchNumber = matchNumber,
+                        destination = destination,
+                        // Moltec counts boxes per delivery number; Sawai keeps
+                        // counting them per part number, as the history does.
+                        boxNumber = summary?.boxNumber
+                            ?: next.recordedBoxes.count { it.code == code },
+                        deliveryNumber = summary?.deliveryNumber,
+                        cumulativeQuantity = summary?.cumulativeQuantity,
                     ),
                 )
                 if (remaining != null) add(ScanEffect.AutoAdvanceStarted(remaining))
@@ -369,6 +409,7 @@ class ScanReducer(
     private fun invalidPayloadReason(
         payload: ScanPayload,
         value: String,
+        lockedDestination: Destination?,
     ): InvalidScanReason? {
         // Recognising a QR symbol does not establish that it is a business
         // label. Validate QR content for both camera and Bluetooth before
@@ -376,25 +417,62 @@ class ScanReducer(
         // The same applies to Code 128 below (#78).
         return when {
             payload.format == ScanFormat.QR -> {
-                val length = value.trim().length
+                val length = observedQrLength(value, lockedDestination)
+                val expected = lockedDestination?.let(CodeMatcher::expectedQrLength)
                 when {
-                    length < KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH ->
+                    // A payload that parses as either destination's record is
+                    // accepted here; the caller decides whether the session's
+                    // lock allows that destination.
+                    CodeMatcher.detectDestination(value) != null -> null
+                    // A locked session knows exactly how long its record is.
+                    expected != null && length < expected ->
+                        InvalidScanReason.INCOMPLETE_QR_PAYLOAD
+                    expected != null && length > expected ->
+                        InvalidScanReason.OVERLONG_QR_PAYLOAD
+                    expected != null -> InvalidScanReason.INVALID_PAYLOAD
+                    // Without a lock both records are still possible, so only a
+                    // length outside 57-66 is certainly truncated or padded.
+                    length < MoltecQrRecord.MINIMUM_SCAN_PAYLOAD_LENGTH ->
                         InvalidScanReason.INCOMPLETE_QR_PAYLOAD
                     length > KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH ->
                         InvalidScanReason.OVERLONG_QR_PAYLOAD
-                    !KanbanQrRecord.isValidScanPayload(value) -> InvalidScanReason.INVALID_PAYLOAD
-                    else -> null
+                    // 62-65 falls between the two records: too long for Moltec
+                    // and too short for Sawai, so the Sawai record was cut off.
+                    // A complete-length payload that did not parse is invalid.
+                    length in (MoltecQrRecord.RECORD_LENGTH + 1) until
+                        KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH ->
+                        InvalidScanReason.INCOMPLETE_QR_PAYLOAD
+                    else -> InvalidScanReason.INVALID_PAYLOAD
                 }
             }
             // A Code 128 symbol likewise only proves the symbology. Camera and
             // Bluetooth input must both carry the product-tag business format
-            // (4-2-4 part number @ management code) before comparison runs.
+            // (a 4-2-4 part number for Sawai, 4-2-3 or 4-2-4 for Moltec,
+            // followed by @management code) before comparison runs.
             payload.format == ScanFormat.CODE_128 ->
-                if (TagBarcodeRecord.isValidScanPayload(value)) null else InvalidScanReason.INVALID_PAYLOAD
+                if (TagBarcodeRecord.isValidScanPayload(
+                        value,
+                        lockedDestination ?: Destination.SAWAI,
+                    )
+                ) {
+                    null
+                } else {
+                    InvalidScanReason.INVALID_PAYLOAD
+                }
             value.isBlank() -> InvalidScanReason.INVALID_PAYLOAD
             else -> null
         }
     }
+
+    /**
+     * Length reported for an invalid QR.
+     *
+     * A Moltec record is space padded, so its surrounding spaces are data and
+     * must be counted; every other case keeps the trimmed length the Sawai
+     * messages have always shown.
+     */
+    private fun observedQrLength(value: String, lockedDestination: Destination?): Int =
+        if (lockedDestination == Destination.MOLTEC) value.length else value.trim().length
 
     private fun recordedCode(qrPayload: String, barcodePayload: String): String {
         val part = CodeMatcher.partNumberFromBarcode(barcodePayload)
@@ -409,23 +487,24 @@ class ScanReducer(
             autoAdvanceDelay: AutoAdvanceDelay = AutoAdvanceDelay.THREE_SECONDS,
             matchedCount: Int = 0,
             existingMatchedCount: Int? = null,
-            matchedQrPayloads: Collection<String> = emptyList(),
+            recordedBoxes: Collection<RecordedBox> = emptyList(),
+            destination: Destination? = null,
         ): ScanSessionState = ScanSessionState(
             autoAdvanceEnabled = autoAdvanceEnabled,
             autoAdvanceDelay = autoAdvanceDelay,
             initialMatchedCount = (existingMatchedCount ?: matchedCount).coerceAtLeast(0),
-            matchedQrPayloadIdentities = matchedQrPayloads
-                .map(CodeMatcher::payloadIdentity)
-                .filterTo(linkedSetOf()) { it.isNotEmpty() },
+            destination = destination
+                ?: recordedBoxes.firstNotNullOfOrNull { it.destination },
+            recordedBoxes = recordedBoxes.toList(),
         )
 
-        fun normalizeTransportTerminators(rawValue: String): String {
-            var value = rawValue
-            while (value.isNotEmpty() && (value.last() == '\r' || value.last() == '\n' || value.last() == '\u0000')) {
-                value = value.dropLast(1)
-            }
-            return value
-        }
+        /**
+         * Strip the transport terminators (CR, LF, NUL) a scanner adds at
+         * either end. Spaces are deliberately kept: a Moltec record is space
+         * padded, so trimming them would shorten a complete record.
+         */
+        fun normalizeTransportTerminators(rawValue: String): String =
+            CodeMatcher.stripTransportTerminators(rawValue)
     }
 }
 

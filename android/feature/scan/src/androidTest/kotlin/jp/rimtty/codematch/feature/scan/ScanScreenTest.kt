@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import jp.rimtty.codematch.core.model.AppLanguage
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.scanner.api.ConfigurationState
 import jp.rimtty.codematch.scanner.api.InputSource
@@ -39,6 +41,12 @@ class ScanScreenTest {
     private val qrPayload =
         "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private val barcodePayload = "BCJH-52-81GG@1N5X0C"
+
+    // Destination Moltec: delivery number UAG5560, pack quantity 120, and a
+    // nine-character part number. The QR's trailing spaces are record data.
+    private val moltecQrPayload =
+        "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+    private val moltecBarcodePayload = "PAF1-15-422@0NKD3C"
 
     @Test
     fun inputPickerRemainsVisibleDuringCameraSwitchAndScannerRestore() {
@@ -223,6 +231,141 @@ class ScanScreenTest {
             context.getString(R.string.scan_result_duplicate_description),
         ).assertIsDisplayed()
         composeRule.onAllNodesWithTag("scan_countdown").assertCountEquals(0)
+    }
+
+    @Test
+    fun moltecMatchResultShowsDeliveryBoxSummaryAndDestinationBadge() {
+        val session = ScanSessionState(
+            scan = ScanState.Result(
+                qrPayload = moltecQrPayload,
+                barcodePayload = moltecBarcodePayload,
+                result = MatchResult.MATCH,
+                matchedCount = 1,
+            ),
+            destination = Destination.MOLTEC,
+            recordedBoxes = listOfNotNull(
+                RecordedBox.fromPayloads(moltecQrPayload, moltecBarcodePayload),
+            ),
+        )
+        composeRule.setContent {
+            ScanScreen(
+                ScanUiState.fromSession(session, sessionActive = true),
+                onAction = {},
+            )
+        }
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithTag("scan_result_qr_part.value")
+            .assertTextEquals("PAF1-15-422")
+        composeRule.onNodeWithTag("scan_result_moltec_box_summary")
+            .performScrollTo()
+            .assertTextEquals(
+                context.getString(
+                    R.string.scan_result_moltec_box_summary,
+                    "UAG5560",
+                    1,
+                    120,
+                ),
+            )
+        composeRule.onNodeWithTag("scan_session_destination")
+            .performScrollTo()
+            .assertTextEquals(
+                context.getString(
+                    R.string.scan_session_destination_format,
+                    context.getString(R.string.scan_destination_moltec),
+                ),
+            )
+    }
+
+    @Test
+    fun sawaiMatchResultKeepsThePlainTwoRowCard() {
+        val session = ScanSessionState(
+            scan = ScanState.Result(
+                qrPayload = qrPayload,
+                barcodePayload = barcodePayload,
+                result = MatchResult.MATCH,
+                matchedCount = 1,
+            ),
+            destination = Destination.SAWAI,
+            recordedBoxes = listOfNotNull(
+                RecordedBox.fromPayloads(qrPayload, barcodePayload),
+            ),
+        )
+        composeRule.setContent {
+            ScanScreen(
+                ScanUiState.fromSession(session, sessionActive = true),
+                onAction = {},
+            )
+        }
+
+        composeRule.onAllNodesWithTag("scan_result_moltec_box_summary").assertCountEquals(0)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithTag("scan_session_destination")
+            .performScrollTo()
+            .assertTextEquals(
+                context.getString(
+                    R.string.scan_session_destination_format,
+                    context.getString(R.string.scan_destination_sawai),
+                ),
+            )
+    }
+
+    @Test
+    fun wrongDestinationMessageNamesLockedDestinationOnCameraAndBluetooth() {
+        val source = mutableStateOf(InputSource.CAMERA)
+        composeRule.setContent {
+            ScanScreen(
+                ScanUiState.fromSession(
+                    session = ScanSessionState(
+                        scan = ScanState.WaitingQr(matchedCount = 1),
+                        inputSource = source.value,
+                        destination = Destination.MOLTEC,
+                    ),
+                    sessionActive = true,
+                    lastInvalidReason = InvalidScanReason.WRONG_DESTINATION,
+                    lastInvalidPayloadLength = 66,
+                ),
+                onAction = {},
+            )
+        }
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val expected = context.getString(
+            R.string.scan_invalid_wrong_destination,
+            context.getString(R.string.scan_destination_moltec),
+        )
+        for (input in listOf(InputSource.CAMERA, InputSource.BLUETOOTH)) {
+            composeRule.runOnIdle { source.value = input }
+            // The generic camera guidance must not swallow this message: the
+            // operator scanned a valid slip of the other destination.
+            composeRule.onNodeWithText(expected).performScrollTo().assertIsDisplayed()
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.scan_invalid_camera_qr),
+            ).assertCountEquals(0)
+        }
+    }
+
+    @Test
+    fun unlockedIncompleteQrMessageShowsObservedLengthOnly() {
+        composeRule.setContent {
+            ScanScreen(
+                ScanUiState.fromSession(
+                    session = ScanSessionState(
+                        scan = ScanState.WaitingQr(),
+                        inputSource = InputSource.BLUETOOTH,
+                    ),
+                    sessionActive = true,
+                    lastInvalidReason = InvalidScanReason.INCOMPLETE_QR_PAYLOAD,
+                    lastInvalidPayloadLength = 63,
+                ),
+                onAction = {},
+            )
+        }
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(
+            context.getString(R.string.scan_invalid_qr_incomplete_length_unlocked, 63),
+        ).performScrollTo().assertIsDisplayed()
     }
 
     @Test

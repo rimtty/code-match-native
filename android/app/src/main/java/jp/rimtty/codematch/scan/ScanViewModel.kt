@@ -11,6 +11,7 @@ import jp.rimtty.codematch.core.model.MatchSession
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.core.model.ScanSessionCheckpoint
 import jp.rimtty.codematch.feedback.FeedbackPlayer
+import jp.rimtty.codematch.feature.scan.RecordedBox
 import jp.rimtty.codematch.feature.scan.ScanEffect
 import jp.rimtty.codematch.feature.scan.CameraPermissionState
 import jp.rimtty.codematch.feature.scan.ScanPhase
@@ -306,16 +307,23 @@ class ScanViewModel @Inject constructor(
                 installCoordinator(initial.settings, initial.activeSession, checkpoint)
                 initialized.complete(Unit)
 
+                // These collectors are children of the ViewModel's supervisor
+                // scope, so the enclosing catch never sees their failures. A
+                // storage error must stop the observer, never crash the host.
                 launch {
-                    settingsRepository.settings
-                        .distinctUntilChanged()
-                        .collect { settings -> applySettings(settings) }
+                    collectUntilFailure {
+                        settingsRepository.settings
+                            .distinctUntilChanged()
+                            .collect { settings -> applySettings(settings) }
+                    }
                 }
                 launch {
-                    historyRepository.activeSession
-                        .map { session -> session?.id }
-                        .distinctUntilChanged()
-                        .collect { sessionId -> handleActiveSessionId(sessionId) }
+                    collectUntilFailure {
+                        historyRepository.activeSession
+                            .map { session -> session?.id }
+                            .distinctUntilChanged()
+                            .collect { sessionId -> handleActiveSessionId(sessionId) }
+                    }
                 }
             } catch (error: Throwable) {
                 if (!initialized.isCompleted) {
@@ -347,9 +355,17 @@ class ScanViewModel @Inject constructor(
             autoAdvanceDelay = settings.autoAdvanceDelay,
             existingMatchedCount = active?.matchedCount ?: 0,
             restoredCheckpoint = checkpoint,
-            matchedQrPayloads = active?.entries
-                ?.mapNotNull { it.qrPayload }
+            // Restore the destination-aware box keys and the Moltec delivery
+            // fields from the session's own rows: a checkpoint holds one step,
+            // not the boxes already recorded before it.
+            recordedBoxes = active?.entries
+                ?.mapNotNull { entry ->
+                    entry.qrPayload?.let {
+                        RecordedBox.fromPayloads(it, entry.barcodePayload, entry.code)
+                    }
+                }
                 .orEmpty(),
+            sessionDestination = active?.destination,
         )
         created.onStateChanged = { publishCoordinatorState() }
         created.onEffects = ::handleEffects
@@ -396,6 +412,22 @@ class ScanViewModel @Inject constructor(
 
         if (active != null) {
             created.startSession()
+        }
+    }
+
+    /**
+     * Run one observer and swallow a storage failure instead of letting it
+     * reach the uncaught-exception handler. Cancellation still propagates so
+     * [onCleared] can shut the scope down normally.
+     */
+    private suspend fun collectUntilFailure(block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            // The next state transition re-reads the repository; a missing or
+            // unreadable row safely falls back to Waiting QR.
         }
     }
 
@@ -722,6 +754,10 @@ class ScanViewModel @Inject constructor(
                 barcodePayload = effect.barcodePayload,
                 sessionId = sessionId,
                 checkpoint = checkpoint,
+                // The repository locks the session row only once, so passing
+                // the destination on every match is safe and keeps the label
+                // and the recorded box in the same transaction.
+                destination = effect.destination,
             )
         }
     }
@@ -845,6 +881,13 @@ class ScanViewModel @Inject constructor(
 
     companion object {
         private const val COUNTDOWN_TICK_MILLIS = 1_000L
+
+        /**
+         * Debug-only demo payloads. They are a Sawai pair, so running the demo
+         * inside a session already locked to Moltec is rejected as
+         * [jp.rimtty.codematch.feature.scan.InvalidScanReason.WRONG_DESTINATION]
+         * rather than producing a result.
+         */
         private const val SAMPLE_QR_PAYLOAD =
             "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
         private const val SAMPLE_BARCODE_PAYLOAD = "BCJH-52-81GG@1N5X0C"

@@ -74,8 +74,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.tooling.preview.Preview
 import jp.rimtty.codematch.core.matching.CodeMatcher
-import jp.rimtty.codematch.core.matching.KanbanQrRecord
 import jp.rimtty.codematch.core.model.AppLanguage
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.scanner.api.ConfigurationState
 import jp.rimtty.codematch.scanner.api.InputSource
@@ -354,12 +354,31 @@ private fun ScanSessionContent(
             .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text(
-            text = stringResource(R.string.scan_count_format, state.matchedCount),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.testTag("scan_session_count"),
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.scan_count_format, state.matchedCount),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.testTag("scan_session_count"),
+            )
+            // The lock exists only after the first accepted QR, so a session
+            // that has not identified a slip yet shows no destination at all.
+            state.destination?.let { destination ->
+                Text(
+                    text = stringResource(
+                        R.string.scan_session_destination_format,
+                        destinationName(destination),
+                    ),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("scan_session_destination"),
+                )
+            }
+        }
         ScanStepper(state.phase)
 
         // Restoring scanner settings temporarily clears readiness while the
@@ -966,6 +985,21 @@ private fun ScanResultCard(
                 barcodePart,
                 "scan_result_barcode_part",
             )
+            // A Moltec slip repeats for every box of one delivery number, so
+            // the operator needs the running box count and quantity here. A
+            // Sawai slip is box specific and keeps the plain two-row card.
+            state.session.moltecResultSummary?.let { summary ->
+                Text(
+                    text = stringResource(
+                        R.string.scan_result_moltec_box_summary,
+                        summary.deliveryNumber,
+                        summary.boxNumber,
+                        summary.cumulativeQuantity,
+                    ),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.testTag("scan_result_moltec_box_summary"),
+                )
+            }
             if (countdownSeconds != null && isMatch) {
                 CountdownCard(countdownSeconds, state.autoAdvanceDelay.seconds)
             }
@@ -981,6 +1015,15 @@ private fun ScanResultCard(
         }
     }
 }
+
+/** The localized display name of a destination. */
+@Composable
+private fun destinationName(destination: Destination): String = stringResource(
+    when (destination) {
+        Destination.SAWAI -> R.string.scan_destination_sawai
+        Destination.MOLTEC -> R.string.scan_destination_moltec
+    },
+)
 
 @Composable
 private fun ResultPartRow(label: String, value: String, tag: String) {
@@ -1121,6 +1164,9 @@ private fun AutoDelayOption(
 private fun ScanMessage(state: ScanUiState) {
     val invalid = state.lastInvalidReason
     if (invalid == null && state.message.isNullOrBlank()) return
+    // A camera QR that is simply not a business label collapses into one
+    // instruction. A wrong destination is deliberately excluded: the operator
+    // scanned a valid slip and needs to know which destination is locked.
     val invalidCameraQr = state.inputSource == InputSource.CAMERA &&
         state.phase == ScanPhase.WAITING_QR && invalid in setOf(
             InvalidScanReason.EMPTY_PAYLOAD,
@@ -1141,23 +1187,39 @@ private fun ScanMessage(state: ScanUiState) {
         InvalidScanReason.SESSION_NOT_STARTED -> stringResource(R.string.scan_invalid_session)
         InvalidScanReason.WRONG_ORDER -> stringResource(R.string.scan_invalid_order)
         InvalidScanReason.EMPTY_PAYLOAD -> stringResource(R.string.scan_invalid_empty)
+        // The expected length is only known once the session is locked to a
+        // destination; before that the message names the observed length alone.
         InvalidScanReason.INCOMPLETE_QR_PAYLOAD ->
             state.lastInvalidPayloadLength?.let { observedLength ->
-                stringResource(
-                    R.string.scan_invalid_qr_incomplete_length,
+                state.destination?.let { destination ->
+                    stringResource(
+                        R.string.scan_invalid_qr_incomplete_length,
+                        observedLength,
+                        CodeMatcher.expectedQrLength(destination),
+                    )
+                } ?: stringResource(
+                    R.string.scan_invalid_qr_incomplete_length_unlocked,
                     observedLength,
-                    KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH,
                 )
             } ?: stringResource(R.string.scan_invalid_qr_incomplete)
         InvalidScanReason.OVERLONG_QR_PAYLOAD ->
             state.lastInvalidPayloadLength?.let { observedLength ->
-                stringResource(
-                    R.string.scan_invalid_qr_overlong_length,
+                state.destination?.let { destination ->
+                    stringResource(
+                        R.string.scan_invalid_qr_overlong_length,
+                        observedLength,
+                        CodeMatcher.expectedQrLength(destination),
+                    )
+                } ?: stringResource(
+                    R.string.scan_invalid_qr_overlong_length_unlocked,
                     observedLength,
-                    KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH,
                 )
             } ?: stringResource(R.string.scan_invalid_qr_overlong)
         InvalidScanReason.INVALID_PAYLOAD -> stringResource(R.string.scan_invalid_payload)
+        InvalidScanReason.WRONG_DESTINATION -> stringResource(
+            R.string.scan_invalid_wrong_destination,
+            destinationName(state.destination ?: Destination.SAWAI),
+        )
         null -> null
     }
     Card(
