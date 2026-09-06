@@ -37,8 +37,9 @@ final class ScannerViewModel: ObservableObject {
     /// 一時的な非アクティブ化（Control Center、通知センター、着信など）で止めたカメラを、
     /// アクティブへ戻ったときに自動で再開するためのフラグ。
     private var cameraWasRunningBeforeInactive = false
-    /// カメラで拒否した業務外QR。同じ値がフレームごとに届くため、一定時間は再通知しない。
-    private var rejectedCameraQR: (value: String, date: Date)?
+    /// カメラで拒否した業務外のコード（QR / Code 128）。同じ値がフレームごとに届くため、
+    /// 一定時間は再通知しない。
+    private var rejectedCameraCode: (value: String, date: Date)?
     static let cameraRejectionRepeatInterval: TimeInterval = 2
     private var localizedMessageBuilder: (() -> String)?
 
@@ -167,7 +168,7 @@ final class ScannerViewModel: ObservableObject {
         isCameraStarting = false
         scanLocked = false
         barcodeCandidate = nil
-        rejectedCameraQR = nil
+        rejectedCameraCode = nil
         focusPoint = nil
         sessionBoxNumber = 0
         if inputSource == .bluetooth, bluetoothScanner.isConnected {
@@ -530,16 +531,28 @@ final class ScannerViewModel: ObservableObject {
     /// カメラのQRもBLEと同じ業務QR（66桁固定長）の検証を通す。無関係なQRは
     /// 警告してQR待機と件数を保持し、履歴や診断へ値を残さない。
     private func rejectCameraQR(_ value: String) {
+        rejectCameraCode(value) {
+            AppLocalization.string("納品書兼現品票のQRコードではありません。正しいQRコードを枠の中央に合わせてください。")
+        }
+    }
+
+    /// カメラのCode 128もBLEと同じ現品票の業務形式（4-2-4の品番@管理コード）の検証を通す。
+    /// 業務外のCode 128は2フレーム確認の候補に入れず、Code 128待機と件数を保持する。
+    private func rejectCameraBarcode(_ value: String) {
+        rejectCameraCode(value) {
+            AppLocalization.string("現品票のCode 128バーコードではありません。現品票のCode 128バーコードを枠に合わせてください。")
+        }
+    }
+
+    private func rejectCameraCode(_ value: String, message: @escaping () -> String) {
         let now = Date()
-        if let rejected = rejectedCameraQR,
+        if let rejected = rejectedCameraCode,
            rejected.value == value,
            now.timeIntervalSince(rejected.date) < Self.cameraRejectionRepeatInterval {
             return
         }
-        rejectedCameraQR = (value, now)
-        setLocalizedMessage {
-            AppLocalization.string("納品書兼現品票のQRコードではありません。正しいQRコードを枠の中央に合わせてください。")
-        }
+        rejectedCameraCode = (value, now)
+        setLocalizedMessage(message)
         feedback.invalidScan()
     }
 
@@ -710,6 +723,10 @@ extension ScannerViewModel: CameraScannerDelegate {
             }
             acceptQR(value)
         case (.barcode, .code128):
+            guard TagBarcodeRecord.isValidScanPayload(value) else {
+                rejectCameraBarcode(value)
+                return
+            }
             acceptBarcodeCandidate(value)
         default:
             setLocalizedMessage {

@@ -373,6 +373,7 @@ class ScanReducer(
         // Recognising a QR symbol does not establish that it is a business
         // label. Validate QR content for both camera and Bluetooth before
         // advancing; the comparison fallback must not bypass scan acceptance.
+        // The same applies to Code 128 below (#78).
         return when {
             payload.format == ScanFormat.QR -> {
                 val length = value.trim().length
@@ -385,7 +386,10 @@ class ScanReducer(
                     else -> null
                 }
             }
-            payload.source == InputSource.BLUETOOTH && payload.format == ScanFormat.CODE_128 ->
+            // A Code 128 symbol likewise only proves the symbology. Camera and
+            // Bluetooth input must both carry the product-tag business format
+            // (4-2-4 part number @ management code) before comparison runs.
+            payload.format == ScanFormat.CODE_128 ->
                 if (TagBarcodeRecord.isValidScanPayload(value)) null else InvalidScanReason.INVALID_PAYLOAD
             value.isBlank() -> InvalidScanReason.INVALID_PAYLOAD
             else -> null
