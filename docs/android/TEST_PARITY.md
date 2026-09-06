@@ -2,7 +2,9 @@
 
 監査日: 2026-09-04。対象は [`ios/CodeMatchTests/`](../../ios/CodeMatchTests) 配下の XCTest（監査時点で71本。2026-09-06にテストクラスごとのファイルへ分割し、以下の行番号はその分割後のもの）と [`CodeMatchUITests.swift`](../../ios/CodeMatchUITests/CodeMatchUITests.swift) の UI テスト5本。件数やテスト名の一致ではなく、各テストが保証する意図を Android 側の証拠へ対応付ける。Android の `D` は同じ契約を同等の層で検査、`P` は近接する状態・部品の検査（元テスト全体の代替ではない）、`—` は Android に適用されるが証拠がない行、`N/A` は Android の現行共通仕様に含まれず対応不要と根拠リンクで確認した行を表す。
 
-共通照合データは [`matching-cases.json`](../../shared/test-fixtures/matching-cases.json)（schemaVersion 1、5ケース）であり、Swift はファイルを直接読み、Kotlin は test runtime classpath から読む。`src/test` は JVM テスト、`src/androidTest` は端末・エミュレーター依存の証拠である。D/P は「実カメラ読取」や「対象 BLE scanner 通信」の成功を意味しない。
+行番号は記載時点のものであり、その後の変更（#82 / #83 / #93 / #95 / #97）で前後している。行の同定はテスト名で行うこと。2026-09-07時点のSwiftソースは単体123本・UI 6本で、監査後に追加された仕向地関連のテストは末尾の「仕向地モルテックの追加テスト（2026-09-07）」で対応付ける。
+
+共通照合データは [`matching-cases.json`](../../shared/test-fixtures/matching-cases.json)（schemaVersion 2、35ケース、各ケースにQRの`destination`）であり、Swift はファイルを直接読み、Kotlin は test runtime classpath から読む。`src/test` は JVM テスト、`src/androidTest` は端末・エミュレーター依存の証拠である。D/P は「実カメラ読取」や「対象 BLE scanner 通信」の成功を意味しない。
 
 ### Android 証拠ファイル（略記の正本）
 
@@ -23,6 +25,7 @@
 | `HistoryUiTextTest` | `android/feature/history/src/test/kotlin/jp/rimtty/codematch/feature/history/HistoryUiTextTest.kt` |
 | `HistoryExportTextTest` | `android/core/export/src/test/kotlin/jp/rimtty/codematch/core/export/HistoryExportTextTest.kt` |
 | `HistoryPdfContentTest` | `android/core/export/src/test/kotlin/jp/rimtty/codematch/core/export/HistoryPdfContentTest.kt` |
+| `HistoryDeliveryGroupsTest` | `android/core/export/src/test/kotlin/jp/rimtty/codematch/core/export/HistoryDeliveryGroupsTest.kt` |
 | `HistoryPdfBridgeTest` | `android/app/src/test/java/jp/rimtty/codematch/history/HistoryPdfBridgeTest.kt` |
 | `HistoryPdfExporterInstrumentationTest` | `android/core/export/src/androidTest/kotlin/jp/rimtty/codematch/core/export/HistoryPdfExporterInstrumentationTest.kt` |
 | `ScanModelsTest` | `android/core/model/src/test/kotlin/jp/rimtty/codematch/core/model/ScanModelsTest.kt` |
@@ -39,14 +42,17 @@
 | `BleKnownDeviceStoreTest` | `android/scanner/ble/src/androidTest/kotlin/jp/rimtty/codematch/scanner/ble/BleKnownDeviceStoreTest.kt` |
 | `ScanReducerTest` | `android/feature/scan/src/test/kotlin/jp/rimtty/codematch/feature/scan/ScanReducerTest.kt` |
 | `ScanSessionCoordinatorTest` | `android/feature/scan/src/test/kotlin/jp/rimtty/codematch/feature/scan/ScanSessionCoordinatorTest.kt` |
+| `ScanCheckpointMappingTest` | `android/feature/scan/src/test/kotlin/jp/rimtty/codematch/feature/scan/ScanCheckpointMappingTest.kt` |
 | `BleScannerSessionCoordinatorTest` | `android/scanner/ble/src/test/kotlin/jp/rimtty/codematch/scanner/ble/BleScannerSessionCoordinatorTest.kt` |
 | `HistoryRepositoryTest` | `android/core/data/src/androidTest/kotlin/jp/rimtty/codematch/core/data/HistoryRepositoryTest.kt` |
+| `CodeMatchDatabaseMigrationTest` | `android/core/data/src/androidTest/kotlin/jp/rimtty/codematch/core/data/CodeMatchDatabaseMigrationTest.kt` |
 | `HistoryModelsTest` | `android/core/model/src/test/kotlin/jp/rimtty/codematch/core/model/HistoryModelsTest.kt` |
 | `ScanScreenTest` | `android/feature/scan/src/androidTest/kotlin/jp/rimtty/codematch/feature/scan/ScanScreenTest.kt` |
 | `SettingsScreenTest` | `android/feature/settings/src/androidTest/kotlin/jp/rimtty/codematch/feature/settings/SettingsScreenTest.kt` |
 | `FeedbackContractTest` | `android/app/src/test/java/jp/rimtty/codematch/feedback/FeedbackContractTest.kt` |
 | `HistoryScreenTest` | `android/feature/history/src/androidTest/kotlin/jp/rimtty/codematch/feature/history/HistoryScreenTest.kt` |
 | `AppFlowInstrumentationTest` | `android/app/src/androidTest/java/jp/rimtty/codematch/AppFlowInstrumentationTest.kt` |
+| `ScanViewModelCheckpointInstrumentationTest` | `android/app/src/androidTest/java/jp/rimtty/codematch/scan/ScanViewModelCheckpointInstrumentationTest.kt` |
 | `NavigationTest` | `android/app/src/androidTest/java/jp/rimtty/codematch/NavigationTest.kt` |
 
 
@@ -61,12 +67,12 @@
 | 5 | metadata region を正規化座標へ clamp する（`CameraPreviewTests.swift:70`、`CameraPreviewTests`） | iOSの [`CameraScanner.swift#L204`](../../ios/CodeMatch/Services/CameraScanner.swift#L204) が正規化矩形をclampするのに対し、Androidは [`CameraModelsTest.kt#L60`](../../android/scanner/camera/src/test/kotlin/jp/rimtty/codematch/scanner/camera/CameraModelsTest.kt#L60) `roi rejects coordinates outside the preview instead of clamping them` + [`#L72`](../../android/scanner/camera/src/test/kotlin/jp/rimtty/codematch/scanner/camera/CameraModelsTest.kt#L72) `roi accepts coordinates exactly on the normalized preview boundary` で範囲外を拒否する安全側policyを検査する。iOSのclamp動作そのものは移植していない | P（policy差） |
 | 6 | screen capture 中でも multitasking camera 対応時は開始し、非対応時だけ block（`CameraPreviewTests.swift:85`、`CameraPreviewTests`） | iOSの [`CameraScanner.swift#L209`](../../ios/CodeMatch/Services/CameraScanner.swift#L209) / [`#L217`](../../ios/CodeMatch/Services/CameraScanner.swift#L217) と [`CodeMatcherTests.swift#L85`](../../ios/CodeMatchTests/CodeMatcherTests.swift#L85) がscene captureとmultitasking cameraの組合せを固定する。一方、共通 [`PRODUCT_SPEC.md#L3`](../PRODUCT_SPEC.md#L3) にこの要件はなく、Androidの現行camera状態は [`CameraModels.kt#L11`](../../android/scanner/camera/src/main/kotlin/jp/rimtty/codematch/scanner/camera/CameraModels.kt#L11)、Manifestは [`AndroidManifest.xml#L5`](../../android/app/src/main/AndroidManifest.xml#L5) のCAMERA/任意cameraだけである | N/A（iOS固有の防御策。Android要件が追加される場合は別仕様） |
 | 7 | Code 128 から品番を抽出する（`CodeMatcherTests.swift:23`） | `CodeMatcherTest.kt::partNumberFromBarcodeUsesTextBeforeFirstAt` | D |
-| 8 | 標準 QR の固定位置と非標準入力の品番抽出（`CodeMatcherTests.swift:30`） | `CodeMatcherTest.kt::partNumberFromQrReadsTheStandardCardAndItemPositions` | D |
+| 8 | 仕向地ごとの固定位置から品番を抽出し、どちらの様式でもない QR からは抽出しない（`CodeMatcherTests.swift::testPartNumberFromQR` + `::testPartNumberFromQRIsDestinationAware`） | `CodeMatcherTest.kt::partNumberFromQrReadsTheStandardCardAndItemPositions` + `::partNumberFromQrIsDestinationAware` | D |
 | 9 | 実データの QR/Code 128 が一致する（`CodeMatcherTests.swift:42`） | `CodeMatcherTest.kt::compareMatchesRealPairAndIgnoresManagementCode` | D |
 | 10 | shared fixture の全ケースを照合する（`CodeMatcherTests.swift:46`） | `CodeMatcherTest.kt::sharedMatchingFixturesHaveTheSameResultsAsSwift`（classpath fixture） | D |
 | 11 | 別品番は不一致になる（`CodeMatcherTests.swift:83`） | `CodeMatcherTest.kt::compareMatchesRealPairAndIgnoresManagementCode` | D |
 | 12 | `@` 以降の管理コード差は一致へ影響しない（`CodeMatcherTests.swift:91`） | `CodeMatcherTest.kt::compareMatchesRealPairAndIgnoresManagementCode` | D |
-| 13 | 非標準 QR は保守的 containment fallback を使う（`CodeMatcherTests.swift:99`） | `CodeMatcherTest.kt::compareUsesOnlyConservativeContainmentForNonStandardQr` | D |
+| 13 | 非標準 QR は品番を含んでいても一致しない（containment fallback は両プラットフォームで削除済み。`CodeMatcherTests.swift::testNonStandardQRIsMismatch`） | `CodeMatcherTest.kt::nonStandardQrNeverMatchesEvenWhenItContainsThePartNumber` | D |
 | 14 | 空 payload は不一致になる（`CodeMatcherTests.swift:110`） | `CodeMatcherTest.kt::emptyOrUnparseableValuesMismatch` | D |
 | 15 | 品番表示形式を整形する（`CodeMatcherTests.swift:115`） | `CodeMatcherTest.kt::formatPartNumberUsesTheFourTwoFourDisplayShape` | D |
 | 16 | Kanban QR の全フィールドを解析する（`CodeMatcherTests.swift:120`） | `CodeMatcherTest.kt::kanbanRecordParsesAllFields` | D |
@@ -140,6 +146,39 @@ UI テストは複数の層・起動引数・永続ストレージを一度に�
 
 Swift UI 5本の直接対応とは別に、`NavigationTest`は履歴のsession→group→box選択がActivity再生成とHistory→Settings→Scan→History往復後も復元されること、およびcompact system backがbox→group→session→listを順に戻ることを実app graphで検査する。`BackNavigationTest`は通常の完了、無効時のfallback、予測gesture cancel時にcallbackを発火しない境界を検査するが、実gestureの視覚遷移は人手ゲートに残す。`HistoryPdfBridgeTest`と`HistoryPdfExporterInstrumentationTest`は、A4複数ページPDFの実render、専用cache、SAF byte保存、共有Intent/FileProvider契約を検査するが、実DocumentProvider/共有先アプリの操作を代替しない。
 
+## 仕向地モルテックの追加テスト（2026-09-07）
+
+Issue #84（PR #93 / #95 / #96 / #97 / #98 / #99）で追加した Swift テストと、その Android 証拠。番号は上の表の続きで、Swift のファイル内位置は変わるためテスト名で同定する。
+
+| # | Swift の意図（テスト） | Android の証拠 | 判定 |
+|---:|---|---|:---:|
+| 72 | 伝送終端（CR/LF/NUL）だけを除去して仕向地を判定し、モルテックの空白は削らない（`CodeMatcherTests::testDestinationDetectStripsOnlyTransportTerminators`） | `CodeMatcherTest.kt::detectDestinationSeparatesSawaiAndMoltecAndRejectsOthers` | D |
+| 73 | モルテック QR の全フィールドを実データから解析する（`CodeMatcherTests::testMoltecQRRecordParsesAllFields`） | `CodeMatcherTest.kt::moltecRecordParsesAllFieldsFromRealPayloads` | D |
+| 74 | 空欄の TY ロケーション・時刻を欠損として扱う（`CodeMatcherTests::testMoltecQRRecordHandlesBlankOptionalFields`） | `CodeMatcherTest.kt::moltecRecordParsesAllFieldsFromRealPayloads`（空欄を含む実レコード） | D |
+| 75 | 末尾空白が落ちた読取値を61桁へ補完し、同じ正規形にする（`CodeMatcherTests::testMoltecQRRecordPadsStrippedTrailingSpaces`） | `CodeMatcherTest.kt::moltecRecordPadsShortPayloadAndCanonicalizesIdentity` | D |
+| 76 | 桁数・収容数・日付・時刻・部品番号欄が不正なら受理しない（`CodeMatcherTests::testMoltecQRRecordRejectsInvalidFields`） | `CodeMatcherTest.kt::moltecRecordRejectsWrongLengthQuantityDateTimeAndPartField` | D |
+| 77 | `4-2-3` の Code 128 はモルテックだけで受理する（`CodeMatcherTests::testTagBarcodeRecordAcceptsFourTwoThreeOnlyForMoltec`） | `CodeMatcherTest.kt::tagValidationAllowsFourTwoThreeOnlyForMoltec` | D |
+| 78 | 箱固有キーは澤井製作所が QR のみ、モルテックは QR＋Code 128（`CodeMatcherTests::testBoxIdentityPerDestination`） | `CodeMatcherTest.kt::boxIdentityIncludesTagOnlyForMoltec` | D |
+| 79 | モルテックの共通 fixture がカメラ・Bluetooth 双方の受理境界を通る（`CodeMatcherTests::testSharedMoltecPairsPassBothScanBoundaries`） | `CodeMatcherTest.kt::sharedMoltecFixturesPassBothScanBoundaries` + `ScanReducerTest.kt::moltecFixturesKeepTheirPadding` | D |
+| 80 | モルテックの QR→`4-2-3` バーコードが一致し、納品番号の箱数を報告する（`BluetoothScannerFlowTests::testMoltecQRThenFourTwoThreeBarcodeMatchesAndReportsDeliveryBox`） | `ScanReducerTest.kt::moltecQrThenTagMatchesWithNineCharPartAndDeliverySummary` + `ScanScreenTest.kt::moltecMatchResultShowsDeliveryBoxSummaryAndDestinationBadge` | D |
+| 81 | 同じ納品番号の別ラベルは2箱目として計上し、累計収容数を積む（`BluetoothScannerFlowTests::testMoltecSecondBoxSameQRDifferentLabelIsCountedNotDuplicate`） | `ScanReducerTest.kt::moltecSameQrDifferentTagIsSecondBoxWithCumulativeQuantity` + `HistoryRepositoryTest.kt::payloadsArePersistedWithEachDuplicateEntry` | D |
+| 82 | 同じ箱（同じ QR と同じ Code 128）の読み直しは重複（`BluetoothScannerFlowTests::testMoltecRescanOfSameBoxIsDuplicate`） | `ScanReducerTest.kt::moltecSameQrAndSameTagIsDuplicate` | D |
+| 83 | モルテックの不一致は計上しない（`BluetoothScannerFlowTests::testMoltecMismatchIsNotCounted`） | `ScanReducerTest.kt::mismatchRemainsVisibleAndNeverProducesRecordEffect`（記録effectなし）+ `CodeMatcherTest.kt::sharedMatchingFixturesHaveTheSameResultsAsSwift`（モルテックの不一致 fixture） | D |
+| 84 | 末尾空白が落ちた読取値でも一致し、別の箱を作らない（`BluetoothScannerFlowTests::testStrippedTrailingSpacesStillMatchAndDoNotCreateSecondBox`） | `ScanReducerTest.kt::moltecQrWithTrailingSpacesStrippedIsAcceptedAndSharesIdentityWithPaddedForm` | D |
+| 85 | 最初に受理した QR で仕向地を固定し、別仕向地の QR を拒否する（`BluetoothScannerFlowTests::testSessionLocksToFirstDestinationAndRejectsOtherDestinationQR`、`::testSawaiSessionRejectsMoltecQRViaCameraNamingSawai`） | `ScanReducerTest.kt::firstAcceptedQrLocksDestinationAndOtherDestinationQrIsRejected` + `ScanScreenTest.kt::wrongDestinationMessageNamesLockedDestinationOnCameraAndBluetooth` | D |
+| 86 | 澤井製作所のセッションでは `4-2-3` の Code 128 を受理しない（`BluetoothScannerFlowTests::testFourTwoThreeBarcodeIsRejectedInSawaiSession`） | `ScanReducerTest.kt::moltecSessionAcceptsFourTwoFourTagAndSawaiSessionRejectsFourTwoThreeTag` + `ScanSessionCoordinatorTest.kt::cameraFourTwoThreeTagGoesThroughStabilizerOnlyInMoltecSession` | D |
+| 86a | 固定は不一致・手動の次工程でも解除されない（Swift は `::testSessionLocksToFirstDestinationAndRejectsOtherDestinationQR` の再読取で暗黙に確認） | `ScanReducerTest.kt::destinationLockSurvivesMismatchAndManualNext` | D |
+| 87 | Code 128 待機中のモルテック QR は順序違いとして拒否（`BluetoothScannerFlowTests::testMoltecQRAtBarcodeStepIsWrongOrder`） | `ScanReducerTest.kt::reverseOrderAndInvalidPayloadAreRejectedWithoutChangingState` | D |
+| 88 | ViewModel 再生成時に active session から仕向地を復元（`BluetoothScannerFlowTests::testDestinationIsRestoredFromActiveSessionOnViewModelCreation`） | `ScanSessionCoordinatorTest.kt::restoredCheckpointDestinationSeedsTheLock` + `::sessionDestinationSeedsTheLockWhenCheckpointHasNone` + `::recordedBoxesDeriveTheLockWhenNothingElseIsStored` + `ScanCheckpointMappingTest.kt::destinationRoundTripsInEveryPhase` + `::checkpointWithoutDestinationDerivesItFromAcceptedQr` + `ScanViewModelCheckpointInstrumentationTest.kt::moltecDestinationLockSurvivesIsolatedDatabaseReopen` | D |
+| 89 | 同じ QR・別ラベルは別の箱、同じ QR・同じラベルは重複（`HistoryStoreTests::testMoltecSameQRDifferentLabelsAreDistinctBoxes`、`::testMoltecSameQRSameLabelIsDuplicate`） | `ScanReducerTest.kt::restoredMoltecBoxesSeedDuplicateAndDeliveryCounts` + `HistoryRepositoryTest.kt::recordMatchTrimsCodeReturnsOneBasedBoxNumberAndPreservesDuplicates` | D |
+| 90 | 澤井製作所の重複判定は QR だけを鍵にしたまま（`HistoryStoreTests::testSawaiDuplicateRuleStillKeysOnQROnly`） | `CodeMatcherTest.kt::boxIdentityIncludesTagOnlyForMoltec` + `ScanReducerTest.kt::sameBoxQrCannotBeCountedTwiceInOneActiveSession` | D |
+| 91 | 納品番号ごとの箱数と累計収容数を集計する（`HistoryStoreTests::testDeliverySummaryCountsBoxesAndQuantity`、`::testDeliveryNumberCount`） | `HistoryDeliveryGroupsTest.kt::deliveryGroupsKeepFirstSeenOrderAndSumPackQuantities` + `::sawaiAndUnrecordedPayloadsProduceNoDeliveryGroups` | D |
+| 92 | 品番グループの中を納品番号ごとに最初に見た順で分ける（`HistoryStoreTests::testGroupedEntriesExposeDeliveryGroupsInFirstSeenOrder`） | `HistoryDeliveryGroupsTest.kt::deliveryGroupsKeepFirstSeenOrderAndSumPackQuantities` + `HistoryModelsTest.kt::groupedEntriesKeepFirstSeenPartOrderAndEveryDuplicate` | D |
+| 93 | 一致記録で仕向地を1回だけ確定して永続化する（`HistoryStoreTests::testRecordMatchSetsDestinationOnceAndPersists`、`::testSetActiveSessionDestinationIfNeededPersistsAndDoesNotOverwrite`） | `HistoryRepositoryTest.kt::firstMatchLocksSessionDestinationAndLaterValuesCannotChangeIt` + `::checkpointDestinationLocksSessionBeforeFirstMatchAndRoundTrips` | D |
+| 94 | 仕向地のない旧履歴・未知の値でも履歴を捨てない（`HistoryStoreTests::testLegacyJSONWithoutDestinationLoadsAndResolvesFromFirstEntry`、`::testUnknownDestinationRawValueDoesNotDiscardHistory`） | `HistoryRepositoryTest.kt::legacySessionWithoutDestinationReadsAsNull` + `HistoryModelsTest.kt::destinationDefaultsToNullForLegacySessions` + `HistoryDeliveryGroupsTest.kt::resolvedDestinationPrefersTheStoredValueThenFallsBackToTheEntries` + `CodeMatchDatabaseMigrationTest.kt::versionTwoMigratesToVersionThreeWithNullableDestinationColumns` + `::versionOneMigratesToVersionThreeThroughBothMigrations` | D |
+| UI 6 | Fake Bluetooth のモルテック流れで仕向地が固定され、納品番号ごとに箱が数えられる（`CodeMatchUITests::testMockBluetoothScannerMoltecFlowLocksDestination`） | `AppFlowInstrumentationTest.kt::fakeScannerMoltecFlowCountsBoxesPerDeliveryNumberAndLocksDestination` は同じ debug Fake、app navigation、ViewModel、Room を通す | D（debug Fake） |
+| PDF | 履歴詳細と PDF のモルテック項目（仕向地、納品番号数、納品番号ごとの箱数・累計、解析全項目）（`SessionPDFExporterTests::testFixturePayloadsAreFullRecords` + `SessionPDFExporterTests::testMoltecInstructionDateAndTimeAreFormattedForDisplay` + `SessionPDFExporterTests::testMoltecSessionListsDeliveryNoteBlockPerDeliveryNumber` + `SessionPDFExporterTests::testSawaiSessionKeepsPartNumberBlocksAndShowsDestination` + `SessionPDFExporterTests::testSessionWithoutParsableQRHasNoDestinationLine`、`CodeMatchUITests::testMockBluetoothScannerMoltecFlowLocksDestination` の履歴詳細部分） | `HistoryPdfContentTest.kt::moltecReportGroupsBoxesPerDeliveryNumberWithCumulativeQuantityAndAllFields` + `::englishMoltecReportUsesEnglishLabels` + `::legacySawaiReportIsUnchangedWhenDestinationIsNull` + `HistoryDeliveryGroupsTest.kt::instructionDateAndTimeAreFormattedAndUnexpectedValuesArePreserved` + `HistoryScreenTest.kt::moltecEntryDetailDisplaysAllParsedFields` + `::moltecGroupDetailShowsPerDeliveryNumberSummary` + `::sessionDetailAndRowShowDestination` | D |
+
 ## 残る物理・手動・未対応の証拠
 
 2026-09-05のIssue #57で、この節に挙がる実機・手動ゲートのうち未実施のものは打ち切りとし、これ以上確認しません。打ち切りは検証成功を意味せず、`P`/`—`の分類は変更しません。一覧は[`STATUS.md`](STATUS.md)の「打ち切った確認項目」を参照してください。
@@ -164,7 +203,7 @@ Swift UI 5本の直接対応とは別に、`NavigationTest`は履歴のsession�
 
 ## 検証
 
-- Swift source の `func test` 数: unit 71、UI 5。fixture は JSON として schemaVersion 1、5 case、ID 重複なし。
+- 監査時点の Swift source の `func test` 数: unit 71、UI 5。2026-09-07時点では unit 118、UI 6（仕向地モルテックの追加分を含む）。fixture は JSON として schemaVersion 2、35 case、ID 重複なし、`destination` は `sawai` 22 件・`moltec` 11 件・どちらでもない 2 件。
 - Android の focused Gradle test は Android Studio の JDK と SDK を明示して実行し、次の2系統がともに `BUILD SUCCESSFUL` になった。`./gradlew :core:model:testDebugUnitTest :core:matching:testDebugUnitTest :feature:scan:testDebugUnitTest :scanner:ble:testDebugUnitTest :scanner:fake:testDebugUnitTest`、および `./gradlew :core:export:testDebugUnitTest :feature:history:testDebugUnitTest :feature:settings:testDebugUnitTest :app:testDebugUnitTest`。
 - `:scanner:camera:testDebugUnitTest` は非同期境界20テストを含め `BUILD SUCCESSFUL`、`:scanner:camera:lintDebug` も `BUILD SUCCESSFUL` になった。`BundledMlKitImageDecodeTest` 3件は共有QR/Code 128画像の実decodeと誤形式拒否に成功したが、実機 camera readを意味しない。
 - 2026-09-03の追加hardening後、Android JVM testは全249件が成功した。Pixel 7/API 36では通常のdebugアプリ保存領域を消去せず、`core:data` 21件、`feature:scan` 15件、`scanner:camera` 3件の計39件を実行し、失敗・skip 0だった。以前の全module instrumentation 80件、BLE変更時のfocused 36件、Android 17/API 37.1・16KB emulator 63件は別時点の記録であり、この差分全体はPRのAPI 31/36 CIで再確認する。
