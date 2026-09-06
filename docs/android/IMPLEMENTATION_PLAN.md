@@ -56,10 +56,10 @@ BLEを除いた中間成果物は開発・評価用として成立する。Swift
 | 読み直し | QRだけ破棄してQR工程へ戻る | `RereadQr`イベント | セッションと一致件数を維持し、選択入力元で再開 |
 | 入力順序 | 逆順を拒否し、値を照合に使わない | ドメイン状態機械で拒否 | 無効音・案内表示、工程・保存件数が変化しない |
 | 仕向地 | 最初に受理したQRでセッションの仕向地を固定し、別の仕向地のQRを拒否 | Reducerの`destination`とRoomの列 | 混在セッションを作らず、プロセス再生成後も固定が残る |
-| QR解析 | 仕向地判定と各固定位置フィールド（澤井製作所66文字 / モルテック61文字・末尾空白は有効） | 純Kotlin parser | Swiftの全fixtureとフィールド解析テストが一致 |
-| Code 128解析 | `4-2-4@管理コード`（モルテックは`4-2-3@管理コード`も）、`@`以前を照合 | 純Kotlin parser | 正規化、管理コード除外、逆順拒否、仕向地ごとの末尾桁数が一致 |
+| QR解析 | 仕向地判定と各固定位置フィールド（澤井製作所66文字 / モルテン61文字・末尾空白は有効） | 純Kotlin parser | Swiftの全fixtureとフィールド解析テストが一致 |
+| Code 128解析 | `4-2-4@管理コード`（モルテンは`4-2-3@管理コード`も）、`@`以前を照合 | 純Kotlin parser | 正規化、管理コード除外、逆順拒否、仕向地ごとの末尾桁数が一致 |
 | 照合 | 大文字化、英数字以外除去、仕向地ごとの固定位置だけを使う完全一致（包含fallbackなし） | 純Kotlin matcher | 共通JSON fixtureをSwift/Kotlinの両方で通す |
-| 結果 | 一致/不一致、両品番表示、澤井製作所は同一品番の箱番号、モルテックは納品番号ごとの箱番号と累計収容数 | Result composable | 不一致は保存せず、一致だけ重複を含め保存 |
+| 結果 | 一致/不一致、両品番表示、澤井製作所は同一品番の箱番号、モルテンは納品番号ごとの箱番号と累計収容数 | Result composable | 不一致は保存せず、一致だけ重複を含め保存 |
 | 自動次工程 | 初期OFF、1/3/5秒、可視カウントダウン | coroutine + `StateFlow` | 一致時のみ開始。設定OFF、手動、終了、背景化でキャンセル |
 | 履歴一覧 | セッション降順、名前、日時、箱数、所要時間、削除 | Room + `LazyColumn` | 再起動後も一致。削除が永続化される |
 | セッション詳細 | 名前変更、開始/終了、箱数、品番数、品番グループ | list/detail navigation | 同一品番を集約し、最初/最後の時刻と箱数を表示 |
@@ -216,12 +216,12 @@ Swift版のブランド色をMaterial 3の意味的な役割へ割り当てる�
 - `partNumberFromQr`
 - `partNumberFromBarcode`
 - `KanbanQrRecord.parse/isValidScanPayload`
-- `MoltecQrRecord.parse/isValidScanPayload/canonicalPayload`
+- `MoltenQrRecord.parse/isValidScanPayload/canonicalPayload`
 - `TagBarcodeRecord.parse/isValidScanPayload`（仕向地引数つき）
 - `compare`
 - `formatPartNumber`
-- `CodeMatcher.boxIdentity`（澤井製作所はQR、モルテックはQR＋Code 128）
-- 品番ごとの箱グルーピングと、モルテックの納品番号ごとの箱グルーピング
+- `CodeMatcher.boxIdentity`（澤井製作所はQR、モルテンはQR＋Code 128）
+- 品番ごとの箱グルーピングと、モルテンの納品番号ごとの箱グルーピング
 
 最初のテストはSwift版の単体テストと同名または対応名にし、`shared/test-fixtures/matching-cases.json`を必ず読み込む。
 
@@ -252,7 +252,7 @@ MatchResult
 
 入力元、カメラ稼働、BLE接続、カウントダウンは状態機械に従属させ、Composable内部に業務状態を分散させない。
 
-仕向地は状態機械が持ち、`EndSession`でだけ解除する。`RereadQr`、手動の次工程、不一致では固定を維持し、別仕向地のQRは`InvalidScanReason.WRONG_DESTINATION`として拒否する。解析できないQRの案内は、固定済みならその仕向地のレコード長（66または61）と比べ、未固定なら57〜66の範囲と比べて「途中で終わった」「余分な情報を含む」を出し分ける。記録済みの箱は`recordedBoxes`として状態機械に残し、重複判定（澤井製作所はQR、モルテックはQR＋Code 128）と、モルテックの納品番号ごとの箱数・累計収容数の算出に使う。
+仕向地は状態機械が持ち、`EndSession`でだけ解除する。`RereadQr`、手動の次工程、不一致では固定を維持し、別仕向地のQRは`InvalidScanReason.WRONG_DESTINATION`として拒否する。解析できないQRの案内は、固定済みならその仕向地のレコード長（66または61）と比べ、未固定なら57〜66の範囲と比べて「途中で終わった」「余分な情報を含む」を出し分ける。記録済みの箱は`recordedBoxes`として状態機械に残し、重複判定（澤井製作所はQR、モルテンはQR＋Code 128）と、モルテンの納品番号ごとの箱数・累計収容数の算出に使う。
 
 ## 7. 保存、PDF、設定
 
@@ -307,7 +307,7 @@ MatchResult
 
 - Androidの`PdfDocument`でA4縦、複数ページを生成
 - Swift版と同じセッション名、仕向地、開始/終了、箱数、品番数、QR解析値、管理コード、各payload、端末内生成の注記を出力
-- モルテックのセッションではセッション見出しに納品番号数を加え、品番グループの中を納品番号ごとのブロック（納品番号、箱数、累計収容数、受注者、部品番号、納入先、TYロケーション、供給先、納入指示日(JUMP)、時刻）に分け、その配下に各箱を並べる。澤井製作所の出力は従来どおり
+- モルテンのセッションではセッション見出しに納品番号数を加え、品番グループの中を納品番号ごとのブロック（納品番号、箱数、累計収容数、受注者、部品番号、納入先、TYロケーション、供給先、納入指示日(JUMP)、時刻）に分け、その配下に各箱を並べる。澤井製作所の出力は従来どおり
 - 保存はActivity Result APIの`CreateDocument("application/pdf")`
 - 共有は内部cacheへ一時生成し、`FileProvider`の`content://` URIと一時読み取り権限を使う
 - [PdfDocument](https://developer.android.com/reference/android/graphics/pdf/PdfDocument)
@@ -423,13 +423,13 @@ Gradle dependency verificationとSBOM/ライセンス出力は、現行のVersio
 - Swift版のmatcher/parser/format全ケース
 - `matching-cases.json`全ケース（`destination`つき）
 - 澤井製作所QR 66文字、必須フィールド、数量、枝番、空白
-- モルテックQR 61文字、末尾空白の補完と正規形、収容数・納入指示日・時刻の桁検証、仕向地判定
+- モルテンQR 61文字、末尾空白の補完と正規形、収容数・納入指示日・時刻の桁検証、仕向地判定
 - Code 128業務形式、管理コード、逆順拒否、仕向地ごとの末尾3桁/4桁
 - 状態機械の全遷移
 - 仕向地の固定、別仕向地QRの拒否、固定あり/なしでの桁数分類
 - 自動次工程の1/3/5秒、停止条件、仮想時間
-- 重複箱の保存・グルーピング（澤井製作所はQR、モルテックはQR＋Code 128）
-- モルテックの納品番号ごとの箱数と累計収容数
+- 重複箱の保存・グルーピング（澤井製作所はQR、モルテンはQR＋Code 128）
+- モルテンの納品番号ごとの箱数と累計収容数
 - PDF view modelの全項目（仕向地と納品番号ごとのブロックを含む）
 - BLE Fakeの接続・切断・fallback・timeout
 

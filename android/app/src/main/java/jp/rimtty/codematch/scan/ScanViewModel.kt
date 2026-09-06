@@ -355,7 +355,7 @@ class ScanViewModel @Inject constructor(
             autoAdvanceDelay = settings.autoAdvanceDelay,
             existingMatchedCount = active?.matchedCount ?: 0,
             restoredCheckpoint = checkpoint,
-            // Restore the destination-aware box keys and the Moltec delivery
+            // Restore the destination-aware box keys and the Molten delivery
             // fields from the session's own rows: a checkpoint holds one step,
             // not the boxes already recorded before it.
             recordedBoxes = active?.entries
@@ -884,7 +884,7 @@ class ScanViewModel @Inject constructor(
 
         /**
          * Debug-only demo payloads. They are a Sawai pair, so running the demo
-         * inside a session already locked to Moltec is rejected as
+         * inside a session already locked to Molten is rejected as
          * [jp.rimtty.codematch.feature.scan.InvalidScanReason.WRONG_DESTINATION]
          * rather than producing a result.
          */

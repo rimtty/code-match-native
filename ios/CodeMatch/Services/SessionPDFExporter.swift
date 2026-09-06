@@ -110,8 +110,8 @@ enum SessionPDFExporter {
                     spacing: 2
                 )
             }
-            // モルテックは同じ品番でも納品番号ごとに納品書が分かれるため、種類数も添える
-            let showsDeliveryNumberCount = session.resolvedDestination == .moltec
+            // モルテンは同じ品番でも納品番号ごとに納品書が分かれるため、種類数も添える
+            let showsDeliveryNumberCount = session.resolvedDestination == .molten
             draw(
                 AppLocalization.string(
                     "検査箱数: \(session.matchedCount)箱（品番数: \(session.groupedEntries.count)）"
@@ -204,7 +204,7 @@ enum SessionPDFExporter {
                     && deliveryGroups.reduce(0) { $0 + $1.entries.count } == group.entries.count
 
                 if showsDeliveryGroups {
-                    // モルテックは同じ品番でも納品書(納品番号)ごとに納入先や指示日が変わる
+                    // モルテンは同じ品番でも納品書(納品番号)ごとに納入先や指示日が変わる
                     for deliveryGroup in deliveryGroups {
                         // 納品番号1件分の見出し＋納品書情報3行はまとめて改ページ判定する
                         ensureSpace(110)

@@ -42,11 +42,11 @@ class ScanScreenTest {
         "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private val barcodePayload = "BCJH-52-81GG@1N5X0C"
 
-    // Destination Moltec: delivery number UAG5560, pack quantity 120, and a
+    // Destination Molten: delivery number UAG5560, pack quantity 120, and a
     // nine-character part number. The QR's trailing spaces are record data.
-    private val moltecQrPayload =
+    private val moltenQrPayload =
         "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
-    private val moltecBarcodePayload = "PAF1-15-422@0NKD3C"
+    private val moltenBarcodePayload = "PAF1-15-422@0NKD3C"
 
     @Test
     fun inputPickerRemainsVisibleDuringCameraSwitchAndScannerRestore() {
@@ -234,17 +234,17 @@ class ScanScreenTest {
     }
 
     @Test
-    fun moltecMatchResultShowsDeliveryBoxSummaryAndDestinationBadge() {
+    fun moltenMatchResultShowsDeliveryBoxSummaryAndDestinationBadge() {
         val session = ScanSessionState(
             scan = ScanState.Result(
-                qrPayload = moltecQrPayload,
-                barcodePayload = moltecBarcodePayload,
+                qrPayload = moltenQrPayload,
+                barcodePayload = moltenBarcodePayload,
                 result = MatchResult.MATCH,
                 matchedCount = 1,
             ),
-            destination = Destination.MOLTEC,
+            destination = Destination.MOLTEN,
             recordedBoxes = listOfNotNull(
-                RecordedBox.fromPayloads(moltecQrPayload, moltecBarcodePayload),
+                RecordedBox.fromPayloads(moltenQrPayload, moltenBarcodePayload),
             ),
         )
         composeRule.setContent {
@@ -257,11 +257,11 @@ class ScanScreenTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         composeRule.onNodeWithTag("scan_result_qr_part.value")
             .assertTextEquals("PAF1-15-422")
-        composeRule.onNodeWithTag("scan_result_moltec_box_summary")
+        composeRule.onNodeWithTag("scan_result_molten_box_summary")
             .performScrollTo()
             .assertTextEquals(
                 context.getString(
-                    R.string.scan_result_moltec_box_summary,
+                    R.string.scan_result_molten_box_summary,
                     "UAG5560",
                     1,
                     120,
@@ -272,7 +272,7 @@ class ScanScreenTest {
             .assertTextEquals(
                 context.getString(
                     R.string.scan_session_destination_format,
-                    context.getString(R.string.scan_destination_moltec),
+                    context.getString(R.string.scan_destination_molten),
                 ),
             )
     }
@@ -298,7 +298,7 @@ class ScanScreenTest {
             )
         }
 
-        composeRule.onAllNodesWithTag("scan_result_moltec_box_summary").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("scan_result_molten_box_summary").assertCountEquals(0)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         composeRule.onNodeWithTag("scan_session_destination")
             .performScrollTo()
@@ -319,7 +319,7 @@ class ScanScreenTest {
                     session = ScanSessionState(
                         scan = ScanState.WaitingQr(matchedCount = 1),
                         inputSource = source.value,
-                        destination = Destination.MOLTEC,
+                        destination = Destination.MOLTEN,
                     ),
                     sessionActive = true,
                     lastInvalidReason = InvalidScanReason.WRONG_DESTINATION,
@@ -332,7 +332,7 @@ class ScanScreenTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val expected = context.getString(
             R.string.scan_invalid_wrong_destination,
-            context.getString(R.string.scan_destination_moltec),
+            context.getString(R.string.scan_destination_molten),
         )
         for (input in listOf(InputSource.CAMERA, InputSource.BLUETOOTH)) {
             composeRule.runOnIdle { source.value = input }

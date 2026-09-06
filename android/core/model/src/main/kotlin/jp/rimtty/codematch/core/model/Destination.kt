@@ -8,7 +8,7 @@ package jp.rimtty.codematch.core.model
  * payload came from:
  *
  * - [SAWAI] (澤井製作所): a 66-character kanban record carrying a card number.
- * - [MOLTEC] (モルテック): a 61-character delivery record whose trailing spaces
+ * - [MOLTEN] (モルテン): a 61-character delivery record whose trailing spaces
  *   are significant data.
  *
  * [id] is the persisted representation. Keep it identical to the Swift
@@ -16,7 +16,7 @@ package jp.rimtty.codematch.core.model
  */
 enum class Destination(val id: String) {
     SAWAI("sawai"),
-    MOLTEC("moltec"),
+    MOLTEN("molten"),
     ;
 
     companion object {

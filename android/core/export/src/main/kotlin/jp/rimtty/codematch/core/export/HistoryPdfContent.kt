@@ -78,10 +78,10 @@ object HistoryPdfContent {
                 spacingAfter = 2f,
             )
         }
-        // Sawai slips are counted per part number, so only a Moltec report adds
+        // Sawai slips are counted per part number, so only a Molten report adds
         // the delivery-number total; the Sawai header stays exactly as before.
-        val deliveryNumberCount = if (destination == Destination.MOLTEC) {
-            session.entries.moltecDeliveryGroups().size
+        val deliveryNumberCount = if (destination == Destination.MOLTEN) {
+            session.entries.moltenDeliveryGroups().size
         } else {
             null
         }
@@ -142,14 +142,14 @@ object HistoryPdfContent {
             spacingAfter = 4f,
         )
 
-        // The group is a part number, but a Moltec part repeats across delivery
+        // The group is a part number, but a Molten part repeats across delivery
         // numbers, so its boxes are reported per delivery number instead.
         val destination = group.entries.asSequence()
             .mapNotNull { it.qrPayload }
             .firstOrNull()
             ?.let(CodeMatcher::detectDestination)
-        if (destination == Destination.MOLTEC) {
-            appendMoltecDeliveries(blocks, group, language, zoneId, labels)
+        if (destination == Destination.MOLTEN) {
+            appendMoltenDeliveries(blocks, group, language, zoneId, labels)
         } else {
             appendSawaiDelivery(blocks, group, language, labels)
             blocks += HistoryPdfBlock(labels.boxRecords, PdfTextStyle.SECTION, spacingAfter = 2f)
@@ -200,14 +200,14 @@ object HistoryPdfContent {
      * The box index restarts inside a delivery number because that is the unit
      * an operator counts against the slip.
      */
-    private fun appendMoltecDeliveries(
+    private fun appendMoltenDeliveries(
         blocks: MutableList<HistoryPdfBlock>,
         group: GroupedMatchEntry,
         language: AppLanguage,
         zoneId: ZoneId,
         labels: HistoryExportLabels,
     ) {
-        val deliveries = group.entries.moltecDeliveryGroups()
+        val deliveries = group.entries.moltenDeliveryGroups()
         deliveries.forEach { delivery ->
             val record = delivery.record
             blocks += HistoryPdfBlock(labels.deliveryInformation, PdfTextStyle.SECTION, spacingAfter = 2f)
@@ -218,7 +218,7 @@ object HistoryPdfContent {
                 spacingAfter = 2f,
             )
             blocks += HistoryPdfBlock(
-                text = "${labels.moltecPartNumber}: ${CodeMatcher.formatPartNumber(record.partNumber)}; " +
+                text = "${labels.moltenPartNumber}: ${CodeMatcher.formatPartNumber(record.partNumber)}; " +
                     "${labels.ordererCode}: ${record.ordererCode}",
                 style = PdfTextStyle.BODY,
                 spacingAfter = 2f,
@@ -231,8 +231,8 @@ object HistoryPdfContent {
                 spacingAfter = 2f,
             )
             blocks += HistoryPdfBlock(
-                text = "${labels.instructionDate}: ${formatMoltecDate(record.instructionDate)}; " +
-                    "${labels.instructionTime}: ${formatMoltecTime(record.instructionTime) ?: "-"}",
+                text = "${labels.instructionDate}: ${formatMoltenDate(record.instructionDate)}; " +
+                    "${labels.instructionTime}: ${formatMoltenTime(record.instructionTime) ?: "-"}",
                 style = PdfTextStyle.BODY,
                 spacingAfter = 4f,
             )
@@ -241,7 +241,7 @@ object HistoryPdfContent {
                     blocks,
                     entry,
                     boxIndex + 1,
-                    entry.moltecRecord()?.packQuantity,
+                    entry.moltenRecord()?.packQuantity,
                     language,
                     zoneId,
                     labels,
@@ -307,7 +307,7 @@ object HistoryPdfContent {
 
     /** `（2箱、累計 240 個）`, following the language's parenthesis convention. */
     private fun deliverySummary(
-        delivery: MoltecDeliveryGroup,
+        delivery: MoltenDeliveryGroup,
         language: AppLanguage,
         labels: HistoryExportLabels,
     ): String {

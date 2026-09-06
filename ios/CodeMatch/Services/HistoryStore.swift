@@ -94,9 +94,9 @@ final class HistoryStore: ObservableObject {
 
     /// アクティブセッションの成功履歴に、今回の箱がすでに含まれるかを確認する。
     /// 澤井製作所のQRは箱ごとにカード番号が異なるためQR全文だけで箱を識別できるが、
-    /// モルテックのQRは同じ納品番号の全箱で同一なので、現品票のCode 128全文まで含めて識別する。
+    /// モルテンのQRは同じ納品番号の全箱で同一なので、現品票のCode 128全文まで含めて識別する。
     func activeSessionContainsMatchedBox(qrPayload: String, barcodePayload: String) -> Bool {
-        guard Destination.detect(qrPayload: qrPayload) == .moltec else {
+        guard Destination.detect(qrPayload: qrPayload) == .molten else {
             return activeSessionContainsMatchedQRPayload(qrPayload)
         }
         guard
@@ -106,7 +106,7 @@ final class HistoryStore: ObservableObject {
         return activeSession?.entries.contains { $0.boxIdentity == identity } ?? false
     }
 
-    /// アクティブセッションでこの納品番号（モルテック）を何箱検査し、収容数が何個になったか。
+    /// アクティブセッションでこの納品番号（モルテン）を何箱検査し、収容数が何個になったか。
     /// アクティブセッションがなければ0箱・0個を返す。
     func activeSessionDeliverySummary(deliveryNumber: String) -> DeliveryBoxSummary {
         activeSession?.deliverySummary(deliveryNumber: deliveryNumber)

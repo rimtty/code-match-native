@@ -202,11 +202,11 @@ class HistoryScreenTest {
     }
 
     @Test
-    fun moltecEntryDetailDisplaysAllParsedFields() {
-        assertEquals(61, MOLTEC_QR_2.length)
+    fun moltenEntryDetailDisplaysAllParsedFields() {
+        assertEquals(61, MOLTEN_QR_2.length)
         val entry = MatchEntry(
             code = "PAF1-15-422",
-            qrPayload = MOLTEC_QR_2,
+            qrPayload = MOLTEN_QR_2,
             barcodePayload = "PAF1-15-422@0NKD3C",
         )
         composeRule.setContent {
@@ -228,30 +228,30 @@ class HistoryScreenTest {
     }
 
     @Test
-    fun moltecGroupDetailShowsPerDeliveryNumberSummary() {
-        assertEquals(61, MOLTEC_QR_2.length)
-        assertEquals(61, MOLTEC_QR_3.length)
+    fun moltenGroupDetailShowsPerDeliveryNumberSummary() {
+        assertEquals(61, MOLTEN_QR_2.length)
+        assertEquals(61, MOLTEN_QR_3.length)
         val group = MatchSession(
             entries = listOf(
                 MatchEntry(
                     id = "box-1",
                     code = "PAF1-15-422",
                     matchedAt = 1_000L,
-                    qrPayload = MOLTEC_QR_2,
+                    qrPayload = MOLTEN_QR_2,
                     barcodePayload = "PAF1-15-422@0NKD3C",
                 ),
                 MatchEntry(
                     id = "box-2",
                     code = "PAF1-15-422",
                     matchedAt = 2_000L,
-                    qrPayload = MOLTEC_QR_2,
+                    qrPayload = MOLTEN_QR_2,
                     barcodePayload = "PAF1-15-422@0NLL3C",
                 ),
                 MatchEntry(
                     id = "box-3",
                     code = "PAF1-15-422",
                     matchedAt = 3_000L,
-                    qrPayload = MOLTEC_QR_3,
+                    qrPayload = MOLTEN_QR_3,
                     barcodePayload = "PAF1-15-422@0NMM3C",
                 ),
             ),
@@ -274,23 +274,23 @@ class HistoryScreenTest {
     @Test
     fun sessionDetailAndRowShowDestination() {
         val session = MatchSession(
-            id = "moltec-session",
+            id = "molten-session",
             startedAt = 1_000L,
             endedAt = 2_000L,
-            destination = Destination.MOLTEC,
+            destination = Destination.MOLTEN,
             entries = listOf(
                 MatchEntry(
                     id = "box-1",
                     code = "PAF1-15-422",
                     matchedAt = 1_100L,
-                    qrPayload = MOLTEC_QR_2,
+                    qrPayload = MOLTEN_QR_2,
                     barcodePayload = "PAF1-15-422@0NKD3C",
                 ),
                 MatchEntry(
                     id = "box-2",
                     code = "PAF1-15-422",
                     matchedAt = 1_200L,
-                    qrPayload = MOLTEC_QR_3,
+                    qrPayload = MOLTEN_QR_3,
                     barcodePayload = "PAF1-15-422@0NMM3C",
                 ),
             ),
@@ -314,12 +314,12 @@ class HistoryScreenTest {
 
         composeRule.onNodeWithTag(HistoryTestTags.SESSION_DESTINATION, useUnmergedTree = true)
             .assertIsDisplayed()
-            .assertTextEquals("Moltec")
-        // Scoped to the overview so the row's own "Moltec" cannot satisfy it.
+            .assertTextEquals("Molten")
+        // Scoped to the overview so the row's own "Molten" cannot satisfy it.
         composeRule.onNodeWithTag(HistoryTestTags.SESSION_DETAIL)
             .performScrollToNode(hasText("Ship-to"))
         composeRule.onNodeWithTag(HistoryTestTags.SESSION_DETAIL)
-            .performScrollToNode(hasText("Moltec"))
+            .performScrollToNode(hasText("Molten"))
         composeRule.onNodeWithText("Ship-to").assertIsDisplayed()
         composeRule.onNodeWithTag(HistoryTestTags.SESSION_DETAIL)
             .performScrollToNode(hasText("Delivery numbers"))
@@ -329,9 +329,9 @@ class HistoryScreenTest {
     private companion object {
         // Trailing spaces are part of the fixed-position record; the length
         // assertions in the tests fail first if they are ever trimmed away.
-        const val MOLTEC_QR_2 =
+        const val MOLTEN_QR_2 =
             "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
-        const val MOLTEC_QR_3 =
+        const val MOLTEN_QR_3 =
             "AK6805PAF115422          UAG5561000FA2P5901FEM000006009080000"
     }
 }

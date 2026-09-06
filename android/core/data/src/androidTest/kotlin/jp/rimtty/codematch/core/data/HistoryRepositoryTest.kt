@@ -533,9 +533,9 @@ class HistoryRepositoryTest {
 
         assertEquals(
             1,
-            repository.recordMatch("ABC1234567", at = 101L, destination = Destination.MOLTEC),
+            repository.recordMatch("ABC1234567", at = 101L, destination = Destination.MOLTEN),
         )
-        assertEquals(Destination.MOLTEC, repository.observeSession(id).first()?.destination)
+        assertEquals(Destination.MOLTEN, repository.observeSession(id).first()?.destination)
 
         // A session must never mix destinations, so a second, differing value
         // is ignored while the box it came with is still recorded.
@@ -543,8 +543,8 @@ class HistoryRepositoryTest {
             1,
             repository.recordMatch("OTHER00001", at = 102L, destination = Destination.SAWAI),
         )
-        assertEquals(Destination.MOLTEC, repository.observeSession(id).first()?.destination)
-        assertEquals(Destination.MOLTEC, repository.activeSession.first()?.destination)
+        assertEquals(Destination.MOLTEN, repository.observeSession(id).first()?.destination)
+        assertEquals(Destination.MOLTEN, repository.activeSession.first()?.destination)
         assertEquals(2, repository.activeSession.first()?.matchedCount)
     }
 
@@ -555,21 +555,21 @@ class HistoryRepositoryTest {
             sessionId = id,
             phase = ScanCheckpointPhase.WAITING_QR,
             inputSource = ScanCheckpointInputSource.BLUETOOTH,
-            destination = Destination.MOLTEC,
+            destination = Destination.MOLTEN,
         )
 
         // An accepted QR followed by a mismatch records no box at all, so the
         // checkpoint is the only writer that can carry the lock to the session.
         assertTrue(repository.saveScanCheckpoint(waitingQr))
-        assertEquals(Destination.MOLTEC, repository.observeSession(id).first()?.destination)
+        assertEquals(Destination.MOLTEN, repository.observeSession(id).first()?.destination)
         assertEquals(0, repository.activeSession.first()?.matchedCount)
         assertEquals(waitingQr, repository.getScanCheckpoint(id))
-        assertEquals(Destination.MOLTEC, repository.getScanCheckpoint(id)?.destination)
+        assertEquals(Destination.MOLTEN, repository.getScanCheckpoint(id)?.destination)
 
         // The session row is the authoritative lock: a checkpoint written with
         // a different destination cannot re-label the session behind it.
         assertTrue(repository.saveScanCheckpoint(waitingQr.copy(destination = Destination.SAWAI)))
-        assertEquals(Destination.MOLTEC, repository.observeSession(id).first()?.destination)
+        assertEquals(Destination.MOLTEN, repository.observeSession(id).first()?.destination)
     }
 
     @Test

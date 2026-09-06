@@ -985,19 +985,19 @@ private fun ScanResultCard(
                 barcodePart,
                 "scan_result_barcode_part",
             )
-            // A Moltec slip repeats for every box of one delivery number, so
+            // A Molten slip repeats for every box of one delivery number, so
             // the operator needs the running box count and quantity here. A
             // Sawai slip is box specific and keeps the plain two-row card.
-            state.session.moltecResultSummary?.let { summary ->
+            state.session.moltenResultSummary?.let { summary ->
                 Text(
                     text = stringResource(
-                        R.string.scan_result_moltec_box_summary,
+                        R.string.scan_result_molten_box_summary,
                         summary.deliveryNumber,
                         summary.boxNumber,
                         summary.cumulativeQuantity,
                     ),
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.testTag("scan_result_moltec_box_summary"),
+                    modifier = Modifier.testTag("scan_result_molten_box_summary"),
                 )
             }
             if (countdownSeconds != null && isMatch) {
@@ -1021,7 +1021,7 @@ private fun ScanResultCard(
 private fun destinationName(destination: Destination): String = stringResource(
     when (destination) {
         Destination.SAWAI -> R.string.scan_destination_sawai
-        Destination.MOLTEC -> R.string.scan_destination_moltec
+        Destination.MOLTEN -> R.string.scan_destination_molten
     },
 )
 

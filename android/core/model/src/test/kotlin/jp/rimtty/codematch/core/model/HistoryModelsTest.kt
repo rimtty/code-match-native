@@ -45,8 +45,8 @@ class HistoryModelsTest {
         assertNull(legacy.destination)
         assertEquals("午前", legacy.displayName)
         assertEquals(
-            Destination.MOLTEC,
-            legacy.copy(destination = Destination.MOLTEC).destination,
+            Destination.MOLTEN,
+            legacy.copy(destination = Destination.MOLTEN).destination,
         )
     }
 }

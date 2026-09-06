@@ -632,14 +632,14 @@ struct ScannerScreen: View {
                     }
 
                     HStack {
-                        Button(AppLocalization.string("モックQR（モルテック）")) {
-                            bluetoothScanner.simulateScan(ScannerViewModel.sampleMoltecQRPayload)
+                        Button(AppLocalization.string("モックQR（モルテン）")) {
+                            bluetoothScanner.simulateScan(ScannerViewModel.sampleMoltenQRPayload)
                         }
-                        .accessibilityIdentifier("demoBluetoothMoltecQRButton")
-                        Button(AppLocalization.string("モックCode 128（モルテック）")) {
-                            bluetoothScanner.simulateScan(ScannerViewModel.sampleMoltecBarcodePayload)
+                        .accessibilityIdentifier("demoBluetoothMoltenQRButton")
+                        Button(AppLocalization.string("モックCode 128（モルテン）")) {
+                            bluetoothScanner.simulateScan(ScannerViewModel.sampleMoltenBarcodePayload)
                         }
-                        .accessibilityIdentifier("demoBluetoothMoltecBarcodeButton")
+                        .accessibilityIdentifier("demoBluetoothMoltenBarcodeButton")
                     }
                 }
             }
@@ -872,7 +872,7 @@ private struct ResultView: View {
     let result: MatchResult
     /// 一致した品番がこのセッションで何箱目か。2箱目以降のときだけ補足表示する。
     let sessionBoxNumber: Int
-    /// モルテックの納品番号ごとの集計。澤井製作所の結果ではnil。
+    /// モルテンの納品番号ごとの集計。澤井製作所の結果ではnil。
     let deliverySummary: DeliveryBoxSummary?
     let qrPartNumber: String?
     let barcodePartNumber: String?
@@ -943,7 +943,7 @@ private struct ResultView: View {
             let base = (barcodePartNumber ?? qrPartNumber).map {
                 AppLocalization.string("品目番号 \($0) の組み合わせは正しいです。")
             } ?? AppLocalization.string("この組み合わせは正しいです。")
-            // モルテックは納品番号ごとの箱数と収容数の累計を添える。
+            // モルテンは納品番号ごとの箱数と収容数の累計を添える。
             if let summary = deliverySummary {
                 return AppLocalization.string(
                     "\(base)（納品番号 \(summary.deliveryNumber)・このセッションで\(summary.boxCount)箱目・累計 \(summary.totalQuantity)個）"

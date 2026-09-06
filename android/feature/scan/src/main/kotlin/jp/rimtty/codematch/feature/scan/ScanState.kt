@@ -1,7 +1,7 @@
 package jp.rimtty.codematch.feature.scan
 
 import jp.rimtty.codematch.core.matching.CodeMatcher
-import jp.rimtty.codematch.core.matching.MoltecQrRecord
+import jp.rimtty.codematch.core.matching.MoltenQrRecord
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
 import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchResult
@@ -92,8 +92,8 @@ typealias ResultState = ScanState.Result
  * One box already recorded as a match in the active session.
  *
  * [identity] is the destination-aware box key: the Sawai slip QR identifies its
- * own box, while a Moltec slip repeats for every box of the part and needs the
- * product tag as well. The Moltec-only fields carry the slip's delivery number
+ * own box, while a Molten slip repeats for every box of the part and needs the
+ * product tag as well. The Molten-only fields carry the slip's delivery number
  * and pack quantity so the box number and the cumulative quantity can be
  * derived without re-parsing every stored payload.
  */
@@ -107,7 +107,7 @@ data class RecordedBox(
     companion object {
         /**
          * Build a box from the payloads that produced a match, or null when
-         * the pair has no box identity (an unknown QR, or a Moltec slip
+         * the pair has no box identity (an unknown QR, or a Molten slip
          * without its tag). [code] defaults to the formatted part number the
          * reducer would have recorded.
          */
@@ -118,8 +118,8 @@ data class RecordedBox(
         ): RecordedBox? {
             val identity = CodeMatcher.boxIdentity(qrPayload, barcodePayload) ?: return null
             val destination = CodeMatcher.detectDestination(qrPayload)
-            val moltec = if (destination == Destination.MOLTEC) {
-                MoltecQrRecord.parse(qrPayload)
+            val molten = if (destination == Destination.MOLTEN) {
+                MoltenQrRecord.parse(qrPayload)
             } else {
                 null
             }
@@ -128,8 +128,8 @@ data class RecordedBox(
                 code = code?.trim()?.takeIf { it.isNotEmpty() }
                     ?: formattedPartNumber(qrPayload, barcodePayload),
                 destination = destination,
-                deliveryNumber = moltec?.deliveryNumber,
-                packQuantity = moltec?.packQuantity,
+                deliveryNumber = molten?.deliveryNumber,
+                packQuantity = molten?.packQuantity,
             )
         }
 
@@ -142,8 +142,8 @@ data class RecordedBox(
     }
 }
 
-/** Per-delivery-number progress shown on a Moltec match result. */
-data class MoltecBoxSummary(
+/** Per-delivery-number progress shown on a Molten match result. */
+data class MoltenBoxSummary(
     val deliveryNumber: String,
     val boxNumber: Int,
     val cumulativeQuantity: Int,
@@ -190,15 +190,15 @@ data class ScanSessionState(
         get() = recordedBoxes.mapTo(linkedSetOf()) { it.identity }
 
     /**
-     * Boxes and cumulative pack quantity recorded so far for one Moltec
+     * Boxes and cumulative pack quantity recorded so far for one Molten
      * delivery number. Sawai boxes are counted per part number instead and
      * never contribute here.
      */
-    fun moltecSummary(deliveryNumber: String): MoltecBoxSummary {
+    fun moltenSummary(deliveryNumber: String): MoltenBoxSummary {
         val boxes = recordedBoxes.filter {
-            it.destination == Destination.MOLTEC && it.deliveryNumber == deliveryNumber
+            it.destination == Destination.MOLTEN && it.deliveryNumber == deliveryNumber
         }
-        return MoltecBoxSummary(
+        return MoltenBoxSummary(
             deliveryNumber = deliveryNumber,
             boxNumber = boxes.size,
             cumulativeQuantity = boxes.sumOf { it.packQuantity ?: 0 },
@@ -206,16 +206,16 @@ data class ScanSessionState(
     }
 
     /**
-     * The summary for the box shown on a Moltec match result, or null for any
+     * The summary for the box shown on a Molten match result, or null for any
      * other state. [recordedBoxes] already contains the box just recorded, so
      * the numbers describe the visible result rather than the previous one.
      */
-    val moltecResultSummary: MoltecBoxSummary?
+    val moltenResultSummary: MoltenBoxSummary?
         get() {
             val current = scan as? ScanState.Result ?: return null
             if (current.result != MatchResult.MATCH) return null
-            val record = MoltecQrRecord.parse(current.qrPayload) ?: return null
-            return moltecSummary(record.deliveryNumber)
+            val record = MoltenQrRecord.parse(current.qrPayload) ?: return null
+            return moltenSummary(record.deliveryNumber)
         }
 }
 
@@ -296,13 +296,13 @@ sealed interface ScanEffect {
         val destination: Destination,
         /**
          * Box number inside the session: boxes of the same delivery number for
-         * [Destination.MOLTEC], boxes of the same part number for
+         * [Destination.MOLTEN], boxes of the same part number for
          * [Destination.SAWAI].
          */
         val boxNumber: Int,
-        /** Moltec only: the slip's delivery number. */
+        /** Molten only: the slip's delivery number. */
         val deliveryNumber: String? = null,
-        /** Moltec only: pack quantity summed over the delivery number's boxes. */
+        /** Molten only: pack quantity summed over the delivery number's boxes. */
         val cumulativeQuantity: Int? = null,
     ) : ScanEffect {
         val partNumber: String get() = code

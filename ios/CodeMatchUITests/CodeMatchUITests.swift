@@ -100,7 +100,7 @@ final class CodeMatchUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
     }
 
-    func testMockBluetoothScannerMoltecFlowLocksDestination() {
+    func testMockBluetoothScannerMoltenFlowLocksDestination() {
         let app = launchApp(["-resetHistory", "-resetAutoAdvance", "-demoBluetoothConnected"])
 
         app.buttons["startSessionButton"].tap()
@@ -114,15 +114,15 @@ final class CodeMatchUITests: XCTestCase {
         XCTAssertTrue(demoToggle.waitForExistence(timeout: 3))
         demoToggle.tap()
 
-        let moltecQRButton = app.buttons["demoBluetoothMoltecQRButton"]
-        XCTAssertTrue(moltecQRButton.waitForExistence(timeout: 3))
-        moltecQRButton.tap()
+        let moltenQRButton = app.buttons["demoBluetoothMoltenQRButton"]
+        XCTAssertTrue(moltenQRButton.waitForExistence(timeout: 3))
+        moltenQRButton.tap()
         XCTAssertTrue(app.staticTexts["2  横長のCode 128"].waitForExistence(timeout: 3))
 
-        app.buttons["demoBluetoothMoltecBarcodeButton"].tap()
+        app.buttons["demoBluetoothMoltenBarcodeButton"].tap()
         XCTAssertTrue(app.staticTexts["一致しました"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
-        XCTAssertEqual(app.staticTexts["sessionDestination"].label, "モルテック")
+        XCTAssertEqual(app.staticTexts["sessionDestination"].label, "モルテン")
 
         // 仕向地はセッション終了まで固定され、別の仕向地のQRは照合へ進めない。
         app.buttons["resetButton"].tap()
@@ -144,13 +144,13 @@ final class CodeMatchUITests: XCTestCase {
 
         XCTAssertTrue(
             app.staticTexts[
-                "このセッションは仕向地「モルテック」で照合中です。別の仕向地のQRコードは照合できません。仕向地を変えるにはセッションを終了してください。 読み取った値は照合に使用していません。"
+                "このセッションは仕向地「モルテン」で照合中です。別の仕向地のQRコードは照合できません。仕向地を変えるにはセッションを終了してください。 読み取った値は照合に使用していません。"
             ].waitForExistence(timeout: 3)
         )
         XCTAssertEqual(scannerTitle.label, "QRコードを読み取る")
         XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
 
-        // セッションを終了すると、履歴にも仕向地とモルテックの納品書情報が残る。
+        // セッションを終了すると、履歴にも仕向地とモルテンの納品書情報が残る。
         app.buttons["endSessionButton"].tap()
         app.alerts.buttons["終了する"].tap()
         XCTAssertTrue(app.buttons["startSessionButton"].waitForExistence(timeout: 5))
@@ -164,7 +164,7 @@ final class CodeMatchUITests: XCTestCase {
         // LabeledContentは見出しと値を1つの読み上げ要素にまとめる。
         let sessionDestination = app.staticTexts["historySessionDestination"]
         XCTAssertTrue(sessionDestination.waitForExistence(timeout: 3))
-        XCTAssertEqual(sessionDestination.label, "仕向地、モルテック")
+        XCTAssertEqual(sessionDestination.label, "仕向地、モルテン")
 
         let matchEntryRow = app.buttons["matchEntryRow"]
         XCTAssertTrue(matchEntryRow.waitForExistence(timeout: 3))
@@ -174,7 +174,7 @@ final class CodeMatchUITests: XCTestCase {
         XCTAssertTrue(boxEntryRow.waitForExistence(timeout: 3))
         boxEntryRow.tap()
 
-        // モルテックの納品書情報（QR解析）に納品番号が並ぶ。
+        // モルテンの納品書情報（QR解析）に納品番号が並ぶ。
         XCTAssertTrue(app.staticTexts["納品番号"].waitForExistence(timeout: 3))
         let deliveryNumber = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "UAG5560", "UAG5560")

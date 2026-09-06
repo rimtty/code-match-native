@@ -12,7 +12,7 @@
     <string name="scan_end_session_button">End session</string>
     <string name="scan_count_format">%1$d matches checked</string>
     <string name="scan_destination_sawai">Sawai Seisakusho</string>
-    <string name="scan_destination_moltec">Moltec</string>
+    <string name="scan_destination_molten">Molten</string>
     <string name="scan_session_destination_format">Ship-to: %1$s</string>
     <string name="scan_session_default_name">Comparison session</string>
     <string name="scan_name_support">You can start without a name</string>
@@ -84,7 +84,7 @@
     <string name="scan_result_match_description">The part numbers match. This box was recorded.</string>
     <string name="scan_result_mismatch_description">The part numbers do not match. Nothing was recorded.</string>
     <string name="scan_result_duplicate_description">This code was not added to the match count. Scan the next code.</string>
-    <string name="scan_result_moltec_box_summary">Delivery number %1$s is box %2$d in this session (%3$d pcs so far)</string>
+    <string name="scan_result_molten_box_summary">Delivery number %1$s is box %2$d in this session (%3$d pcs so far)</string>
     <string name="scan_invalid_session">Start a session before scanning.</string>
     <string name="scan_invalid_order">Wrong scan order. Scan the format shown on screen.</string>
     <string name="scan_invalid_empty">An empty scan cannot be used.</string>

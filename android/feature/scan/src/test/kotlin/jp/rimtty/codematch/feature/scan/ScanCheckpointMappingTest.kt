@@ -53,22 +53,22 @@ class ScanCheckpointMappingTest {
     fun destinationRoundTripsInEveryPhase() {
         val states = listOf(
             ScanState.WaitingQr(matchedCount = 2),
-            ScanState.WaitingCode128(qrPayload = moltecQr, matchedCount = 2),
+            ScanState.WaitingCode128(qrPayload = moltenQr, matchedCount = 2),
             ScanState.Result(
-                qrPayload = moltecQr,
-                barcodePayload = moltecTag,
+                qrPayload = moltenQr,
+                barcodePayload = moltenTag,
                 result = MatchResult.MATCH,
                 matchedCount = 3,
             ),
         )
 
         for (scan in states) {
-            val state = ScanSessionState(scan = scan, destination = Destination.MOLTEC)
+            val state = ScanSessionState(scan = scan, destination = Destination.MOLTEN)
             val checkpoint = state.toScanSessionCheckpoint("session")
-            assertEquals(scan.phase.name, Destination.MOLTEC, checkpoint?.destination)
+            assertEquals(scan.phase.name, Destination.MOLTEN, checkpoint?.destination)
             assertEquals(
                 scan.phase.name,
-                Destination.MOLTEC,
+                Destination.MOLTEN,
                 checkpoint?.toScanSessionState(false, stateDelay())?.destination,
             )
         }
@@ -79,13 +79,13 @@ class ScanCheckpointMappingTest {
         val checkpoint = ScanSessionCheckpoint(
             sessionId = "session",
             phase = ScanCheckpointPhase.WAITING_CODE_128,
-            qrPayload = moltecQr,
+            qrPayload = moltenQr,
             matchedCount = 0,
         )
 
         assertNull(checkpoint.destination)
         assertEquals(
-            Destination.MOLTEC,
+            Destination.MOLTEN,
             checkpoint.toScanSessionState(false, stateDelay())?.destination,
         )
 
@@ -104,8 +104,8 @@ class ScanCheckpointMappingTest {
 
     private fun stateDelay() = jp.rimtty.codematch.core.model.AutoAdvanceDelay.FIVE_SECONDS
 
-    // Destination Moltec; the trailing spaces are record data.
-    private val moltecQr =
+    // Destination Molten; the trailing spaces are record data.
+    private val moltenQr =
         "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
-    private val moltecTag = "PAF1-15-422@0NKD3C"
+    private val moltenTag = "PAF1-15-422@0NKD3C"
 }

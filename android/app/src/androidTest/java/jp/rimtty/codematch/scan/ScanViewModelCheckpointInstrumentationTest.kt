@@ -158,7 +158,7 @@ class ScanViewModelCheckpointInstrumentationTest {
     }
 
     @Test
-    fun moltecDestinationLockSurvivesIsolatedDatabaseReopen() = runBlocking {
+    fun moltenDestinationLockSurvivesIsolatedDatabaseReopen() = runBlocking {
         val fixture = IsolatedScanFixture.open()
         var firstOwner: TestViewModelOwner? = null
         var secondOwner: TestViewModelOwner? = null
@@ -173,27 +173,27 @@ class ScanViewModelCheckpointInstrumentationTest {
             }
             val sessionId = requireNotNull(fixture.history.activeSession.first()?.id)
 
-            // Destination Moltec; the trailing spaces are record data.
-            val moltecQrPayload =
+            // Destination Molten; the trailing spaces are record data.
+            val moltenQrPayload =
                 "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
-            assertEquals(61, moltecQrPayload.length)
+            assertEquals(61, moltenQrPayload.length)
             firstViewModel.onAction(
                 jp.rimtty.codematch.feature.scan.ScanUiAction.ScanReceived(
                     jp.rimtty.codematch.scanner.api.ScanPayload.qr(
-                        value = moltecQrPayload,
+                        value = moltenQrPayload,
                         source = InputSource.CAMERA,
                         timestampMillis = 1_000L,
                     ),
                 ),
             )
-            val afterQr = awaitState(firstViewModel, "moltec-qr-transition") { state ->
+            val afterQr = awaitState(firstViewModel, "molten-qr-transition") { state ->
                 state.phase == ScanPhase.WAITING_CODE_128 &&
-                    state.qrPayload == moltecQrPayload
+                    state.qrPayload == moltenQrPayload
             }
-            assertEquals(Destination.MOLTEC, afterQr.destination)
+            assertEquals(Destination.MOLTEN, afterQr.destination)
 
-            val persisted = awaitCheckpoint(fixture.history, sessionId, moltecQrPayload)
-            assertEquals(Destination.MOLTEC, persisted?.destination)
+            val persisted = awaitCheckpoint(fixture.history, sessionId, moltenQrPayload)
+            assertEquals(Destination.MOLTEN, persisted?.destination)
 
             firstOwner.viewModelStore.clear()
             firstOwner = null
@@ -202,17 +202,17 @@ class ScanViewModelCheckpointInstrumentationTest {
             val second = fixture.createViewModel()
             secondOwner = second.first
             val secondViewModel = second.second
-            val restored = awaitState(secondViewModel, "moltec-lock-restoration") { state ->
+            val restored = awaitState(secondViewModel, "molten-lock-restoration") { state ->
                 state.sessionActive && state.phase == ScanPhase.WAITING_CODE_128
             }
-            assertEquals(Destination.MOLTEC, restored.destination)
+            assertEquals(Destination.MOLTEN, restored.destination)
 
             // A reread drops the accepted QR but must not drop the lock.
             secondViewModel.onAction(jp.rimtty.codematch.feature.scan.ScanUiAction.RereadQr)
             val afterReread = awaitState(secondViewModel, "reread") { state ->
                 state.phase == ScanPhase.WAITING_QR
             }
-            assertEquals(Destination.MOLTEC, afterReread.destination)
+            assertEquals(Destination.MOLTEN, afterReread.destination)
 
             secondViewModel.onAction(
                 jp.rimtty.codematch.feature.scan.ScanUiAction.ScanReceived(
@@ -228,10 +228,10 @@ class ScanViewModelCheckpointInstrumentationTest {
                 state.lastInvalidReason == InvalidScanReason.WRONG_DESTINATION
             }
             assertEquals(ScanPhase.WAITING_QR, rejected.phase)
-            assertEquals(Destination.MOLTEC, rejected.destination)
+            assertEquals(Destination.MOLTEN, rejected.destination)
 
             assertEquals(
-                Destination.MOLTEC,
+                Destination.MOLTEN,
                 fixture.history.activeSession.first { it?.id == sessionId }?.destination,
             )
         } finally {
