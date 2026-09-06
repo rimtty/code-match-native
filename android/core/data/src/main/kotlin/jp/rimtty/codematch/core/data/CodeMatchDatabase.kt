@@ -10,13 +10,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 /**
  * Persistent database for on-device comparison history.
  *
- * Version 2 adds one durable logical scan checkpoint per session. `exportSchema
- * = true` is intentional: the generated JSON is the contract used by migration
- * tests and future schema upgrades.
+ * Version 2 adds one durable logical scan checkpoint per session. Version 3
+ * adds the nullable destination locked by a session's first accepted QR, both
+ * on the session row and on its checkpoint. `exportSchema = true` is
+ * intentional: the generated JSON is the contract used by migration tests and
+ * future schema upgrades.
  */
 @Database(
     entities = [SessionEntity::class, EntryEntity::class, ScanCheckpointEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class CodeMatchDatabase : RoomDatabase() {
@@ -51,6 +53,20 @@ abstract class CodeMatchDatabase : RoomDatabase() {
                 )
             }
         }
+
+        /**
+         * Adds the destination lock to sessions and to their checkpoints.
+         *
+         * Both columns are added as nullable TEXT so existing rows stay valid
+         * without a rewrite: a null means the destination was never recorded
+         * and is derived again from the accepted QR.
+         */
+        val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `sessions` ADD COLUMN `destination` TEXT")
+                db.execSQL("ALTER TABLE `scan_checkpoints` ADD COLUMN `destination` TEXT")
+            }
+        }
     }
 }
 
@@ -64,7 +80,10 @@ object CodeMatchDatabaseFactory {
             context.applicationContext,
             CodeMatchDatabase::class.java,
             name,
-        ).addMigrations(CodeMatchDatabase.MIGRATION_1_2).build()
+        ).addMigrations(
+            CodeMatchDatabase.MIGRATION_1_2,
+            CodeMatchDatabase.MIGRATION_2_3,
+        ).build()
 
     /** Factory used by Android tests; data is discarded when the DB is closed. */
     fun inMemory(context: Context): CodeMatchDatabase =

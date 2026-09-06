@@ -3,6 +3,7 @@ package jp.rimtty.codematch.core.data
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.EndSessionOutcome
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.core.model.ScanCheckpointInputSource
@@ -455,6 +456,7 @@ class HistoryRepositoryTest {
                 matchedCount = 1,
                 inputSource = ScanCheckpointInputSource.CAMERA.name,
                 cameraWasSelectedByUser = false,
+                destination = null,
             ),
         )
 
@@ -522,6 +524,85 @@ class HistoryRepositoryTest {
 
         assertEquals(waiting.copy(matchedCount = 1), repository.getScanCheckpoint(id))
         assertEquals(1, database.entryDao().countForSession(id))
+    }
+
+    @Test
+    fun firstMatchLocksSessionDestinationAndLaterValuesCannotChangeIt() = runBlocking {
+        val id = repository.beginSession(at = 100L)
+        assertNull(repository.observeSession(id).first()?.destination)
+
+        assertEquals(
+            1,
+            repository.recordMatch("ABC1234567", at = 101L, destination = Destination.MOLTEC),
+        )
+        assertEquals(Destination.MOLTEC, repository.observeSession(id).first()?.destination)
+
+        // A session must never mix destinations, so a second, differing value
+        // is ignored while the box it came with is still recorded.
+        assertEquals(
+            1,
+            repository.recordMatch("OTHER00001", at = 102L, destination = Destination.SAWAI),
+        )
+        assertEquals(Destination.MOLTEC, repository.observeSession(id).first()?.destination)
+        assertEquals(Destination.MOLTEC, repository.activeSession.first()?.destination)
+        assertEquals(2, repository.activeSession.first()?.matchedCount)
+    }
+
+    @Test
+    fun checkpointDestinationLocksSessionBeforeFirstMatchAndRoundTrips() = runBlocking {
+        val id = repository.beginSession(at = 100L)
+        val waitingQr = ScanSessionCheckpoint(
+            sessionId = id,
+            phase = ScanCheckpointPhase.WAITING_QR,
+            inputSource = ScanCheckpointInputSource.BLUETOOTH,
+            destination = Destination.MOLTEC,
+        )
+
+        // An accepted QR followed by a mismatch records no box at all, so the
+        // checkpoint is the only writer that can carry the lock to the session.
+        assertTrue(repository.saveScanCheckpoint(waitingQr))
+        assertEquals(Destination.MOLTEC, repository.observeSession(id).first()?.destination)
+        assertEquals(0, repository.activeSession.first()?.matchedCount)
+        assertEquals(waitingQr, repository.getScanCheckpoint(id))
+        assertEquals(Destination.MOLTEC, repository.getScanCheckpoint(id)?.destination)
+
+        // The session row is the authoritative lock: a checkpoint written with
+        // a different destination cannot re-label the session behind it.
+        assertTrue(repository.saveScanCheckpoint(waitingQr.copy(destination = Destination.SAWAI)))
+        assertEquals(Destination.MOLTEC, repository.observeSession(id).first()?.destination)
+    }
+
+    @Test
+    fun legacySessionWithoutDestinationReadsAsNull() = runBlocking {
+        val id = repository.beginSession(at = 100L)
+        repository.recordMatch("ABC1234567", at = 101L)
+        database.scanCheckpointDao().upsert(
+            ScanCheckpointEntity(
+                sessionId = id,
+                version = ScanSessionCheckpoint.CURRENT_VERSION,
+                phase = ScanCheckpointPhase.WAITING_QR.name,
+                qrPayload = null,
+                barcodePayload = null,
+                result = null,
+                matchedCount = 0,
+                inputSource = ScanCheckpointInputSource.CAMERA.name,
+                cameraWasSelectedByUser = false,
+                // Rows written before schema version 3 carry no destination.
+                destination = null,
+            ),
+        )
+
+        assertNull(repository.observeSession(id).first()?.destination)
+        val restored = repository.getScanCheckpoint(id)
+        assertNotNull(restored)
+        assertNull(restored?.destination)
+        // The checkpoint stays resumable: the version did not have to move.
+        assertEquals(1, restored?.matchedCount)
+
+        // An id a newer build could write is unknown here and reads the same
+        // way, so detection restarts instead of guessing a destination.
+        database.sessionDao().lockDestination(id, "destination-from-a-newer-build")
+        assertNull(repository.observeSession(id).first()?.destination)
     }
 
     private fun applicationContext(): Context =

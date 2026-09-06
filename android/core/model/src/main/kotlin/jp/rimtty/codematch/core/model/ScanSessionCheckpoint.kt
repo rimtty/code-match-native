@@ -26,6 +26,12 @@ enum class ScanCheckpointInputSource {
  * transport state are never part of the checkpoint. QR/barcode values are
  * included only because a comparison cannot be resumed without the accepted
  * values already held by the active scan state.
+ *
+ * [destination] is nullable and purely additive, so [CURRENT_VERSION] stays 1
+ * on purpose: bumping it would make [isSupportedAndValid] discard every
+ * checkpoint written by an older build and silently restart those sessions at
+ * Waiting QR. A null destination simply means the lock was not recorded, and
+ * the scan state derives it again from the accepted QR or the session's boxes.
  */
 data class ScanSessionCheckpoint(
     val sessionId: String,
@@ -38,6 +44,8 @@ data class ScanSessionCheckpoint(
     /** Distinguishes an explicit camera choice from an automatic fallback. */
     val cameraWasSelectedByUser: Boolean = false,
     val version: Int = CURRENT_VERSION,
+    /** Destination locked by the session's first accepted QR, if known yet. */
+    val destination: Destination? = null,
 ) {
     /**
      * Reject malformed or future records before they reach the state machine.

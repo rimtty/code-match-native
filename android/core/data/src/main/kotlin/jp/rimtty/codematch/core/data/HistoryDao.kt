@@ -52,6 +52,21 @@ interface SessionDao {
     @Query("UPDATE sessions SET name = :name WHERE id = :sessionId")
     suspend fun rename(sessionId: String, name: String?)
 
+    /**
+     * Record the session's destination exactly once.
+     *
+     * The `destination IS NULL` guard makes the write idempotent and keeps the
+     * first accepted QR authoritative: a later, differing value is ignored
+     * rather than silently re-labelling boxes already recorded in the session.
+     */
+    @Query(
+        """
+        UPDATE sessions SET destination = :destination
+        WHERE id = :sessionId AND destination IS NULL
+        """
+    )
+    suspend fun lockDestination(sessionId: String, destination: String)
+
     @Query("UPDATE sessions SET endedAt = :endedAt WHERE id = :sessionId")
     suspend fun finish(sessionId: String, endedAt: Long)
 
