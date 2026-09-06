@@ -215,15 +215,14 @@ class HistoryScreenTest {
 
         composeRule.onNodeWithTag(HistoryTestTags.ENTRY_DETAIL).assertIsDisplayed()
         composeRule.onNodeWithText("Delivery information (QR)").assertIsDisplayed()
-        composeRule.onNodeWithText("AK6805").assertIsDisplayed()
-        composeRule.onNodeWithText("UAG5560").assertIsDisplayed()
-        composeRule.onNodeWithText("FA2").assertIsDisplayed()
-        composeRule.onNodeWithText("P59").assertIsDisplayed()
-        composeRule.onNodeWithText("01FEM").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("120").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("09/08").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("00:00").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("0NKD3C").performScrollTo().assertIsDisplayed()
+        // The detail is a LazyColumn; scroll the list itself so each row is
+        // fully inside the compact CI emulator viewport before asserting.
+        listOf("AK6805", "UAG5560", "FA2", "P59", "01FEM", "120", "09/08", "00:00", "0NKD3C")
+            .forEach { text ->
+                composeRule.onNodeWithTag(HistoryTestTags.ENTRY_DETAIL)
+                    .performScrollToNode(hasText(text))
+                composeRule.onNodeWithText(text).assertIsDisplayed()
+            }
         // The Sawai record has no delivery number, so its rows must stay away.
         composeRule.onAllNodesWithText("Card number").assertCountEquals(0)
     }
