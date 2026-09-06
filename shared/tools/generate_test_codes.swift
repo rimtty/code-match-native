@@ -60,11 +60,28 @@ func code128(_ value: String) throws -> CIImage {
     return output.transformed(by: .init(scaleX: 4, y: 6))
 }
 
-// 実ラベル仕様: QRは納品書兼現品票の固定長レコード、Code 128は現品票の「品番@管理コード」。
-// 品番 BCJH-52-81GG のペアが一致し、BCJH-55-81GG の現品票は不一致になる。
+// 実ラベル仕様: QRは納品書の固定長レコード、Code 128は現品票の「品番@管理コード」。
+//
+// 仕向地 澤井製作所: QRは66桁。品番 BCJH-52-81GG のペアが一致し、
+// BCJH-55-81GG の現品票は不一致になる。
 let referenceQR = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
 try write(qr(referenceQR), name: "reference-qr.png", padding: 48)
 try write(code128("BCJH-52-81GG@1N5X0C"), name: "reference-code128.png", padding: 48)
 try write(code128("BCJH-55-81GG@1KVV0C"), name: "mismatch-code128.png", padding: 48)
+
+// 仕向地 モルテック: QRは61桁で、末尾の空白まで含めて1レコード（下の文字列を編集する際は
+// 末尾の空白を消さないこと）。品番は10桁(4-2-4表記)と9桁(4-2-3表記)の2種類がある。
+// 4-2-3側は同じ納品書に対して管理コード違いの現品票が複数枚出る（=別の箱）。
+let moltecQR = "AK6805D10E50N10B         U543820000MB    S600700000020908    "
+let moltecShortPartQR = "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+try write(qr(moltecQR), name: "moltec-qr.png", padding: 48)
+try write(qr(moltecShortPartQR), name: "moltec-qr-4-2-3.png", padding: 48)
+try write(code128("D10E-50-N10B@0UBL00"), name: "moltec-code128.png", padding: 48)
+try write(code128("PAF1-15-422@0NKD3C"), name: "moltec-code128-4-2-3.png", padding: 48)
+try write(
+    code128("PAF1-15-422@0NLL3C"),
+    name: "moltec-code128-4-2-3-second-box.png",
+    padding: 48
+)
 
 print("Generated test codes in \(outputURL.path)")

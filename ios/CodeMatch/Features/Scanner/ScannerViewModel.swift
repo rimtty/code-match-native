@@ -497,7 +497,7 @@ final class ScannerViewModel: ObservableObject {
             guard KanbanQRRecord.isValidScanPayload(value) else {
                 // 相手工程の正しい形式なら順序違い、それ以外は無関係なコードとして案内する。
                 rejectBluetoothScan(
-                    TagBarcodeRecord.isValidScanPayload(value)
+                    TagBarcodeRecord.isValidScanPayload(value, destination: .sawai)
                         ? "読み取り順序が違います。先に納品書兼現品票のQRコードを読み取ってください。"
                         : "納品書兼現品票のQRコードではありません。納品書兼現品票のQRコードを読み取ってください。"
                 )
@@ -508,7 +508,7 @@ final class ScannerViewModel: ObservableObject {
             // BCST-47は1回の読取結果を複数回通知することがある。
             // QR確定後に同じペイロードが再通知されてもバーコードとして扱わない。
             guard value != qrValue else { return }
-            guard TagBarcodeRecord.isValidScanPayload(value) else {
+            guard TagBarcodeRecord.isValidScanPayload(value, destination: .sawai) else {
                 rejectBluetoothScan(
                     KanbanQRRecord.isValidScanPayload(value)
                         ? "読み取り順序が違います。現在は現品票のCode 128バーコード待ちです。"
@@ -723,7 +723,7 @@ extension ScannerViewModel: CameraScannerDelegate {
             }
             acceptQR(value)
         case (.barcode, .code128):
-            guard TagBarcodeRecord.isValidScanPayload(value) else {
+            guard TagBarcodeRecord.isValidScanPayload(value, destination: .sawai) else {
                 rejectCameraBarcode(value)
                 return
             }

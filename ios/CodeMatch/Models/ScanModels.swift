@@ -66,11 +66,59 @@ enum ExpectedCode: Equatable {
     }
 }
 
+/// 仕向地。QRのレコード様式が仕向地ごとに異なるため、照合前にどちらかを判定する。
+///
+/// - `sawai` (澤井製作所): 66桁固定長の納品書兼現品票レコード。
+/// - `moltec` (モルテック): 61桁固定長の納品書レコード。末尾の空白も有効なデータ。
+enum Destination: String, Codable, CaseIterable, Equatable {
+    case sawai
+    case moltec
+
+    /// 澤井製作所QRの桁数。`KanbanQRRecord` の受理条件と同じ値を使う。
+    private static let sawaiRecordLength = 66
+
+    /// 伝送終端(CR/LF/NUL)だけを前後から取り除く。
+    /// モルテックQRは末尾の空白まで含めて1レコードなので、空白は決して削らない。
+    static func stripTransportTerminators(_ raw: String) -> String {
+        func isTerminator(_ scalar: Unicode.Scalar) -> Bool {
+            scalar == "\r" || scalar == "\n" || scalar.value == 0
+        }
+
+        var value = raw
+        while let first = value.unicodeScalars.first, isTerminator(first) {
+            value.removeFirst()
+        }
+        while let last = value.unicodeScalars.last, isTerminator(last) {
+            value.removeLast()
+        }
+        return value
+    }
+
+    /// QRペイロードの仕向地を判定する。どちらのレコード様式でもない場合は nil。
+    static func detect(qrPayload raw: String) -> Destination? {
+        let payload = stripTransportTerminators(raw)
+        if isSawaiRecord(payload) { return .sawai }
+        if MoltecQRRecord.isValidScanPayload(payload) { return .moltec }
+
+        // モルテックのレコードは前後の空白まで含めて61桁なので空白は削れないが、
+        // 澤井製作所のレコードは前後に空白を持たない。スキャナが空白を付けて通知しても
+        // 従来どおり照合できるよう、モルテックとして読めないときだけ空白を落として再判定する。
+        let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+        return isSawaiRecord(trimmed) ? .sawai : nil
+    }
+
+    private static func isSawaiRecord(_ payload: String) -> Bool {
+        payload.count == sawaiRecordLength && KanbanQRRecord.parse(payload) != nil
+    }
+}
+
 /// 現場ラベルの実データ仕様に基づく品番照合。
 ///
 /// - 現品票のCode 128: `品番(ハイフン付き)@管理コード` 例: `BCJH-52-81GG@1N5X0C`
-/// - 納品書兼現品票のQR: 固定長レコード。先頭からカード番号(10桁)、品目番号(10桁・区切りなし)、
-///   枝番(2桁・空白の場合あり)、数量などが続く。例: `DCLP675300` + `BCJH5281GG` + `02` + …
+/// - 澤井製作所の納品書兼現品票QR: 66桁固定長レコード。先頭からカード番号(10桁)、
+///   品目番号(10桁・区切りなし)、枝番(2桁・空白の場合あり)、数量などが続く。
+///   例: `DCLP675300` + `BCJH5281GG` + `02` + …
+/// - モルテックの納品書QR: 61桁固定長レコード。7-16桁が左詰めの部品番号(9桁または10桁)。
 ///
 /// 2つのペイロードは文字列としては一致しないため、双方から品番を抽出して比較する。
 enum CodeMatcher {
@@ -88,48 +136,47 @@ enum CodeMatcher {
         return normalized.isEmpty ? nil : normalized
     }
 
-    /// QRペイロードから品目番号を抽出する。
-    /// 先頭10桁がカード番号(英字4+数字6)の標準フォーマットのとき、続く10桁が品目番号。
+    /// QRペイロードから品目番号(部品番号)を抽出する。
+    /// 先に仕向地を判定し、そのレコード様式の固定位置からだけ取り出す。
+    /// どちらのレコード様式でもないQRからは抽出しない。
     static func partNumber(fromQR raw: String) -> String? {
-        let payload = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard payload.count >= 20 else { return nil }
-        let cardNumber = payload.prefix(10)
-        guard cardNumber.range(of: "^[A-Z]{4}[0-9]{6}$", options: .regularExpression) != nil else {
+        let payload = Destination.stripTransportTerminators(raw)
+        switch Destination.detect(qrPayload: payload) {
+        case .sawai:
+            return KanbanQRRecord.parse(payload)?.partNumber
+        case .moltec:
+            return MoltecQRRecord.parse(payload)?.partNumber
+        case nil:
             return nil
         }
-        let start = payload.index(payload.startIndex, offsetBy: 10)
-        let end = payload.index(payload.startIndex, offsetBy: 20)
-        let part = String(payload[start..<end])
-        guard part.range(of: "^[A-Z0-9]{10}$", options: .regularExpression) != nil else { return nil }
-        return part
     }
 
     /// QRの品目番号とバーコードの品番が同一かを判定する。
-    /// QRが標準フォーマットでない場合は、正規化した全文に品番が含まれるかで代替判定する。
+    /// 双方をレコード様式どおりに解析できたときだけ比較し、部分一致では判定しない。
     static func compare(qrPayload: String, barcodePayload: String) -> MatchResult {
-        guard let barcodePart = partNumber(fromBarcode: barcodePayload) else { return .mismatch }
+        guard
+            let barcodePart = partNumber(fromBarcode: barcodePayload),
+            let qrPart = partNumber(fromQR: qrPayload)
+        else { return .mismatch }
 
-        if let qrPart = partNumber(fromQR: qrPayload) {
-            return qrPart == barcodePart ? .match : .mismatch
-        }
-
-        // 誤検出を避けるため、代替判定は品番が十分な長さの場合だけ行う。
-        guard barcodePart.count >= 6 else { return .mismatch }
-        return normalize(qrPayload).contains(barcodePart) ? .match : .mismatch
+        return qrPart == barcodePart ? .match : .mismatch
     }
 
-    /// 10桁の品番を現品票の表記(4-2-4)へ整形する。 `BCJH5281GG` → `BCJH-52-81GG`
+    /// 品番を現品票の表記へ整形する。
+    /// 10桁は4-2-4 (`BCJH5281GG` → `BCJH-52-81GG`)、9桁は4-2-3 (`PAF115422` → `PAF1-15-422`)。
+    /// それ以外の桁数はそのまま返す。
     static func format(partNumber: String) -> String {
-        guard partNumber.count == 10 else { return partNumber }
+        guard partNumber.count == 10 || partNumber.count == 9 else { return partNumber }
         let head = partNumber.prefix(4)
         let mid = partNumber.dropFirst(4).prefix(2)
-        let tail = partNumber.suffix(4)
+        let tail = partNumber.dropFirst(6)
         return "\(head)-\(mid)-\(tail)"
     }
 }
 
-/// 納品書兼現品票QR(66桁固定長レコード)の解析結果。
+/// 仕向地 澤井製作所の納品書兼現品票QR(66桁固定長レコード)の解析結果。
 /// フィールド位置は docs/PRODUCT_SPEC.md と実データ解析に基づく。
+/// もう一方の仕向地モルテック(61桁)は `MoltecQRRecord` が担当する。
 struct KanbanQRRecord: Equatable {
     let cardNumber: String        // 1-10桁: カード番号
     let partNumber: String        // 11-20桁: 品目番号
@@ -189,17 +236,126 @@ struct KanbanQRRecord: Equatable {
     }
 }
 
+/// 仕向地 モルテックの納品書QR(61桁固定長レコード)の解析結果。
+/// フィールド位置は実データ解析に基づく。数値以外の欄は左詰めで空白埋めされる。
+struct MoltecQRRecord: Equatable {
+    let ordererCode: String       // 1-6桁: 先頭コード+受注者 例: `AK6805`
+    let partNumber: String        // 7-16桁: 部品番号(左詰め・末尾空白は除去)
+    let deliveryNumber: String    // 26-32桁: 納品番号
+    let deliveryDestination: String // 36-38桁: 納入先
+    let tyLocation: String?       // 39-41桁: TYロケーション(空欄あり)
+    let supplyPoint: String       // 42-46桁: 供給先
+    let packQuantity: Int         // 47-53桁: 収容数(ゼロ埋め整数)
+    let instructionDate: String   // 54-57桁: 納入指示日(JUMP) MMDD
+    let instructionTime: String?  // 58-61桁: 時刻 HHMM(空白4桁のときnil)
+    let canonicalPayload: String  // 61桁へ空白補完し大文字化した正規形
+
+    /// レコード全体の桁数。
+    static let recordLength = 61
+    /// 末尾空白が欠けた読取値も受理する下限桁数。
+    static let minimumScanPayloadLength = 57
+
+    /// 読取値を61桁の正規形へ整える。末尾空白が落ちた読取値は空白で補完する。
+    /// 桁数と文字種を満たさない場合はnil。
+    static func canonicalize(_ payload: String) -> String? {
+        let value = Destination.stripTransportTerminators(payload).uppercased()
+        guard value.count >= minimumScanPayloadLength, value.count <= recordLength else {
+            return nil
+        }
+        let padded = value + String(repeating: " ", count: recordLength - value.count)
+        guard padded.range(
+            of: "^[A-Z0-9 -]{\(recordLength)}$",
+            options: .regularExpression
+        ) != nil else { return nil }
+        return padded
+    }
+
+    /// モルテックの納品書QRとして受理できるかを判定する。
+    /// SDKの文字列コールバックにはシンボル種別が含まれないため、固定長と必須フィールドの
+    /// 両方を確認してCode 128の逆順入力を防ぐ。
+    static func isValidScanPayload(_ payload: String) -> Bool {
+        parse(payload) != nil
+    }
+
+    static func parse(_ payload: String) -> MoltecQRRecord? {
+        guard let record = canonicalize(payload) else { return nil }
+        let characters = Array(record)
+
+        func slice(_ range: Range<Int>) -> String { String(characters[range]) }
+        func trimmed(_ value: String) -> String { value.trimmingCharacters(in: .whitespaces) }
+        func trimmedOrNil(_ value: String) -> String? {
+            let value = trimmed(value)
+            return value.isEmpty ? nil : value
+        }
+        func matches(_ value: String, _ pattern: String) -> Bool {
+            value.range(of: pattern, options: .regularExpression) != nil
+        }
+
+        let partField = slice(6..<16)
+        let quantityField = slice(46..<53)
+        let dateField = slice(53..<57)
+        let timeField = slice(57..<61)
+        guard
+            matches(partField, "^[A-Z0-9]{9}[A-Z0-9 ]$"),
+            matches(quantityField, "^[0-9]{7}$"),
+            let packQuantity = Int(quantityField),
+            matches(dateField, "^[0-9]{4}$"),
+            matches(timeField, "^([0-9]{4}| {4})$")
+        else { return nil }
+
+        return MoltecQRRecord(
+            ordererCode: slice(0..<6),
+            partNumber: trimmed(partField),
+            deliveryNumber: slice(25..<32),
+            deliveryDestination: trimmed(slice(35..<38)),
+            tyLocation: trimmedOrNil(slice(38..<41)),
+            supplyPoint: trimmed(slice(41..<46)),
+            packQuantity: packQuantity,
+            instructionDate: dateField,
+            instructionTime: trimmed(timeField).isEmpty ? nil : timeField,
+            canonicalPayload: record
+        )
+    }
+}
+
+/// 「同じ箱を二重に検査していないか」を判定するための箱固有キー。
+///
+/// 澤井製作所はカード番号がQRに含まれるためQR単体で箱を識別できるが、
+/// モルテックのQRは1品番1レコードで箱を区別しないため、現品票の管理コードまで含める。
+enum BoxIdentity {
+    static func make(qrPayload: String, barcodePayload: String?) -> String? {
+        func identity(_ value: String) -> String {
+            value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        }
+
+        switch Destination.detect(qrPayload: qrPayload) {
+        case .sawai:
+            let qr = identity(qrPayload)
+            return qr.isEmpty ? nil : qr
+        case .moltec:
+            guard let canonical = MoltecQRRecord.canonicalize(qrPayload) else { return nil }
+            let tag = identity(barcodePayload ?? "")
+            return tag.isEmpty ? nil : "\(canonical)|\(tag)"
+        case nil:
+            return nil
+        }
+    }
+}
+
 /// 現品票Code 128(`品番@管理コード`)の解析結果。
 struct TagBarcodeRecord: Equatable {
     let partNumber: String       // ハイフン付き品番
     let managementCode: String?  // @以降の管理コード
 
-    /// 現品票Code 128の業務フォーマット（4-2-4の品番@管理コード）かを確認する。
+    /// 現品票Code 128の業務フォーマット（品番@管理コード）かを確認する。
     /// 物理シンボル種別はSDK通知に含まれないため、QR文字列などを次工程で受理しない。
-    static func isValidScanPayload(_ payload: String) -> Bool {
+    /// 品番の末尾ブロックは澤井製作所が4桁固定、モルテックは3桁または4桁。
+    /// 仕向地が未判定(nil)のときは、どちらの仕向地でも取りこぼさない緩い方を使う。
+    static func isValidScanPayload(_ payload: String, destination: Destination?) -> Bool {
         let value = payload.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let tailLength = destination == .sawai ? "{4}" : "{3,4}"
         return value.range(
-            of: "^[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{4}@[A-Z0-9]+$",
+            of: "^[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]\(tailLength)@[A-Z0-9]+$",
             options: .regularExpression
         ) != nil
     }

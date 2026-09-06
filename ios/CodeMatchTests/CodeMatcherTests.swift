@@ -14,11 +14,19 @@ final class CodeMatcherTests: XCTestCase {
         let qrPayload: String
         let barcodePayload: String
         let expected: String
+        let destination: String?
     }
 
-    // 実ラベルからデコードした実データ
+    // 実ラベルからデコードした実データ（仕向地 澤井製作所・66桁）
     private let qrPayload = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private let barcodePayload = "BCJH-52-81GG@1N5X0C"
+
+    // 仕向地 モルテックの実データ（61桁・末尾の空白も有効なデータなので削らないこと）
+    private let moltecQRPayload = "AK6805D10E50N10B         U543820000MB    S600700000020908    "
+    private let moltecBarcodePayload = "D10E-50-N10B@0UBL00"
+    // 部品番号が9桁（4-2-3表記）のペア
+    private let moltecShortPartQRPayload = "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+    private let moltecShortPartBarcodePayload = "PAF1-15-422@0NKD3C"
 
     func testPartNumberFromBarcode() {
         XCTAssertEqual(CodeMatcher.partNumber(fromBarcode: barcodePayload), "BCJH5281GG")
@@ -59,8 +67,13 @@ final class CodeMatcherTests: XCTestCase {
     func testSharedMatchingFixtures() throws {
         let fixtures = try loadSharedMatchingFixtures()
 
-        XCTAssertEqual(fixtures.schemaVersion, 1)
-        XCTAssertFalse(fixtures.cases.isEmpty)
+        XCTAssertEqual(fixtures.schemaVersion, 2)
+        XCTAssertEqual(fixtures.cases.count, 35)
+        XCTAssertEqual(
+            Set(fixtures.cases.map(\.id)).count,
+            fixtures.cases.count,
+            "Shared fixture IDs must be unique"
+        )
 
         for fixture in fixtures.cases {
             let expected: MatchResult
@@ -81,6 +94,14 @@ final class CodeMatcherTests: XCTestCase {
                 expected,
                 "Shared fixture failed: \(fixture.id)"
             )
+
+            // destination を持つケースは、仕向地判定がその値を返すことまで固定する。
+            guard let destination = fixture.destination else { continue }
+            XCTAssertEqual(
+                Destination.detect(qrPayload: fixture.qrPayload)?.rawValue,
+                destination,
+                "Shared fixture destination failed: \(fixture.id)"
+            )
         }
     }
 
@@ -95,7 +116,12 @@ final class CodeMatcherTests: XCTestCase {
 
         for pair in labelPairs {
             XCTAssertTrue(KanbanQRRecord.isValidScanPayload(pair.qrPayload), pair.id)
-            XCTAssertTrue(TagBarcodeRecord.isValidScanPayload(pair.barcodePayload), pair.id)
+            XCTAssertTrue(
+                TagBarcodeRecord.isValidScanPayload(pair.barcodePayload, destination: .sawai),
+                pair.id
+            )
+            // 66桁レコードはモルテックの受理条件（57〜61桁）には決して当てはまらない。
+            XCTAssertFalse(MoltecQRRecord.isValidScanPayload(pair.qrPayload), pair.id)
             let record = KanbanQRRecord.parse(pair.qrPayload)
             XCTAssertEqual(
                 record?.partNumber,
@@ -144,10 +170,11 @@ final class CodeMatcherTests: XCTestCase {
         )
     }
 
-    func testNonStandardQRFallsBackToContainment() {
+    /// どちらの仕向地のレコードでもないQRは、品番を含んでいても一致にしない。
+    func testNonStandardQRIsMismatch() {
         XCTAssertEqual(
             CodeMatcher.compare(qrPayload: "PART:BCJH-52-81GG;QTY:12", barcodePayload: barcodePayload),
-            .match
+            .mismatch
         )
         XCTAssertEqual(
             CodeMatcher.compare(qrPayload: "PART:DFR5-55-8SDA;QTY:30", barcodePayload: barcodePayload),
@@ -162,7 +189,10 @@ final class CodeMatcherTests: XCTestCase {
 
     func testFormatPartNumber() {
         XCTAssertEqual(CodeMatcher.format(partNumber: "BCJH5281GG"), "BCJH-52-81GG")
+        // モルテックの9桁品番は4-2-3で表記する
+        XCTAssertEqual(CodeMatcher.format(partNumber: "PAF115422"), "PAF1-15-422")
         XCTAssertEqual(CodeMatcher.format(partNumber: "ABC"), "ABC")
+        XCTAssertEqual(CodeMatcher.format(partNumber: "ABCDEFGHIJK"), "ABCDEFGHIJK")
     }
 
     func testKanbanQRRecordParsesAllFields() {
@@ -199,10 +229,20 @@ final class CodeMatcherTests: XCTestCase {
         XCTAssertFalse(KanbanQRRecord.isValidScanPayload(barcodePayload))
         XCTAssertFalse(KanbanQRRecord.isValidScanPayload(String(qrPayload.prefix(65))))
 
-        XCTAssertTrue(TagBarcodeRecord.isValidScanPayload(barcodePayload))
-        XCTAssertTrue(TagBarcodeRecord.isValidScanPayload("KAAA-55-D86B@0Y5U0I"))
-        XCTAssertFalse(TagBarcodeRecord.isValidScanPayload(qrPayload))
-        XCTAssertFalse(TagBarcodeRecord.isValidScanPayload("BCJH-52-81GG"))
+        XCTAssertTrue(TagBarcodeRecord.isValidScanPayload(barcodePayload, destination: .sawai))
+        XCTAssertTrue(
+            TagBarcodeRecord.isValidScanPayload("KAAA-55-D86B@0Y5U0I", destination: .sawai)
+        )
+        XCTAssertFalse(TagBarcodeRecord.isValidScanPayload(qrPayload, destination: .sawai))
+        XCTAssertFalse(TagBarcodeRecord.isValidScanPayload("BCJH-52-81GG", destination: .sawai))
+
+        XCTAssertTrue(MoltecQRRecord.isValidScanPayload(moltecQRPayload))
+        XCTAssertFalse(MoltecQRRecord.isValidScanPayload(barcodePayload))
+        XCTAssertFalse(MoltecQRRecord.isValidScanPayload(qrPayload))
+        XCTAssertTrue(
+            TagBarcodeRecord.isValidScanPayload(moltecBarcodePayload, destination: .moltec)
+        )
+        XCTAssertFalse(TagBarcodeRecord.isValidScanPayload(moltecQRPayload, destination: .moltec))
     }
 
     func testTagBarcodeRecordParsing() {
@@ -215,5 +255,190 @@ final class CodeMatcherTests: XCTestCase {
         XCTAssertNil(noCode?.managementCode)
 
         XCTAssertNil(TagBarcodeRecord.parse("  "))
+    }
+
+    // MARK: - 仕向地 モルテック
+
+    /// 仕向地モルテックの実データ7組は、照合結果だけでなく読取境界
+    /// （61桁QR検証、4-2-3/4-2-4@管理コード検証）も通り、仕向地判定も安定する。
+    func testSharedMoltecPairsPassBothScanBoundaries() throws {
+        let moltecPairs = try loadSharedMatchingFixtures().cases.filter {
+            $0.id.hasPrefix("moltec-") && $0.expected == "match"
+        }
+        XCTAssertEqual(moltecPairs.count, 7)
+
+        for pair in moltecPairs {
+            XCTAssertTrue(MoltecQRRecord.isValidScanPayload(pair.qrPayload), pair.id)
+            XCTAssertTrue(
+                TagBarcodeRecord.isValidScanPayload(pair.barcodePayload, destination: .moltec),
+                pair.id
+            )
+            XCTAssertEqual(Destination.detect(qrPayload: pair.qrPayload), .moltec, pair.id)
+            let record = MoltecQRRecord.parse(pair.qrPayload)
+            XCTAssertEqual(
+                record?.partNumber,
+                CodeMatcher.partNumber(fromBarcode: pair.barcodePayload),
+                pair.id
+            )
+            // PAF1系だけが9桁品番（現品票では4-2-3表記）。
+            XCTAssertEqual(record?.partNumber.count, pair.id.contains("PAF1") ? 9 : 10, pair.id)
+        }
+    }
+
+    func testDestinationDetectStripsOnlyTransportTerminators() {
+        XCTAssertEqual(Destination.detect(qrPayload: moltecQRPayload + "\r\n"), .moltec)
+        XCTAssertEqual(Destination.detect(qrPayload: qrPayload + "\r\n"), .sawai)
+        // 澤井製作所のレコードは前後に空白を持たないので、空白付きの読取値も従来どおり通す。
+        // モルテックのレコードは空白まで含めて61桁なので、同じ空白があると桁数超過になる。
+        XCTAssertEqual(Destination.detect(qrPayload: " \(qrPayload) \n"), .sawai)
+        XCTAssertNil(Destination.detect(qrPayload: " \(moltecQRPayload) "))
+
+        XCTAssertNil(Destination.detect(qrPayload: "PART:BCJH-52-81GG;QTY:12"))
+        XCTAssertNil(Destination.detect(qrPayload: String(repeating: "X", count: 66)))
+        // 57桁に満たない読取値は補完しない
+        let tooShort = String(moltecQRPayload.dropLast(5))
+        XCTAssertEqual(tooShort.count, 56)
+        XCTAssertNil(Destination.detect(qrPayload: tooShort))
+        // 先頭の空白は削らないため、桁がずれたレコードは受理しない
+        let shifted = " " + String(moltecQRPayload.dropLast())
+        XCTAssertEqual(shifted.count, 61)
+        XCTAssertNil(Destination.detect(qrPayload: shifted))
+    }
+
+    func testMoltecQRRecordParsesAllFields() {
+        XCTAssertEqual(moltecShortPartQRPayload.count, 61)
+        let record = MoltecQRRecord.parse(moltecShortPartQRPayload)
+        XCTAssertEqual(record?.ordererCode, "AK6805")
+        XCTAssertEqual(record?.partNumber, "PAF115422")
+        XCTAssertEqual(record?.deliveryNumber, "UAG5560")
+        XCTAssertEqual(record?.deliveryDestination, "FA2")
+        XCTAssertEqual(record?.tyLocation, "P59")
+        XCTAssertEqual(record?.supplyPoint, "01FEM")
+        XCTAssertEqual(record?.packQuantity, 120)
+        XCTAssertEqual(record?.instructionDate, "0908")
+        XCTAssertEqual(record?.instructionTime, "0000")
+        XCTAssertEqual(record?.canonicalPayload, moltecShortPartQRPayload)
+    }
+
+    func testMoltecQRRecordHandlesBlankOptionalFields() {
+        XCTAssertEqual(moltecQRPayload.count, 61)
+        let record = MoltecQRRecord.parse(moltecQRPayload)
+        XCTAssertEqual(record?.partNumber, "D10E50N10B")
+        XCTAssertEqual(record?.deliveryNumber, "U543820")
+        XCTAssertEqual(record?.deliveryDestination, "MB")
+        XCTAssertNil(record?.tyLocation)
+        XCTAssertEqual(record?.supplyPoint, "S6007")
+        XCTAssertEqual(record?.packQuantity, 2)
+        XCTAssertEqual(record?.instructionDate, "0908")
+        XCTAssertNil(record?.instructionTime)
+    }
+
+    func testMoltecQRRecordPadsStrippedTrailingSpaces() {
+        let stripped = String(moltecQRPayload.dropLast(4))
+        XCTAssertEqual(stripped.count, 57)
+        XCTAssertEqual(
+            MoltecQRRecord.parse(stripped)?.canonicalPayload,
+            MoltecQRRecord.parse(moltecQRPayload)?.canonicalPayload
+        )
+        XCTAssertEqual(MoltecQRRecord.canonicalize(stripped), moltecQRPayload)
+
+        XCTAssertNil(MoltecQRRecord.parse(String(moltecQRPayload.dropLast(5))))
+        XCTAssertNil(MoltecQRRecord.parse(moltecQRPayload + " "))
+    }
+
+    func testMoltecQRRecordRejectsInvalidFields() {
+        // 7-16桁(部品番号)は左詰めなので、先頭が空白のレコードは受理しない
+        XCTAssertNil(MoltecQRRecord.parse(replacing(moltecQRPayload, at: 6, with: " ")))
+        // 47-53桁(収容数)は数字のみ
+        XCTAssertNil(MoltecQRRecord.parse(replacing(moltecQRPayload, at: 46, with: "X")))
+        // 58-61桁(時刻)は4桁の数字か空白4桁のどちらか
+        let brokenTime = String(moltecShortPartQRPayload.dropLast(4)) + "00 0"
+        XCTAssertEqual(brokenTime.count, 61)
+        XCTAssertNil(MoltecQRRecord.parse(brokenTime))
+        // 小文字で通知された読取値は大文字化して受理する
+        XCTAssertEqual(
+            MoltecQRRecord.parse(moltecQRPayload.lowercased())?.canonicalPayload,
+            moltecQRPayload
+        )
+    }
+
+    func testTagBarcodeRecordAcceptsFourTwoThreeOnlyForMoltec() {
+        XCTAssertTrue(
+            TagBarcodeRecord.isValidScanPayload(moltecShortPartBarcodePayload, destination: .moltec)
+        )
+        XCTAssertFalse(
+            TagBarcodeRecord.isValidScanPayload(moltecShortPartBarcodePayload, destination: .sawai)
+        )
+        // 仕向地未判定のときは、どちらの仕向地の現品票も取りこぼさない
+        XCTAssertTrue(
+            TagBarcodeRecord.isValidScanPayload(moltecShortPartBarcodePayload, destination: nil)
+        )
+
+        let destinations: [Destination?] = [.sawai, .moltec, nil]
+        for destination in destinations {
+            XCTAssertTrue(TagBarcodeRecord.isValidScanPayload(barcodePayload, destination: destination))
+            XCTAssertFalse(
+                TagBarcodeRecord.isValidScanPayload("PAF1-15-42@0NKD3C", destination: destination)
+            )
+            XCTAssertFalse(
+                TagBarcodeRecord.isValidScanPayload("PAF1-15-42200@0NKD3C", destination: destination)
+            )
+        }
+    }
+
+    func testPartNumberFromQRIsDestinationAware() {
+        XCTAssertEqual(CodeMatcher.partNumber(fromQR: moltecShortPartQRPayload), "PAF115422")
+        XCTAssertEqual(CodeMatcher.partNumber(fromQR: moltecQRPayload), "D10E50N10B")
+        XCTAssertEqual(CodeMatcher.partNumber(fromQR: qrPayload), "BCJH5281GG")
+        // カード番号らしき先頭20桁だけでは、もう仕向地を判定できないので抽出しない
+        XCTAssertNil(CodeMatcher.partNumber(fromQR: String(qrPayload.prefix(20))))
+        // 空白付きで通知された澤井製作所の読取値は従来どおり照合できる
+        XCTAssertEqual(CodeMatcher.partNumber(fromQR: " \(qrPayload.lowercased())\n"), "BCJH5281GG")
+        XCTAssertEqual(
+            CodeMatcher.compare(qrPayload: " \(qrPayload.lowercased())\n", barcodePayload: barcodePayload),
+            .match
+        )
+    }
+
+    func testBoxIdentityPerDestination() {
+        // 澤井製作所はカード番号で箱が決まるため、現品票は箱の識別に使わない
+        let sawaiIdentity = BoxIdentity.make(qrPayload: qrPayload, barcodePayload: barcodePayload)
+        XCTAssertEqual(sawaiIdentity, qrPayload.uppercased())
+        XCTAssertEqual(BoxIdentity.make(qrPayload: qrPayload, barcodePayload: nil), sawaiIdentity)
+        XCTAssertEqual(
+            BoxIdentity.make(qrPayload: qrPayload, barcodePayload: "BCJH-52-81GG@ZZZZZZ"),
+            sawaiIdentity
+        )
+
+        // モルテックのQRは1品番1レコードなので、現品票の管理コードまで含めて箱を識別する
+        let firstBox = BoxIdentity.make(
+            qrPayload: moltecQRPayload,
+            barcodePayload: moltecBarcodePayload
+        )
+        XCTAssertNotNil(firstBox)
+        XCTAssertNotEqual(
+            firstBox,
+            BoxIdentity.make(qrPayload: moltecQRPayload, barcodePayload: "D10E-50-N10B@0UXL0K")
+        )
+        // 末尾空白が落ちた読取値でも同じ箱として扱う
+        XCTAssertEqual(
+            BoxIdentity.make(
+                qrPayload: String(moltecQRPayload.dropLast(4)),
+                barcodePayload: moltecBarcodePayload
+            ),
+            firstBox
+        )
+        XCTAssertNil(BoxIdentity.make(qrPayload: moltecQRPayload, barcodePayload: nil))
+        XCTAssertNil(BoxIdentity.make(qrPayload: moltecQRPayload, barcodePayload: ""))
+
+        XCTAssertNil(
+            BoxIdentity.make(qrPayload: "PART:BCJH-52-81GG;QTY:12", barcodePayload: barcodePayload)
+        )
+    }
+
+    private func replacing(_ payload: String, at index: Int, with character: Character) -> String {
+        var characters = Array(payload)
+        characters[index] = character
+        return String(characters)
     }
 }
