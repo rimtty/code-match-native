@@ -163,7 +163,7 @@ class CodeMatcherTest {
         val fixture = SharedFixtureJson.decode(json)
 
         assertEquals(1, fixture.schemaVersion)
-        assertEquals(21, fixture.cases.size)
+        assertEquals(23, fixture.cases.size)
         assertEquals(
             "Shared fixture IDs must be unique",
             fixture.cases.size,
@@ -221,6 +221,27 @@ class CodeMatcherTest {
             val expectsBlankSuffix = pair.id.startsWith("label-09") || pair.id.startsWith("label-10")
             assertEquals(pair.id, if (expectsBlankSuffix) null else "02", record?.partSuffix)
         }
+
+        // Field parsing of the real records: quantities are stored x100 and
+        // the factory code takes the three observed values L / Y / A.
+        fun record(prefix: String) =
+            KanbanQrRecord.parse(labelPairs.first { it.id.startsWith(prefix) }.qrPayload)
+        val label02 = record("label-02")
+        assertEquals("DCLP675340", label02?.cardNumber)
+        assertEquals(12.0, label02?.deliveryQuantity ?: 0.0, 0.001)
+        assertEquals("L", label02?.factoryCode)
+        assertEquals("BLBDI", label02?.warehouseCode)
+        assertEquals("LLU93", label02?.supplyPointCode)
+        val label11 = record("label-11")
+        assertEquals(336.0, label11?.deliveryQuantity ?: 0.0, 0.001)
+        assertEquals(336.0, label11?.instructedQuantity ?: 0.0, 0.001)
+        assertEquals("Y", label11?.factoryCode)
+        assertEquals("LYB14", label11?.supplyPointCode)
+        val label12 = record("label-12")
+        assertEquals(18.0, label12?.deliveryQuantity ?: 0.0, 0.001)
+        assertEquals("A", label12?.factoryCode)
+        assertEquals("BAB15", label12?.warehouseCode)
+        assertEquals("LAB14", label12?.supplyPointCode)
     }
 
     private object SharedFixtureJson {

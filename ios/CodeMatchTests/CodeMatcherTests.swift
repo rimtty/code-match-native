@@ -105,6 +105,27 @@ final class CodeMatcherTests: XCTestCase {
             let expectsBlankSuffix = pair.id.hasPrefix("label-09") || pair.id.hasPrefix("label-10")
             XCTAssertEqual(record?.partSuffix, expectsBlankSuffix ? nil : "02", pair.id)
         }
+
+        // 実測レコードのフィールド解析（数量は×100で記録、工場コードは L / Y / A の3種）。
+        func record(_ prefix: String) -> KanbanQRRecord? {
+            labelPairs.first { $0.id.hasPrefix(prefix) }.flatMap { KanbanQRRecord.parse($0.qrPayload) }
+        }
+        let label02 = record("label-02")
+        XCTAssertEqual(label02?.cardNumber, "DCLP675340")
+        XCTAssertEqual(label02?.deliveryQuantity ?? 0, 12, accuracy: 0.001)
+        XCTAssertEqual(label02?.factoryCode, "L")
+        XCTAssertEqual(label02?.warehouseCode, "BLBDI")
+        XCTAssertEqual(label02?.supplyPointCode, "LLU93")
+        let label11 = record("label-11")
+        XCTAssertEqual(label11?.deliveryQuantity ?? 0, 336, accuracy: 0.001)
+        XCTAssertEqual(label11?.instructedQuantity ?? 0, 336, accuracy: 0.001)
+        XCTAssertEqual(label11?.factoryCode, "Y")
+        XCTAssertEqual(label11?.supplyPointCode, "LYB14")
+        let label12 = record("label-12")
+        XCTAssertEqual(label12?.deliveryQuantity ?? 0, 18, accuracy: 0.001)
+        XCTAssertEqual(label12?.factoryCode, "A")
+        XCTAssertEqual(label12?.warehouseCode, "BAB15")
+        XCTAssertEqual(label12?.supplyPointCode, "LAB14")
     }
 
     func testDifferentPartNumberMismatches() {
