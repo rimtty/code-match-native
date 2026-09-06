@@ -4,6 +4,14 @@ struct HistoryScreen: View {
     @ObservedObject var historyStore: HistoryStore
     @Environment(\.locale) private var locale
 
+    @State private var shareItem: ShareItem?
+    @State private var showsExportError = false
+
+    private struct ShareItem: Identifiable {
+        let id = UUID()
+        let url: URL
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -36,6 +44,40 @@ struct HistoryScreen: View {
             .navigationTitle(AppLocalization.string("照合履歴"))
             .background(AppTheme.paper)
             .accessibilityIdentifier("historyScreen")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        shareAllHistory()
+                    } label: {
+                        Label(
+                            AppLocalization.string("照合履歴をすべて共有"),
+                            systemImage: "square.and.arrow.up"
+                        )
+                    }
+                    .disabled(historyStore.sessions.isEmpty)
+                    .accessibilityIdentifier("shareAllHistoryButton")
+                }
+            }
+            .sheet(item: $shareItem) { item in
+                ActivityShareSheet(items: [item.url])
+                    .presentationDetents([.medium, .large])
+            }
+            .alert(
+                AppLocalization.string("照合履歴の書き出しに失敗しました。"),
+                isPresented: $showsExportError
+            ) {
+                Button(AppLocalization.string("閉じる"), role: .cancel) {}
+            }
+        }
+    }
+
+    /// 全セッションを1つのJSONへ書き出して共有シートに渡す。
+    private func shareAllHistory() {
+        guard !historyStore.sessions.isEmpty else { return }
+        do {
+            shareItem = ShareItem(url: try HistoryExporter.writeTemporaryJSON(sessions: historyStore.sessions))
+        } catch {
+            showsExportError = true
         }
     }
 }

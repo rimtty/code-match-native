@@ -4011,6 +4011,38 @@
         }
       }
     },
+    "照合履歴の書き出しに失敗しました。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not export the history."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合履歴の書き出しに失敗しました。"
+          }
+        }
+      }
+    },
+    "照合履歴をすべて共有" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share all history"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合履歴をすべて共有"
+          }
+        }
+      }
+    },
     "照合時刻" : {
       "localizations" : {
         "en" : {

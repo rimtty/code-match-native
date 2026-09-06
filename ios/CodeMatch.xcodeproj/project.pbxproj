@@ -26,6 +26,7 @@
 		A10000000000000000000105 /* BluetoothScannerFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000105 /* BluetoothScannerFlowTests.swift */; };
 		A10000000000000000000106 /* HistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000106 /* HistoryStoreTests.swift */; };
 		A10000000000000000000107 /* SessionPDFExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000107 /* SessionPDFExporterTests.swift */; };
+		A10000000000000000000108 /* HistoryExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000108 /* HistoryExporterTests.swift */; };
 		A1000000000000000000000C /* CodeMatchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* CodeMatchUITests.swift */; };
 		A1000000000000000000000D /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* RootTabView.swift */; };
 		A1000000000000000000000E /* HistoryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* HistoryModels.swift */; };
@@ -36,6 +37,7 @@
 		A10000000000000000000013 /* success2.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* success2.mp3 */; };
 		A10000000000000000000014 /* Fail1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001A /* Fail1.mp3 */; };
 		A10000000000000000000015 /* SessionPDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* SessionPDFExporter.swift */; };
+		A10000000000000000000019 /* HistoryExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001F /* HistoryExporter.swift */; };
 		A10000000000000000000016 /* BluetoothScannerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001C /* BluetoothScannerService.swift */; };
 		A10000000000000000000018 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001E /* Localizable.xcstrings */; };
 		A10000000000000000000060 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000060 /* InfoPlist.strings */; };
@@ -79,6 +81,7 @@
 		A20000000000000000000105 /* BluetoothScannerFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothScannerFlowTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000106 /* HistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStoreTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000107 /* SessionPDFExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPDFExporterTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000108 /* HistoryExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryExporterTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000000D /* CodeMatchUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeMatchUITests.swift; sourceTree = "<group>"; };
 		A20000000000000000000010 /* CodeMatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CodeMatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000011 /* CodeMatchTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CodeMatchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -92,6 +95,7 @@
 		A20000000000000000000019 /* success2.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = success2.mp3; sourceTree = "<group>"; };
 		A2000000000000000000001A /* Fail1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Fail1.mp3; sourceTree = "<group>"; };
 		A2000000000000000000001B /* SessionPDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPDFExporter.swift; sourceTree = "<group>"; };
+		A2000000000000000000001F /* HistoryExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryExporter.swift; sourceTree = "<group>"; };
 		A2000000000000000000001C /* BluetoothScannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothScannerService.swift; sourceTree = "<group>"; };
 		A2000000000000000000001E /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		A20000000000000000000060 /* InfoPlist.strings */ = {
@@ -190,6 +194,7 @@
 				A20000000000000000000005 /* CameraScanner.swift */,
 				A20000000000000000000015 /* HistoryStore.swift */,
 				A2000000000000000000001B /* SessionPDFExporter.swift */,
+				A2000000000000000000001F /* HistoryExporter.swift */,
 				A2000000000000000000001C /* BluetoothScannerService.swift */,
 			);
 			path = Services;
@@ -229,6 +234,7 @@
 				A20000000000000000000105 /* BluetoothScannerFlowTests.swift */,
 				A20000000000000000000106 /* HistoryStoreTests.swift */,
 				A20000000000000000000107 /* SessionPDFExporterTests.swift */,
+				A20000000000000000000108 /* HistoryExporterTests.swift */,
 			);
 			path = CodeMatchTests;
 			sourceTree = "<group>";
@@ -438,6 +444,7 @@
 				A10000000000000000000010 /* HistoryScreen.swift in Sources */,
 				A10000000000000000000011 /* SettingsScreen.swift in Sources */,
 				A10000000000000000000015 /* SessionPDFExporter.swift in Sources */,
+				A10000000000000000000019 /* HistoryExporter.swift in Sources */,
 				A10000000000000000000016 /* BluetoothScannerService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -454,6 +461,7 @@
 				A10000000000000000000105 /* BluetoothScannerFlowTests.swift in Sources */,
 				A10000000000000000000106 /* HistoryStoreTests.swift in Sources */,
 				A10000000000000000000107 /* SessionPDFExporterTests.swift in Sources */,
+				A10000000000000000000108 /* HistoryExporterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
