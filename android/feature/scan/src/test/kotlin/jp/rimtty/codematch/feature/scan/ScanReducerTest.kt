@@ -24,23 +24,23 @@ class ScanReducerTest {
         "DAAL134140BCJH5581GG020000120000001200A      000000BAB15LAB07   0*"
     private val sharedBoxBarcode = "BCJH-55-81GG@1KVQ0C"
 
-    // Destination Moltec. The trailing spaces are record data, so these
+    // Destination Molten. The trailing spaces are record data, so these
     // literals must never be reformatted or trimmed by an editor.
-    private val moltecQr1 =
+    private val moltenQr1 =
         "AK6805D10E50N10B         U543820000MB    S600700000020908    "
-    private val moltecQr1Short = moltecQr1.dropLast(4)
-    private val moltecQr2 =
+    private val moltenQr1Short = moltenQr1.dropLast(4)
+    private val moltenQr2 =
         "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
-    private val moltecTag1 = "D10E-50-N10B@0UBL00"
-    private val moltecTag2FirstBox = "PAF1-15-422@0NKD3C"
-    private val moltecTag2SecondBox = "PAF1-15-422@0NLL3C"
-    private val moltecTag2OtherPart = "PAF1-15-423@0N5L3C"
+    private val moltenTag1 = "D10E-50-N10B@0UBL00"
+    private val moltenTag2FirstBox = "PAF1-15-422@0NKD3C"
+    private val moltenTag2SecondBox = "PAF1-15-422@0NLL3C"
+    private val moltenTag2OtherPart = "PAF1-15-423@0N5L3C"
 
     @Before
-    fun moltecFixturesKeepTheirPadding() {
-        assertEquals(61, moltecQr1.length)
-        assertEquals(57, moltecQr1Short.length)
-        assertEquals(61, moltecQr2.length)
+    fun moltenFixturesKeepTheirPadding() {
+        assertEquals(61, moltenQr1.length)
+        assertEquals(57, moltenQr1Short.length)
+        assertEquals(61, moltenQr2.length)
     }
 
     @Test
@@ -513,45 +513,45 @@ class ScanReducerTest {
     }
 
     @Test
-    fun moltecQrThenTagMatchesWithNineCharPartAndDeliverySummary() {
+    fun moltenQrThenTagMatchesWithNineCharPartAndDeliverySummary() {
         val reducer = ScanReducer()
         var state = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
 
-        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr2))).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr2))).state
         assertEquals(ScanPhase.WAITING_CODE_128, state.phase)
-        assertEquals(Destination.MOLTEC, state.destination)
+        assertEquals(Destination.MOLTEN, state.destination)
 
         val result = reducer.reduce(
             state,
-            ScanEvent.PayloadReceived(ScanPayload.code128(moltecTag2FirstBox)),
+            ScanEvent.PayloadReceived(ScanPayload.code128(moltenTag2FirstBox)),
         )
 
         assertEquals(MatchResult.MATCH, result.state.result)
         assertEquals(1, result.state.matchedCount)
         val record = result.effects.filterIsInstance<ScanEffect.RecordMatch>().single()
         assertEquals("PAF1-15-422", record.code)
-        assertEquals(Destination.MOLTEC, record.destination)
+        assertEquals(Destination.MOLTEN, record.destination)
         assertEquals("UAG5560", record.deliveryNumber)
         assertEquals(1, record.boxNumber)
         assertEquals(120, record.cumulativeQuantity)
-        assertEquals(MoltecBoxSummary("UAG5560", 1, 120), result.state.moltecResultSummary)
+        assertEquals(MoltenBoxSummary("UAG5560", 1, 120), result.state.moltenResultSummary)
     }
 
     @Test
-    fun moltecSameQrDifferentTagIsSecondBoxWithCumulativeQuantity() {
+    fun moltenSameQrDifferentTagIsSecondBoxWithCumulativeQuantity() {
         val reducer = ScanReducer()
         var state = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
-        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr2))).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr2))).state
         state = reducer.reduce(
             state,
-            ScanEvent.PayloadReceived(ScanPayload.code128(moltecTag2FirstBox)),
+            ScanEvent.PayloadReceived(ScanPayload.code128(moltenTag2FirstBox)),
         ).state
         state = reducer.reduce(state, ScanEvent.ManualNext).state
-        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr2))).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr2))).state
 
         val second = reducer.reduce(
             state,
-            ScanEvent.PayloadReceived(ScanPayload.code128(moltecTag2SecondBox)),
+            ScanEvent.PayloadReceived(ScanPayload.code128(moltenTag2SecondBox)),
         )
 
         assertEquals(MatchResult.MATCH, second.state.result)
@@ -559,69 +559,69 @@ class ScanReducerTest {
         val record = second.effects.filterIsInstance<ScanEffect.RecordMatch>().single()
         assertEquals(2, record.boxNumber)
         assertEquals(240, record.cumulativeQuantity)
-        assertEquals(MoltecBoxSummary("UAG5560", 2, 240), second.state.moltecResultSummary)
+        assertEquals(MoltenBoxSummary("UAG5560", 2, 240), second.state.moltenResultSummary)
     }
 
     @Test
-    fun moltecSameQrAndSameTagIsDuplicate() {
+    fun moltenSameQrAndSameTagIsDuplicate() {
         val reducer = ScanReducer()
         var state = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
-        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr2))).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr2))).state
         state = reducer.reduce(
             state,
-            ScanEvent.PayloadReceived(ScanPayload.code128(moltecTag2FirstBox)),
+            ScanEvent.PayloadReceived(ScanPayload.code128(moltenTag2FirstBox)),
         ).state
         state = reducer.reduce(state, ScanEvent.ManualNext).state
-        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr2))).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr2))).state
 
         val duplicate = reducer.reduce(
             state,
-            ScanEvent.PayloadReceived(ScanPayload.code128(moltecTag2FirstBox)),
+            ScanEvent.PayloadReceived(ScanPayload.code128(moltenTag2FirstBox)),
         )
 
         assertEquals(MatchResult.DUPLICATE, duplicate.state.result)
         assertEquals(1, duplicate.state.matchedCount)
         assertTrue(duplicate.effects.none { it is ScanEffect.RecordMatch })
         assertEquals(1, duplicate.state.recordedBoxes.size)
-        assertNull(duplicate.state.moltecResultSummary)
+        assertNull(duplicate.state.moltenResultSummary)
     }
 
     @Test
-    fun moltecQrWithTrailingSpacesStrippedIsAcceptedAndSharesIdentityWithPaddedForm() {
+    fun moltenQrWithTrailingSpacesStrippedIsAcceptedAndSharesIdentityWithPaddedForm() {
         val reducer = ScanReducer()
         var state = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
-        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr1))).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr1))).state
         state = reducer.reduce(
             state,
-            ScanEvent.PayloadReceived(ScanPayload.code128(moltecTag1)),
+            ScanEvent.PayloadReceived(ScanPayload.code128(moltenTag1)),
         ).state
         assertEquals(MatchResult.MATCH, state.result)
-        assertEquals(MoltecBoxSummary("U543820", 1, 2), state.moltecResultSummary)
+        assertEquals(MoltenBoxSummary("U543820", 1, 2), state.moltenResultSummary)
 
         state = reducer.reduce(state, ScanEvent.ManualNext).state
         val accepted = reducer.reduce(
             state,
-            ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr1Short)),
+            ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr1Short)),
         )
         assertEquals(ScanPhase.WAITING_CODE_128, accepted.state.phase)
-        assertEquals(Destination.MOLTEC, accepted.state.destination)
+        assertEquals(Destination.MOLTEN, accepted.state.destination)
 
         val duplicate = reducer.reduce(
             accepted.state,
-            ScanEvent.PayloadReceived(ScanPayload.code128(moltecTag1)),
+            ScanEvent.PayloadReceived(ScanPayload.code128(moltenTag1)),
         )
         assertEquals(MatchResult.DUPLICATE, duplicate.state.result)
         assertEquals(1, duplicate.state.matchedCount)
     }
 
     @Test
-    fun moltecSessionAcceptsFourTwoFourTagAndSawaiSessionRejectsFourTwoThreeTag() {
+    fun moltenSessionAcceptsFourTwoFourTagAndSawaiSessionRejectsFourTwoThreeTag() {
         val reducer = ScanReducer()
-        var moltec = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
-        moltec = reducer.reduce(moltec, ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr1))).state
+        var molten = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+        molten = reducer.reduce(molten, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr1))).state
         val fourTwoFour = reducer.reduce(
-            moltec,
-            ScanEvent.PayloadReceived(ScanPayload.code128(moltecTag1)),
+            molten,
+            ScanEvent.PayloadReceived(ScanPayload.code128(moltenTag1)),
         )
         assertEquals(ScanPhase.RESULT, fourTwoFour.state.phase)
         assertEquals(MatchResult.MATCH, fourTwoFour.state.result)
@@ -630,14 +630,14 @@ class ScanReducerTest {
         sawai = reducer.reduce(sawai, ScanEvent.PayloadReceived(ScanPayload.qr(qrPayload))).state
         val fourTwoThree = reducer.reduce(
             sawai,
-            ScanEvent.PayloadReceived(ScanPayload.code128(moltecTag2FirstBox)),
+            ScanEvent.PayloadReceived(ScanPayload.code128(moltenTag2FirstBox)),
         )
         assertEquals(sawai, fourTwoThree.state)
         assertEquals(
             ScanEffect.InvalidScan(
                 ScanFormat.CODE_128,
                 InvalidScanReason.INVALID_PAYLOAD,
-                moltecTag2FirstBox.length,
+                moltenTag2FirstBox.length,
             ),
             fourTwoThree.effects.single(),
         )
@@ -651,37 +651,37 @@ class ScanReducerTest {
         sawai = reducer.reduce(sawai, ScanEvent.RereadQr).state
         assertEquals(Destination.SAWAI, sawai.destination)
 
-        val moltecIntoSawai = reducer.reduce(
+        val moltenIntoSawai = reducer.reduce(
             sawai,
-            ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr1)),
+            ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr1)),
         )
-        assertEquals(sawai, moltecIntoSawai.state)
+        assertEquals(sawai, moltenIntoSawai.state)
         assertEquals(
             ScanEffect.InvalidScan(
                 ScanFormat.QR,
                 InvalidScanReason.WRONG_DESTINATION,
-                moltecQr1.length,
+                moltenQr1.length,
             ),
-            moltecIntoSawai.effects.single(),
+            moltenIntoSawai.effects.single(),
         )
 
-        var moltec = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
-        moltec = reducer.reduce(moltec, ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr1))).state
-        moltec = reducer.reduce(moltec, ScanEvent.RereadQr).state
-        assertEquals(Destination.MOLTEC, moltec.destination)
+        var molten = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+        molten = reducer.reduce(molten, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr1))).state
+        molten = reducer.reduce(molten, ScanEvent.RereadQr).state
+        assertEquals(Destination.MOLTEN, molten.destination)
 
-        val sawaiIntoMoltec = reducer.reduce(
-            moltec,
+        val sawaiIntoMolten = reducer.reduce(
+            molten,
             ScanEvent.PayloadReceived(ScanPayload.qr(qrPayload)),
         )
-        assertEquals(moltec, sawaiIntoMoltec.state)
+        assertEquals(molten, sawaiIntoMolten.state)
         assertEquals(
             ScanEffect.InvalidScan(
                 ScanFormat.QR,
                 InvalidScanReason.WRONG_DESTINATION,
                 qrPayload.length,
             ),
-            sawaiIntoMoltec.effects.single(),
+            sawaiIntoMolten.effects.single(),
         )
     }
 
@@ -689,17 +689,17 @@ class ScanReducerTest {
     fun destinationLockSurvivesMismatchAndManualNext() {
         val reducer = ScanReducer()
         var state = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
-        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr2))).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr2))).state
         val mismatch = reducer.reduce(
             state,
-            ScanEvent.PayloadReceived(ScanPayload.code128(moltecTag2OtherPart)),
+            ScanEvent.PayloadReceived(ScanPayload.code128(moltenTag2OtherPart)),
         )
         assertEquals(MatchResult.MISMATCH, mismatch.state.result)
-        assertEquals(Destination.MOLTEC, mismatch.state.destination)
+        assertEquals(Destination.MOLTEN, mismatch.state.destination)
 
         state = reducer.reduce(mismatch.state, ScanEvent.ManualNext).state
         assertEquals(ScanPhase.WAITING_QR, state.phase)
-        assertEquals(Destination.MOLTEC, state.destination)
+        assertEquals(Destination.MOLTEN, state.destination)
 
         val rejected = reducer.reduce(
             state,
@@ -713,37 +713,37 @@ class ScanReducerTest {
     }
 
     @Test
-    fun restoredMoltecBoxesSeedDuplicateAndDeliveryCounts() {
+    fun restoredMoltenBoxesSeedDuplicateAndDeliveryCounts() {
         val reducer = ScanReducer()
         var state = reducer.reduce(
             ScanReducer.initial(
                 existingMatchedCount = 1,
                 recordedBoxes = listOfNotNull(
-                    RecordedBox.fromPayloads(moltecQr2, moltecTag2FirstBox),
+                    RecordedBox.fromPayloads(moltenQr2, moltenTag2FirstBox),
                 ),
             ),
             ScanEvent.StartSession,
         ).state
-        assertEquals(Destination.MOLTEC, state.destination)
+        assertEquals(Destination.MOLTEN, state.destination)
 
-        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr2))).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr2))).state
         val duplicate = reducer.reduce(
             state,
-            ScanEvent.PayloadReceived(ScanPayload.code128(moltecTag2FirstBox)),
+            ScanEvent.PayloadReceived(ScanPayload.code128(moltenTag2FirstBox)),
         )
         assertEquals(MatchResult.DUPLICATE, duplicate.state.result)
         assertEquals(1, duplicate.state.matchedCount)
 
         state = reducer.reduce(duplicate.state, ScanEvent.ManualNext).state
-        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr2))).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr2))).state
         val second = reducer.reduce(
             state,
-            ScanEvent.PayloadReceived(ScanPayload.code128(moltecTag2SecondBox)),
+            ScanEvent.PayloadReceived(ScanPayload.code128(moltenTag2SecondBox)),
         )
 
         assertEquals(MatchResult.MATCH, second.state.result)
         assertEquals(2, second.state.matchedCount)
-        assertEquals(MoltecBoxSummary("UAG5560", 2, 240), second.state.moltecResultSummary)
+        assertEquals(MoltenBoxSummary("UAG5560", 2, 240), second.state.moltenResultSummary)
     }
 
     @Test
@@ -775,12 +775,12 @@ class ScanReducerTest {
     }
 
     @Test
-    fun moltecLockedInvalidQrLengthsUseSixtyOne() {
+    fun moltenLockedInvalidQrLengthsUseSixtyOne() {
         val reducer = ScanReducer()
         var state = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
-        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr1))).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr1))).state
         state = reducer.reduce(state, ScanEvent.RereadQr).state
-        assertEquals(Destination.MOLTEC, state.destination)
+        assertEquals(Destination.MOLTEN, state.destination)
 
         val overlong = reducer.reduce(
             state,
@@ -807,12 +807,12 @@ class ScanReducerTest {
     fun endSessionClearsDestinationAndRecordedBoxes() {
         val reducer = ScanReducer()
         var state = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
-        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltecQr2))).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr2))).state
         state = reducer.reduce(
             state,
-            ScanEvent.PayloadReceived(ScanPayload.code128(moltecTag2FirstBox)),
+            ScanEvent.PayloadReceived(ScanPayload.code128(moltenTag2FirstBox)),
         ).state
-        assertEquals(Destination.MOLTEC, state.destination)
+        assertEquals(Destination.MOLTEN, state.destination)
         assertEquals(1, state.recordedBoxes.size)
 
         val ended = reducer.reduce(state, ScanEvent.EndSession)

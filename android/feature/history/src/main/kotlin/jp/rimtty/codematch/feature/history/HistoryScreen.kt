@@ -60,14 +60,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import jp.rimtty.codematch.core.export.HistoryExportTextFormatter
-import jp.rimtty.codematch.core.export.MoltecDeliveryGroup
-import jp.rimtty.codematch.core.export.formatMoltecDate
-import jp.rimtty.codematch.core.export.formatMoltecTime
-import jp.rimtty.codematch.core.export.moltecDeliveryGroups
+import jp.rimtty.codematch.core.export.MoltenDeliveryGroup
+import jp.rimtty.codematch.core.export.formatMoltenDate
+import jp.rimtty.codematch.core.export.formatMoltenTime
+import jp.rimtty.codematch.core.export.moltenDeliveryGroups
 import jp.rimtty.codematch.core.export.resolvedDestination
 import jp.rimtty.codematch.core.matching.CodeMatcher
 import jp.rimtty.codematch.core.matching.KanbanQrRecord
-import jp.rimtty.codematch.core.matching.MoltecQrRecord
+import jp.rimtty.codematch.core.matching.MoltenQrRecord
 import jp.rimtty.codematch.core.matching.TagBarcodeRecord
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.Destination
@@ -438,11 +438,11 @@ private fun SessionOverview(
         mutableStateOf(session.displayName)
     }
     val destination = remember(session) { session.resolvedDestination() }
-    // A Moltec part repeats across delivery numbers, so the number of slips is
+    // A Molten part repeats across delivery numbers, so the number of slips is
     // what the operator reconciles against.
     val deliveryNumberCount = remember(session) {
-        if (destination == Destination.MOLTEC) {
-            session.entries.moltecDeliveryGroups().size
+        if (destination == Destination.MOLTEN) {
+            session.entries.moltenDeliveryGroups().size
         } else {
             null
         }
@@ -624,9 +624,9 @@ fun HistoryGroupDetail(
 ) {
     HistoryLocalized(language) {
         val labels = HistoryUiResources.labels()
-        // Grouping stays by part number, but a Moltec part repeats across
+        // Grouping stays by part number, but a Molten part repeats across
         // slips, so its boxes are also summarized per delivery number.
-        val deliveryGroups = remember(group) { group.entries.moltecDeliveryGroups() }
+        val deliveryGroups = remember(group) { group.entries.moltenDeliveryGroups() }
         LazyColumn(
             modifier = modifier.fillMaxSize().testTag(HistoryTestTags.GROUP_DETAIL),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
@@ -710,9 +710,9 @@ fun HistoryGroupDetail(
     }
 }
 
-/** One Moltec delivery number: its box count and cumulative pack quantity. */
+/** One Molten delivery number: its box count and cumulative pack quantity. */
 @Composable
-private fun DeliveryGroupRow(delivery: MoltecDeliveryGroup, language: AppLanguage) {
+private fun DeliveryGroupRow(delivery: MoltenDeliveryGroup, language: AppLanguage) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -745,12 +745,12 @@ fun HistoryEntryDetail(
         // The two destinations put different fields at different positions, so
         // the detected destination decides which record is read and shown.
         val destination = entry.qrPayload?.let(CodeMatcher::detectDestination)
-        val moltecQr = if (destination == Destination.MOLTEC) {
-            entry.qrPayload?.let(MoltecQrRecord::parse)
+        val moltenQr = if (destination == Destination.MOLTEN) {
+            entry.qrPayload?.let(MoltenQrRecord::parse)
         } else {
             null
         }
-        val qr = if (destination == Destination.MOLTEC) {
+        val qr = if (destination == Destination.MOLTEN) {
             null
         } else {
             entry.qrPayload?.let(KanbanQrRecord::parse)
@@ -778,32 +778,32 @@ fun HistoryEntryDetail(
                 )
                 SelectionContainerText(entry.code, Modifier.padding(horizontal = 20.dp))
             }
-            if (moltecQr != null) {
+            if (moltenQr != null) {
                 item {
                     SectionCard(title = labels.qrParsed) {
-                        SummaryRow(labels.ordererCode, moltecQr.ordererCode)
+                        SummaryRow(labels.ordererCode, moltenQr.ordererCode)
                         SummaryRow(
-                            labels.moltecPartNumber,
-                            CodeMatcher.formatPartNumber(moltecQr.partNumber),
+                            labels.moltenPartNumber,
+                            CodeMatcher.formatPartNumber(moltenQr.partNumber),
                         )
-                        SummaryRow(labels.deliveryNumber, moltecQr.deliveryNumber)
-                        SummaryRow(labels.deliveryDestination, moltecQr.deliveryDestination)
+                        SummaryRow(labels.deliveryNumber, moltenQr.deliveryNumber)
+                        SummaryRow(labels.deliveryDestination, moltenQr.deliveryDestination)
                         SummaryRow(
                             labels.tyLocation,
-                            moltecQr.tyLocation ?: HistoryUiResources.notAvailable(),
+                            moltenQr.tyLocation ?: HistoryUiResources.notAvailable(),
                         )
-                        SummaryRow(labels.supplyPoint, moltecQr.supplyPoint)
+                        SummaryRow(labels.supplyPoint, moltenQr.supplyPoint)
                         SummaryRow(
                             labels.packQuantity,
-                            HistoryExportTextFormatter.integer(moltecQr.packQuantity, language),
+                            HistoryExportTextFormatter.integer(moltenQr.packQuantity, language),
                         )
                         SummaryRow(
                             labels.instructionDate,
-                            formatMoltecDate(moltecQr.instructionDate),
+                            formatMoltenDate(moltenQr.instructionDate),
                         )
                         SummaryRow(
                             labels.instructionTime,
-                            formatMoltecTime(moltecQr.instructionTime)
+                            formatMoltenTime(moltenQr.instructionTime)
                                 ?: HistoryUiResources.notAvailable(),
                         )
                     }

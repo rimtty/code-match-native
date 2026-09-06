@@ -2,7 +2,7 @@ package jp.rimtty.codematch.feature.scan
 
 import jp.rimtty.codematch.core.matching.CodeMatcher
 import jp.rimtty.codematch.core.matching.KanbanQrRecord
-import jp.rimtty.codematch.core.matching.MoltecQrRecord
+import jp.rimtty.codematch.core.matching.MoltenQrRecord
 import jp.rimtty.codematch.core.matching.TagBarcodeRecord
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
 import jp.rimtty.codematch.core.model.Destination
@@ -174,7 +174,7 @@ class ScanReducer(
     ): ScanReduction {
         val comparison = compare(qrPayload, barcodePayload)
         // The box key is destination aware: a Sawai slip identifies its own
-        // box, a Moltec slip needs the tag's management code as well.
+        // box, a Molten slip needs the tag's management code as well.
         val identity = CodeMatcher.boxIdentity(qrPayload, barcodePayload)
         val result = if (comparison == MatchResult.MATCH &&
             identity != null &&
@@ -218,8 +218,8 @@ class ScanReducer(
                 val destination = current.destination
                     ?: CodeMatcher.detectDestination(qrPayload)
                     ?: Destination.SAWAI
-                val summary = if (destination == Destination.MOLTEC) {
-                    recordedBox?.deliveryNumber?.let(next::moltecSummary)
+                val summary = if (destination == Destination.MOLTEN) {
+                    recordedBox?.deliveryNumber?.let(next::moltenSummary)
                 } else {
                     null
                 }
@@ -230,7 +230,7 @@ class ScanReducer(
                         code = code,
                         matchNumber = matchNumber,
                         destination = destination,
-                        // Moltec counts boxes per delivery number; Sawai keeps
+                        // Molten counts boxes per delivery number; Sawai keeps
                         // counting them per part number, as the history does.
                         boxNumber = summary?.boxNumber
                             ?: next.recordedBoxes.count { it.code == code },
@@ -432,14 +432,14 @@ class ScanReducer(
                     expected != null -> InvalidScanReason.INVALID_PAYLOAD
                     // Without a lock both records are still possible, so only a
                     // length outside 57-66 is certainly truncated or padded.
-                    length < MoltecQrRecord.MINIMUM_SCAN_PAYLOAD_LENGTH ->
+                    length < MoltenQrRecord.MINIMUM_SCAN_PAYLOAD_LENGTH ->
                         InvalidScanReason.INCOMPLETE_QR_PAYLOAD
                     length > KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH ->
                         InvalidScanReason.OVERLONG_QR_PAYLOAD
-                    // 62-65 falls between the two records: too long for Moltec
+                    // 62-65 falls between the two records: too long for Molten
                     // and too short for Sawai, so the Sawai record was cut off.
                     // A complete-length payload that did not parse is invalid.
-                    length in (MoltecQrRecord.RECORD_LENGTH + 1) until
+                    length in (MoltenQrRecord.RECORD_LENGTH + 1) until
                         KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH ->
                         InvalidScanReason.INCOMPLETE_QR_PAYLOAD
                     else -> InvalidScanReason.INVALID_PAYLOAD
@@ -447,7 +447,7 @@ class ScanReducer(
             }
             // A Code 128 symbol likewise only proves the symbology. Camera and
             // Bluetooth input must both carry the product-tag business format
-            // (a 4-2-4 part number for Sawai, 4-2-3 or 4-2-4 for Moltec,
+            // (a 4-2-4 part number for Sawai, 4-2-3 or 4-2-4 for Molten,
             // followed by @management code) before comparison runs.
             payload.format == ScanFormat.CODE_128 ->
                 if (TagBarcodeRecord.isValidScanPayload(
@@ -467,12 +467,12 @@ class ScanReducer(
     /**
      * Length reported for an invalid QR.
      *
-     * A Moltec record is space padded, so its surrounding spaces are data and
+     * A Molten record is space padded, so its surrounding spaces are data and
      * must be counted; every other case keeps the trimmed length the Sawai
      * messages have always shown.
      */
     private fun observedQrLength(value: String, lockedDestination: Destination?): Int =
-        if (lockedDestination == Destination.MOLTEC) value.length else value.trim().length
+        if (lockedDestination == Destination.MOLTEN) value.length else value.trim().length
 
     private fun recordedCode(qrPayload: String, barcodePayload: String): String {
         val part = CodeMatcher.partNumberFromBarcode(barcodePayload)
@@ -500,7 +500,7 @@ class ScanReducer(
 
         /**
          * Strip the transport terminators (CR, LF, NUL) a scanner adds at
-         * either end. Spaces are deliberately kept: a Moltec record is space
+         * either end. Spaces are deliberately kept: a Molten record is space
          * padded, so trimming them would shorten a complete record.
          */
         fun normalizeTransportTerminators(rawValue: String): String =

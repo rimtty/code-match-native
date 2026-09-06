@@ -71,10 +71,10 @@ object HistoryUiResources {
         managementCode = stringResource(R.string.history_management_code),
         destination = stringResource(R.string.history_destination),
         destinationSawai = stringResource(R.string.history_destination_sawai),
-        destinationMoltec = stringResource(R.string.history_destination_moltec),
+        destinationMolten = stringResource(R.string.history_destination_molten),
         deliveryNumberCount = stringResource(R.string.history_delivery_number_count),
         ordererCode = stringResource(R.string.history_orderer_code),
-        moltecPartNumber = stringResource(R.string.history_moltec_part_number),
+        moltenPartNumber = stringResource(R.string.history_molten_part_number),
         deliveryNumber = stringResource(R.string.history_delivery_number),
         deliveryDestination = stringResource(R.string.history_delivery_destination),
         tyLocation = stringResource(R.string.history_ty_location),
@@ -90,11 +90,11 @@ object HistoryUiResources {
         val labels = labels()
         return when (destination) {
             Destination.SAWAI -> labels.destinationSawai
-            Destination.MOLTEC -> labels.destinationMoltec
+            Destination.MOLTEN -> labels.destinationMolten
         }
     }
 
-    /** `納品番号 UAG5560（2箱・累計 240個）`, one Moltec delivery number. */
+    /** `納品番号 UAG5560（2箱・累計 240個）`, one Molten delivery number. */
     @Composable
     fun deliveryGroupSummary(
         deliveryNumber: String,

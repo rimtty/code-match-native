@@ -4,7 +4,7 @@
     "label-NN cases are the 12 field label pairs documented in the customer spec (docs/qr-barcode-spec-analysis.html, git-ignored). Both payloads are the real values decoded from the label photos (Vision, 2026-09-06); the QR is the complete 66-character record.",
     "label-AA-qr-vs-label-BB-tag cases pair a QR with the tag of the neighbouring label of the same series (e.g. 52 vs 55) to pin the most likely field mix-up as a mismatch.",
     "box-a / box-b are two boxes of the same part (BCJH-55-81GG) photographed with the same tag barcode and different card numbers (DAAL134140 / DAAL134150): the basis for the duplicate rule keying on the QR record, not the part number.",
-    "moltec-NN cases are the Vision-decoded slip/label pairs of destination モルテック (spec §6.5, docs/qr-barcode-spec-analysis.html, git-ignored). QR payloads keep their trailing spaces and are exactly 61 characters; `destination` is the value the destination detector must return for the QR."
+    "molten-NN cases are the Vision-decoded slip/label pairs of destination モルテン (spec §6.5, docs/qr-barcode-spec-analysis.html, git-ignored). QR payloads keep their trailing spaces and are exactly 61 characters; `destination` is the value the destination detector must return for the QR."
   ],
   "cases": [
     {
@@ -167,84 +167,84 @@
       "destination": "sawai"
     },
     {
-      "id": "moltec-01-D10E-50-N10B",
+      "id": "molten-01-D10E-50-N10B",
       "qrPayload": "AK6805D10E50N10B         U543820000MB    S600700000020908    ",
       "barcodePayload": "D10E-50-N10B@0UBL00",
       "expected": "match",
-      "destination": "moltec"
+      "destination": "molten"
     },
     {
-      "id": "moltec-01-trailing-spaces-stripped",
+      "id": "molten-01-trailing-spaces-stripped",
       "qrPayload": "AK6805D10E50N10B         U543820000MB    S600700000020908",
       "barcodePayload": "D10E-50-N10B@0UBL00",
       "expected": "match",
-      "destination": "moltec"
+      "destination": "molten"
     },
     {
-      "id": "moltec-02-PAF1-15-422",
+      "id": "molten-02-PAF1-15-422",
       "qrPayload": "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000",
       "barcodePayload": "PAF1-15-422@0NKD3C",
       "expected": "match",
-      "destination": "moltec"
+      "destination": "molten"
     },
     {
-      "id": "moltec-03-PAF1-15-422-second-box",
+      "id": "molten-03-PAF1-15-422-second-box",
       "qrPayload": "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000",
       "barcodePayload": "PAF1-15-422@0NLL3C",
       "expected": "match",
-      "destination": "moltec"
+      "destination": "molten"
     },
     {
-      "id": "moltec-04-BCKE-34-716B",
+      "id": "molten-04-BCKE-34-716B",
       "qrPayload": "AK6805BCKE34716B         UAG7520000FA3P20F-DAM000010809080000",
       "barcodePayload": "BCKE-34-716B@0GGI30",
       "expected": "match",
-      "destination": "moltec"
+      "destination": "molten"
     },
     {
-      "id": "moltec-05-BCKE-34-716B",
+      "id": "molten-05-BCKE-34-716B",
       "qrPayload": "AK6805BCKE34716B         UAG7530000FA3P20F-DAM000010809080500",
       "barcodePayload": "BCKE-34-716B@0GGC30",
       "expected": "match",
-      "destination": "moltec"
+      "destination": "molten"
     },
     {
-      "id": "moltec-06-BCKE-34-716B-second-box",
+      "id": "molten-06-BCKE-34-716B-second-box",
       "qrPayload": "AK6805BCKE34716B         UAG7530000FA3P20F-DAM000010809080500",
       "barcodePayload": "BCKE-34-716B@0G5Z30",
       "expected": "match",
-      "destination": "moltec"
+      "destination": "molten"
     },
     {
-      "id": "moltec-02-qr-vs-PAF1-15-423-tag",
+      "id": "molten-02-qr-vs-PAF1-15-423-tag",
       "qrPayload": "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000",
       "barcodePayload": "PAF1-15-423@0N5L3C",
       "expected": "mismatch",
-      "destination": "moltec"
+      "destination": "molten"
     },
     {
-      "id": "moltec-01-qr-vs-D10E-50-N50B-tag",
+      "id": "molten-01-qr-vs-D10E-50-N50B-tag",
       "qrPayload": "AK6805D10E50N10B         U543820000MB    S600700000020908    ",
       "barcodePayload": "D10E-50-N50B@0UXL0K",
       "expected": "mismatch",
-      "destination": "moltec"
+      "destination": "molten"
     },
     {
-      "id": "moltec-02-qr-vs-ten-char-superstring-tag",
+      "id": "molten-02-qr-vs-ten-char-superstring-tag",
       "qrPayload": "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000",
       "barcodePayload": "PAF1-15-4220@0NKD3C",
       "expected": "mismatch",
-      "destination": "moltec"
+      "destination": "molten"
     },
     {
-      "id": "moltec-qr-vs-sawai-tag",
+      "id": "molten-qr-vs-sawai-tag",
       "qrPayload": "AK6805D10E50N10B         U543820000MB    S600700000020908    ",
       "barcodePayload": "BCJH-52-81GG@1N5X0C",
       "expected": "mismatch",
-      "destination": "moltec"
+      "destination": "molten"
     },
     {
-      "id": "sawai-qr-vs-moltec-tag",
+      "id": "sawai-qr-vs-molten-tag",
       "qrPayload": "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
       "barcodePayload": "D10E-50-N10B@0UBL00",
       "expected": "mismatch",

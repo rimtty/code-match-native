@@ -2476,50 +2476,50 @@
         }
       }
     },
-    "モックCode 128（モルテック）" : {
+    "モックCode 128（モルテン）" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mock Code 128 (Moltec)"
+            "value" : "Mock Code 128 (Molten)"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "モックCode 128（モルテック）"
+            "value" : "モックCode 128（モルテン）"
           }
         }
       }
     },
-    "モックQR（モルテック）" : {
+    "モックQR（モルテン）" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mock QR (Moltec)"
+            "value" : "Mock QR (Molten)"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "モックQR（モルテック）"
+            "value" : "モックQR（モルテン）"
           }
         }
       }
     },
-    "モルテック" : {
+    "モルテン" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Moltec"
+            "value" : "Molten"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "モルテック"
+            "value" : "モルテン"
           }
         }
       }

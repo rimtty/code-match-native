@@ -3,19 +3,19 @@ import XCTest
 @testable import CodeMatch
 
 /// セッション詳細PDFの本文を検証する。
-/// 仕向地ごとに納品書ブロックの構成が変わるため、モルテック（納品番号ごと）と
+/// 仕向地ごとに納品書ブロックの構成が変わるため、モルテン（納品番号ごと）と
 /// 澤井製作所（品番ごと・従来どおり）の双方を現場ラベルの実データで確認する。
 ///
 /// PDFKitの抽出テキストは描画した文字列そのままではなく、全角スペース(U+3000)を
 /// 半角スペースへ置き換え、連続する空白を1つにまとめる。よって「　」区切りの行は
 /// 半角スペース区切りとして突き合わせる。
 final class SessionPDFExporterTests: XCTestCase {
-    // 現場ラベルの実データ。モルテックの納品書QRは末尾の空白まで含めて61桁が1レコード。
-    private let moltecQRD10E = "AK6805D10E50N10B         U543820000MB    S600700000020908    "
-    private let moltecTagD10E = "D10E-50-N10B@0UBL00"
-    private let moltecQRPAF1 = "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
-    private let moltecTagPAF1FirstBox = "PAF1-15-422@0NKD3C"
-    private let moltecTagPAF1SecondBox = "PAF1-15-422@0NLL3C"
+    // 現場ラベルの実データ。モルテンの納品書QRは末尾の空白まで含めて61桁が1レコード。
+    private let moltenQRD10E = "AK6805D10E50N10B         U543820000MB    S600700000020908    "
+    private let moltenTagD10E = "D10E-50-N10B@0UBL00"
+    private let moltenQRPAF1 = "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+    private let moltenTagPAF1FirstBox = "PAF1-15-422@0NKD3C"
+    private let moltenTagPAF1SecondBox = "PAF1-15-422@0NLL3C"
     // 澤井製作所の納品書兼現品票QR(66桁)。
     private let sawaiQR = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private let sawaiTag = "BCJH-52-81GG@1N5X0C"
@@ -23,29 +23,29 @@ final class SessionPDFExporterTests: XCTestCase {
     private let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
 
     func testFixturePayloadsAreFullRecords() {
-        XCTAssertEqual(moltecQRD10E.count, 61)
-        XCTAssertEqual(moltecQRPAF1.count, 61)
+        XCTAssertEqual(moltenQRD10E.count, 61)
+        XCTAssertEqual(moltenQRPAF1.count, 61)
         XCTAssertEqual(sawaiQR.count, 66)
     }
 
-    func testMoltecInstructionDateAndTimeAreFormattedForDisplay() throws {
-        let record = try XCTUnwrap(MoltecQRRecord.parse(moltecQRPAF1))
+    func testMoltenInstructionDateAndTimeAreFormattedForDisplay() throws {
+        let record = try XCTUnwrap(MoltenQRRecord.parse(moltenQRPAF1))
         XCTAssertEqual(record.instructionDate, "0908")
         XCTAssertEqual(record.formattedInstructionDate, "09/08")
         XCTAssertEqual(record.instructionTime, "0000")
         XCTAssertEqual(record.formattedInstructionTime, "00:00")
 
         // 時刻欄が空白のレコードは整形せずnilのまま扱う。
-        let withoutTime = try XCTUnwrap(MoltecQRRecord.parse(moltecQRD10E))
+        let withoutTime = try XCTUnwrap(MoltenQRRecord.parse(moltenQRD10E))
         XCTAssertEqual(withoutTime.formattedInstructionDate, "09/08")
         XCTAssertNil(withoutTime.formattedInstructionTime)
     }
 
-    func testMoltecSessionListsDeliveryNoteBlockPerDeliveryNumber() throws {
-        let text = pdfText(for: moltecSession())
+    func testMoltenSessionListsDeliveryNoteBlockPerDeliveryNumber() throws {
+        let text = pdfText(for: moltenSession())
 
         // ヘッダー: 仕向地と納品番号の種類数
-        assertContains("仕向地: モルテック", in: text)
+        assertContains("仕向地: モルテン", in: text)
         assertContains("検査箱数: 3箱（品番数: 2）", in: text)
         assertContains("納品番号数: 2", in: text)
 
@@ -80,7 +80,7 @@ final class SessionPDFExporterTests: XCTestCase {
         assertContains("品目番号: BCJH-52-81GG（枝番 02） カード番号: DCLP675300", in: text)
         XCTAssertTrue(try boxLine(managementCode: "1N5X0C", in: text).hasPrefix("1箱目 "))
 
-        // モルテック向けの見出しと集計は出さない
+        // モルテン向けの見出しと集計は出さない
         XCTAssertFalse(text.contains("納品番号"))
         XCTAssertFalse(text.contains("TYロケーション"))
     }
@@ -103,8 +103,8 @@ final class SessionPDFExporterTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// 同じ品番の2箱(納品番号UAG5560)と、別品番の1箱(納品番号U543820)を持つモルテックのセッション。
-    private func moltecSession() -> MatchSession {
+    /// 同じ品番の2箱(納品番号UAG5560)と、別品番の1箱(納品番号U543820)を持つモルテンのセッション。
+    private func moltenSession() -> MatchSession {
         MatchSession(
             startedAt: startedAt,
             endedAt: startedAt.addingTimeInterval(900),
@@ -112,23 +112,23 @@ final class SessionPDFExporterTests: XCTestCase {
                 MatchHistoryEntry(
                     code: "PAF1-15-422",
                     matchedAt: startedAt.addingTimeInterval(60),
-                    qrPayload: moltecQRPAF1,
-                    barcodePayload: moltecTagPAF1FirstBox
+                    qrPayload: moltenQRPAF1,
+                    barcodePayload: moltenTagPAF1FirstBox
                 ),
                 MatchHistoryEntry(
                     code: "PAF1-15-422",
                     matchedAt: startedAt.addingTimeInterval(120),
-                    qrPayload: moltecQRPAF1,
-                    barcodePayload: moltecTagPAF1SecondBox
+                    qrPayload: moltenQRPAF1,
+                    barcodePayload: moltenTagPAF1SecondBox
                 ),
                 MatchHistoryEntry(
                     code: "D10E-50-N10B",
                     matchedAt: startedAt.addingTimeInterval(180),
-                    qrPayload: moltecQRD10E,
-                    barcodePayload: moltecTagD10E
+                    qrPayload: moltenQRD10E,
+                    barcodePayload: moltenTagD10E
                 )
             ],
-            destination: .moltec
+            destination: .molten
         )
     }
 

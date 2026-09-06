@@ -3,7 +3,7 @@ package jp.rimtty.codematch.core.matching
 import java.util.Locale
 
 /**
- * A 61-character delivery-slip QR record of destination モルテック (Moltec).
+ * A 61-character delivery-slip QR record of destination モルテン (Molten).
  *
  * Every field sits at a fixed position and text fields are left aligned and
  * padded with spaces, so trailing spaces are significant data and must never be
@@ -11,9 +11,9 @@ import java.util.Locale
  * the last field, which is why [canonicalPayload] pads a short payload back to
  * [RECORD_LENGTH] instead of rejecting it.
  *
- * This mirrors Swift's `MoltecQRRecord`; keep the validation rules identical.
+ * This mirrors Swift's `MoltenQRRecord`; keep the validation rules identical.
  */
-data class MoltecQrRecord(
+data class MoltenQrRecord(
     /** Characters 1-6: leading marker plus the orderer code, for example `AK6805`. */
     val ordererCode: String,
     /** Characters 7-16: the part number, left aligned with the padding removed. */
@@ -62,7 +62,7 @@ data class MoltecQrRecord(
         }
 
         /**
-         * Accept only a complete Moltec QR record at a scanner boundary.
+         * Accept only a complete Molten QR record at a scanner boundary.
          *
          * The SDK's string callback carries no symbology, so the fixed length and
          * the required fields together keep a Code 128 payload out of the QR step.
@@ -70,7 +70,7 @@ data class MoltecQrRecord(
         fun isValidScanPayload(payload: String): Boolean = parse(payload) != null
 
         /** Parse the fixed-position fields from a QR payload. */
-        fun parse(payload: String): MoltecQrRecord? {
+        fun parse(payload: String): MoltenQrRecord? {
             val record = canonicalPayload(payload) ?: return null
 
             val partField = record.substring(6, 16)
@@ -83,7 +83,7 @@ data class MoltecQrRecord(
             if (!instructionTimePattern.matches(timeField)) return null
             val packQuantity = quantityField.toIntOrNull() ?: return null
 
-            return MoltecQrRecord(
+            return MoltenQrRecord(
                 ordererCode = record.substring(0, 6),
                 partNumber = partField.trim(),
                 deliveryNumber = record.substring(25, 32),

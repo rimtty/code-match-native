@@ -18,7 +18,7 @@ final class ScannerViewModel: ObservableObject {
     /// セッションの仕向地。最初に受理したQRで固定し、以後は別仕向地のQRを拒否する。
     /// セッション終了まで解除しない。
     @Published private(set) var destination: Destination?
-    /// モルテックの一致結果でだけ設定する納品番号ごとの集計。結果表示中以外は nil。
+    /// モルテンの一致結果でだけ設定する納品番号ごとの集計。結果表示中以外は nil。
     @Published private(set) var deliverySummary: DeliveryBoxSummary?
     @Published private(set) var isAutoAdvanceEnabled: Bool
     @Published private(set) var autoAdvanceDelay: AutoAdvanceDelay
@@ -72,13 +72,13 @@ final class ScannerViewModel: ObservableObject {
     static let sampleQRPayload = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     static let sampleBarcodePayload = "BCJH-52-81GG@1N5X0C"
     static let sampleMismatchBarcodePayload = "BCJH-55-81GG@1KVV0C"
-    /// 実ラベル由来のサンプルペイロード(仕向地 モルテック・品番 PAF1-15-422・納品番号 UAG5560)。
+    /// 実ラベル由来のサンプルペイロード(仕向地 モルテン・品番 PAF1-15-422・納品番号 UAG5560)。
     /// 61桁固定長レコードなので、末尾の空白まで含めて1文字も削らない。
-    static let sampleMoltecQRPayload = "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
-    static let sampleMoltecBarcodePayload = "PAF1-15-422@0NKD3C"
-    /// 同じ納品書QRの2箱目。モルテックのQRは箱を区別しないため、現品票の管理コードだけが異なる。
-    static let sampleMoltecSecondBoxBarcodePayload = "PAF1-15-422@0NLL3C"
-    static let sampleMoltecMismatchBarcodePayload = "PAF1-15-423@0N5L3C"
+    static let sampleMoltenQRPayload = "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+    static let sampleMoltenBarcodePayload = "PAF1-15-422@0NKD3C"
+    /// 同じ納品書QRの2箱目。モルテンのQRは箱を区別しないため、現品票の管理コードだけが異なる。
+    static let sampleMoltenSecondBoxBarcodePayload = "PAF1-15-422@0NLL3C"
+    static let sampleMoltenMismatchBarcodePayload = "PAF1-15-423@0N5L3C"
 
     var qrPartNumber: String? {
         CodeMatcher.partNumber(fromQR: qrValue)
@@ -673,8 +673,8 @@ final class ScannerViewModel: ObservableObject {
                 barcodePayload: barcodeValue,
                 destination: detected
             )
-            if detected == .moltec, let record = MoltecQRRecord.parse(qrValue) {
-                // モルテックは納品番号ごとに箱を数え、収容数を積み上げて報告する。
+            if detected == .molten, let record = MoltenQRRecord.parse(qrValue) {
+                // モルテンは納品番号ごとに箱を数え、収容数を積み上げて報告する。
                 let summary = historyStore.activeSessionDeliverySummary(
                     deliveryNumber: record.deliveryNumber
                 )

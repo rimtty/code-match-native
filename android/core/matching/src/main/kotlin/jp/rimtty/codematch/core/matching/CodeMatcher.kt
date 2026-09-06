@@ -11,7 +11,7 @@ import java.util.Locale
  * fixed-length record whose part number sits at a fixed position, whereas a
  * product-tag Code 128 starts with a hyphenated part number followed by an
  * optional management code. The record layout depends on the destination
- * ([Destination.SAWAI]: 66 characters with a card number, [Destination.MOLTEC]:
+ * ([Destination.SAWAI]: 66 characters with a card number, [Destination.MOLTEN]:
  * 61 characters), so extraction detects the destination first. Keep this object
  * free of camera, Bluetooth, and Android dependencies so the exact same rules
  * can be exercised in local JVM tests and by the application layer.
@@ -41,7 +41,7 @@ object CodeMatcher {
     /**
      * Remove only the leading and trailing transport terminators (CR, LF, NUL).
      *
-     * Spaces are deliberately kept: a Moltec record is space padded, so its
+     * Spaces are deliberately kept: a Molten record is space padded, so its
      * leading and trailing spaces are part of the payload.
      */
     fun stripTransportTerminators(raw: String): String =
@@ -54,31 +54,31 @@ object CodeMatcher {
     fun detectDestination(qrPayload: String): Destination? {
         val payload = stripTransportTerminators(qrPayload)
         if (isSawaiRecord(payload)) return Destination.SAWAI
-        if (MoltecQrRecord.isValidScanPayload(payload)) return Destination.MOLTEC
+        if (MoltenQrRecord.isValidScanPayload(payload)) return Destination.MOLTEN
 
-        // A Moltec record is 61 characters including its surrounding spaces, so
+        // A Molten record is 61 characters including its surrounding spaces, so
         // spaces can never be trimmed before that check. A Sawai record has no
         // padding at its edges, so a scanner that adds whitespace must not turn a
-        // valid slip into a mismatch: retry it trimmed once Moltec is ruled out.
+        // valid slip into a mismatch: retry it trimmed once Molten is ruled out.
         return if (isSawaiRecord(payload.trim())) Destination.SAWAI else null
     }
 
     /** The complete QR record length of a destination. */
     fun expectedQrLength(destination: Destination): Int = when (destination) {
         Destination.SAWAI -> KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH
-        Destination.MOLTEC -> MoltecQrRecord.RECORD_LENGTH
+        Destination.MOLTEN -> MoltenQrRecord.RECORD_LENGTH
     }
 
     /**
      * Normalize a QR payload for identity comparisons.
      *
-     * A Moltec payload is padded back to its full record length so a scan that
+     * A Molten payload is padded back to its full record length so a scan that
      * dropped the trailing spaces still identifies the same slip.
      */
     fun canonicalQrPayload(qrPayload: String): String =
         when (detectDestination(qrPayload)) {
-            Destination.MOLTEC ->
-                MoltecQrRecord.canonicalPayload(qrPayload) ?: payloadIdentity(qrPayload)
+            Destination.MOLTEN ->
+                MoltenQrRecord.canonicalPayload(qrPayload) ?: payloadIdentity(qrPayload)
             else -> payloadIdentity(qrPayload)
         }
 
@@ -86,14 +86,14 @@ object CodeMatcher {
      * The key that tells one physical box from another within a session.
      *
      * A Sawai slip carries a card number, so its QR alone identifies the box. A
-     * Moltec slip repeats for every box of the part, so the tag's management
+     * Molten slip repeats for every box of the part, so the tag's management
      * code has to be part of the key; without a tag there is no box identity.
      * Returns null when the QR is not a valid record of either destination.
      */
     fun boxIdentity(qrPayload: String, barcodePayload: String?): String? =
         when (detectDestination(qrPayload)) {
             Destination.SAWAI -> canonicalQrPayload(qrPayload)
-            Destination.MOLTEC -> {
+            Destination.MOLTEN -> {
                 val tag = payloadIdentity(barcodePayload.orEmpty())
                 if (tag.isEmpty()) null else canonicalQrPayload(qrPayload) + "|" + tag
             }
@@ -109,14 +109,14 @@ object CodeMatcher {
     /**
      * Extract the item number from a slip QR at its destination's fixed
      * position: characters 11–20 for [Destination.SAWAI], characters 7–16 for
-     * [Destination.MOLTEC]. A payload that is neither destination's record
+     * [Destination.MOLTEN]. A payload that is neither destination's record
      * returns null and can never produce a match.
      */
     fun partNumberFromQr(raw: String): String? {
         val payload = stripTransportTerminators(raw)
         return when (detectDestination(payload)) {
             Destination.SAWAI -> KanbanQrRecord.parse(payload)?.partNumber
-            Destination.MOLTEC -> MoltecQrRecord.parse(payload)?.partNumber
+            Destination.MOLTEN -> MoltenQrRecord.parse(payload)?.partNumber
             null -> null
         }
     }
@@ -136,7 +136,7 @@ object CodeMatcher {
 
     /**
      * Format a part number the way the product tag prints it: 4-2-4 for a
-     * ten-character number, 4-2-3 for the nine-character Moltec form. Values of
+     * ten-character number, 4-2-3 for the nine-character Molten form. Values of
      * any other length are returned unchanged.
      */
     fun formatPartNumber(partNumber: String): String {
@@ -232,20 +232,20 @@ data class TagBarcodeRecord(
     companion object {
         private val sawaiFormatPattern =
             Regex("[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{4}@[A-Z0-9]+")
-        private val moltecFormatPattern =
+        private val moltenFormatPattern =
             Regex("[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{3,4}@[A-Z0-9]+")
 
         /**
          * Strict scanner-boundary validation for the product tag format of one
          * destination: Sawai part numbers always end in a four-character block,
-         * Moltec part numbers end in three or four. Lowercase input is accepted
+         * Molten part numbers end in three or four. Lowercase input is accepted
          * just as Swift's uppercase-before-regex implementation accepts it.
          */
         fun isValidScanPayload(payload: String, destination: Destination): Boolean {
             val value = payload.trim().uppercase(Locale.ROOT)
             return when (destination) {
                 Destination.SAWAI -> sawaiFormatPattern.matches(value)
-                Destination.MOLTEC -> moltecFormatPattern.matches(value)
+                Destination.MOLTEN -> moltenFormatPattern.matches(value)
             }
         }
 

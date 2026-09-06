@@ -69,7 +69,7 @@ class HistoryRepository(
      * session, which prevents a stale screen from writing into a newer one.
      *
      * The returned number counts boxes carrying the same part number, which is
-     * the 澤井製作所 rule. Moltec numbers boxes per 納品番号 instead; that
+     * the 澤井製作所 rule. Molten numbers boxes per 納品番号 instead; that
      * grouping is decided by the scan state machine, so this return value is
      * deliberately left unchanged by [destination].
      *

@@ -32,15 +32,15 @@ extension MatchHistoryEntry {
         return KanbanQRRecord.parse(qrPayload)
     }
 
-    /// モルテックの納品書QR(61桁)として解析した結果。
+    /// モルテンの納品書QR(61桁)として解析した結果。
     /// 別の仕向地やQR全文を持たない旧履歴ではnil。
-    var moltecRecord: MoltecQRRecord? {
-        guard let qrPayload, Destination.detect(qrPayload: qrPayload) == .moltec else { return nil }
-        return MoltecQRRecord.parse(qrPayload)
+    var moltenRecord: MoltenQRRecord? {
+        guard let qrPayload, Destination.detect(qrPayload: qrPayload) == .molten else { return nil }
+        return MoltenQRRecord.parse(qrPayload)
     }
 
     /// この記録がどの箱を検査したかを表す箱固有キー。仕向地ごとの作り方は `BoxIdentity` に従う。
-    /// QR全文を持たない旧履歴や、モルテックでCode 128全文を持たない記録ではnil。
+    /// QR全文を持たない旧履歴や、モルテンでCode 128全文を持たない記録ではnil。
     var boxIdentity: String? {
         qrPayload.flatMap { BoxIdentity.make(qrPayload: $0, barcodePayload: barcodePayload) }
     }
@@ -110,11 +110,11 @@ struct MatchSession: Identifiable, Codable, Equatable {
         entries.filter { $0.code == code }.count
     }
 
-    /// モルテックの納品番号ごとの検査済み箱数と累計数量。
+    /// モルテンの納品番号ごとの検査済み箱数と累計数量。
     /// 1箱1レコードなので、箱数は同じ納品番号の記録数、累計数量は各記録の収容数の合計。
     func deliverySummary(deliveryNumber: String) -> DeliveryBoxSummary {
         let key = DeliveryBoxSummary.normalized(deliveryNumber)
-        let records = entries.compactMap(\.moltecRecord).filter { $0.deliveryNumber == key }
+        let records = entries.compactMap(\.moltenRecord).filter { $0.deliveryNumber == key }
         return DeliveryBoxSummary(
             deliveryNumber: key,
             boxCount: records.count,
@@ -122,9 +122,9 @@ struct MatchSession: Identifiable, Codable, Equatable {
         )
     }
 
-    /// このセッションに含まれるモルテックの納品番号の種類数。
+    /// このセッションに含まれるモルテンの納品番号の種類数。
     var deliveryNumberCount: Int {
-        Set(entries.compactMap { $0.moltecRecord?.deliveryNumber }).count
+        Set(entries.compactMap { $0.moltenRecord?.deliveryNumber }).count
     }
 
     /// 同一品番の照合をまとめたグループ。最初に照合された順に並ぶ。
@@ -139,7 +139,7 @@ struct MatchSession: Identifiable, Codable, Equatable {
     }
 }
 
-/// モルテックの納品番号1件分の集計。箱数と累計数量（収容数の合計）を持つ。
+/// モルテンの納品番号1件分の集計。箱数と累計数量（収容数の合計）を持つ。
 struct DeliveryBoxSummary: Equatable {
     let deliveryNumber: String
     let boxCount: Int
@@ -171,14 +171,14 @@ struct GroupedMatchEntry: Identifiable, Equatable {
     var firstMatchedAt: Date { entries.first?.matchedAt ?? .distantPast }
     var lastMatchedAt: Date { entries.last?.matchedAt ?? .distantPast }
 
-    /// この品番の記録をモルテックの納品番号ごとにまとめた内訳。最初に照合された順に並ぶ。
+    /// この品番の記録をモルテンの納品番号ごとにまとめた内訳。最初に照合された順に並ぶ。
     /// 澤井製作所のQRには納品番号がないため、その品番のグループでは空になる。
     var deliveryGroups: [DeliveryGroup] {
         var order: [String] = []
         var buckets: [String: [MatchHistoryEntry]] = [:]
-        var records: [String: MoltecQRRecord] = [:]
+        var records: [String: MoltenQRRecord] = [:]
         for entry in entries {
-            guard let record = entry.moltecRecord else { continue }
+            guard let record = entry.moltenRecord else { continue }
             let number = record.deliveryNumber
             if buckets[number] == nil {
                 order.append(number)
@@ -197,11 +197,11 @@ struct GroupedMatchEntry: Identifiable, Equatable {
     }
 }
 
-/// 同一納品番号（モルテック）の照合履歴を1つにまとめた表示用グループ。1件の照合 = 1箱。
+/// 同一納品番号（モルテン）の照合履歴を1つにまとめた表示用グループ。1件の照合 = 1箱。
 struct DeliveryGroup: Identifiable, Equatable {
     let deliveryNumber: String
     /// この納品番号で最初に照合した記録の納品書レコード。納品先や指示日など共通欄の表示に使う。
-    let record: MoltecQRRecord
+    let record: MoltenQRRecord
     /// 照合順（古い順）の個別記録。
     let entries: [MatchHistoryEntry]
 
@@ -209,7 +209,7 @@ struct DeliveryGroup: Identifiable, Equatable {
     var boxCount: Int { entries.count }
     /// 累計数量。各箱の収容数を合計する。完了判定はアプリでは行わない。
     var totalQuantity: Int {
-        entries.compactMap { $0.moltecRecord?.packQuantity }.reduce(0, +)
+        entries.compactMap { $0.moltenRecord?.packQuantity }.reduce(0, +)
     }
 }
 

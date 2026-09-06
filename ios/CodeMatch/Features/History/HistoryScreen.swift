@@ -178,8 +178,8 @@ private struct SessionHistoryDetail: View {
                             AppLocalization.string("品番数"),
                             value: AppLocalization.string("\(session.groupedEntries.count)品番")
                         )
-                        // モルテックは同じ品番でも納品番号ごとに納品書が分かれるため、種類数も添える
-                        if session.resolvedDestination == .moltec {
+                        // モルテンは同じ品番でも納品番号ごとに納品書が分かれるため、種類数も添える
+                        if session.resolvedDestination == .molten {
                             LabeledContent(
                                 AppLocalization.string("納品番号数"),
                                 value: appLanguage.formatInteger(session.deliveryNumberCount)
@@ -359,7 +359,7 @@ private struct GroupedMatchDetail: View {
             }
 
             if showsDeliveryGroups {
-                // モルテックは同じ品番でも納品書(納品番号)ごとに箱数と累計が分かれる
+                // モルテンは同じ品番でも納品書(納品番号)ごとに箱数と累計が分かれる
                 ForEach(deliveryGroups) { deliveryGroup in
                     Section(
                         AppLocalization.string(
@@ -383,7 +383,7 @@ private struct GroupedMatchDetail: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    /// 1箱分の行。モルテックは同じ納品番号の箱をQRでは区別できないため、管理コードを添える。
+    /// 1箱分の行。モルテンは同じ納品番号の箱をQRでは区別できないため、管理コードを添える。
     private func boxEntryRow(
         entry: MatchHistoryEntry,
         number: Int,
@@ -460,7 +460,7 @@ private struct MatchEntryDetail: View {
                     LabeledContent(AppLocalization.string("受入部品庫"), value: qr.warehouseCode ?? "-")
                     LabeledContent(AppLocalization.string("供給先"), value: qr.supplyPointCode ?? "-")
                 }
-            } else if let qr = entry.moltecRecord {
+            } else if let qr = entry.moltenRecord {
                 Section(AppLocalization.string("納品書情報（QR解析）")) {
                     LabeledContent(AppLocalization.string("受注者"), value: qr.ordererCode)
                     LabeledContent(

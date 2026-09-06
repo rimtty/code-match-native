@@ -98,14 +98,14 @@ class ScanSessionCheckpointTest {
         assertFalse(
             waitingQr.copy(
                 phase = ScanCheckpointPhase.WAITING_CODE_128,
-                destination = Destination.MOLTEC,
+                destination = Destination.MOLTEN,
             ).isSupportedAndValid(),
         )
         assertTrue(
             waitingQr.copy(
                 phase = ScanCheckpointPhase.WAITING_CODE_128,
                 qrPayload = "qr",
-                destination = Destination.MOLTEC,
+                destination = Destination.MOLTEN,
             ).isSupportedAndValid(),
         )
     }

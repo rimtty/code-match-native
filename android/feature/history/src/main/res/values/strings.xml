@@ -45,10 +45,10 @@
     <string name="history_management_code">管理コード</string>
     <string name="history_destination">仕向地</string>
     <string name="history_destination_sawai">澤井製作所</string>
-    <string name="history_destination_moltec">モルテック</string>
+    <string name="history_destination_molten">モルテン</string>
     <string name="history_delivery_number_count">納品番号数</string>
     <string name="history_orderer_code">受注者</string>
-    <string name="history_moltec_part_number">部品番号</string>
+    <string name="history_molten_part_number">部品番号</string>
     <string name="history_delivery_number">納品番号</string>
     <string name="history_delivery_destination">納入先</string>
     <string name="history_ty_location">TYロケーション</string>

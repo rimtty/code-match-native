@@ -14,11 +14,11 @@ class HistoryPdfContentTest {
         "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private val barcodePayload = "BCJH-52-81GG@1N5X0C"
 
-    // Trailing spaces are part of the fixed-position Moltec record; the length
+    // Trailing spaces are part of the fixed-position Molten record; the length
     // assertions below fail first if an editor ever trims them away.
-    private val moltecQr1 =
+    private val moltenQr1 =
         "AK6805D10E50N10B         U543820000MB    S600700000020908    "
-    private val moltecQr2 =
+    private val moltenQr2 =
         "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
 
     @Test
@@ -108,14 +108,14 @@ class HistoryPdfContentTest {
     }
 
     @Test
-    fun moltecReportGroupsBoxesPerDeliveryNumberWithCumulativeQuantityAndAllFields() {
-        assertEquals(61, moltecQr1.length)
-        assertEquals(61, moltecQr2.length)
+    fun moltenReportGroupsBoxesPerDeliveryNumberWithCumulativeQuantityAndAllFields() {
+        assertEquals(61, moltenQr1.length)
+        assertEquals(61, moltenQr2.length)
 
-        val text = HistoryPdfContent.build(moltecSession(), AppLanguage.JAPANESE)
+        val text = HistoryPdfContent.build(moltenSession(), AppLanguage.JAPANESE)
             .joinToString("\n") { it.text }
 
-        assertTrue(text.contains("仕向地: モルテック"))
+        assertTrue(text.contains("仕向地: モルテン"))
         assertTrue(text.contains("検査箱数: 3箱（品番数: 2）"))
         assertTrue(text.contains("納品番号数: 2"))
         assertTrue(text.contains("#1 PAF1-15-422 (2箱)"))
@@ -130,16 +130,16 @@ class HistoryPdfContentTest {
         assertTrue(text.contains("納入先: MB; TYロケーション: -; 供給先: S6007"))
         assertTrue(text.contains("納入指示日(JUMP): 09/08; 時刻: -"))
         assertTrue(text.contains("収容数: 2; 管理コード: 0UBL00"))
-        assertTrue(text.contains("QR全文: $moltecQr1"))
-        assertTrue(text.contains("QR全文: $moltecQr2"))
+        assertTrue(text.contains("QR全文: $moltenQr1"))
+        assertTrue(text.contains("QR全文: $moltenQr2"))
     }
 
     @Test
-    fun englishMoltecReportUsesEnglishLabels() {
-        val text = HistoryPdfContent.build(moltecSession(), AppLanguage.ENGLISH)
+    fun englishMoltenReportUsesEnglishLabels() {
+        val text = HistoryPdfContent.build(moltenSession(), AppLanguage.ENGLISH)
             .joinToString("\n") { it.text }
 
-        assertTrue(text.contains("Ship-to: Moltec"))
+        assertTrue(text.contains("Ship-to: Molten"))
         assertTrue(text.contains("Delivery numbers: 2"))
         assertTrue(text.contains("Delivery number: UAG5560 (2 boxes, Total 240 pcs)"))
         assertTrue(text.contains("Delivery number: U543820 (1 box, Total 2 pcs)"))
@@ -179,7 +179,7 @@ class HistoryPdfContentTest {
         assertTrue(text.contains("管理コード: 1N5X0C"))
         assertTrue(text.contains("QR全文: $qrPayload"))
         assertTrue(text.contains("Code 128全文: $barcodePayload"))
-        // The Moltec delivery block must never leak into a Sawai report.
+        // The Molten delivery block must never leak into a Sawai report.
         assertFalse(text.contains("納品番号"))
         assertFalse(text.contains("収容数"))
         // A legacy session stores no destination, so the label is derived from
@@ -210,32 +210,32 @@ class HistoryPdfContentTest {
     }
 
     /** Two boxes of one delivery number plus a second part on another slip. */
-    private fun moltecSession() = MatchSession(
+    private fun moltenSession() = MatchSession(
         startedAt = 1_700_000_000_000L,
         endedAt = 1_700_000_120_000L,
-        destination = Destination.MOLTEC,
+        destination = Destination.MOLTEN,
         entries = listOf(
             MatchEntry(
-                id = "moltec-1",
+                id = "molten-1",
                 code = "PAF1-15-422",
                 matchedAt = 1_700_000_001_000L,
-                qrPayload = moltecQr2,
+                qrPayload = moltenQr2,
                 barcodePayload = "PAF1-15-422@0NKD3C",
                 sequence = 0,
             ),
             MatchEntry(
-                id = "moltec-2",
+                id = "molten-2",
                 code = "PAF1-15-422",
                 matchedAt = 1_700_000_002_000L,
-                qrPayload = moltecQr2,
+                qrPayload = moltenQr2,
                 barcodePayload = "PAF1-15-422@0NLL3C",
                 sequence = 1,
             ),
             MatchEntry(
-                id = "moltec-3",
+                id = "molten-3",
                 code = "D10E-50-N10B",
                 matchedAt = 1_700_000_003_000L,
-                qrPayload = moltecQr1,
+                qrPayload = moltenQr1,
                 barcodePayload = "D10E-50-N10B@0UBL00",
                 sequence = 2,
             ),

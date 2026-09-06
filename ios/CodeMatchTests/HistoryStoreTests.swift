@@ -5,18 +5,18 @@ import Combine
 
 @MainActor
 final class HistoryStoreTests: XCTestCase {
-    // 現場ラベルの実データ。モルテックの納品書QRは末尾の空白まで含めて61桁が1レコード。
-    private let moltecQRD10E = "AK6805D10E50N10B         U543820000MB    S600700000020908    "
-    private let moltecTagD10E = "D10E-50-N10B@0UBL00"
-    private let moltecQRPAF1 = "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
-    private let moltecTagPAF1FirstBox = "PAF1-15-422@0NKD3C"
-    private let moltecTagPAF1SecondBox = "PAF1-15-422@0NLL3C"
+    // 現場ラベルの実データ。モルテンの納品書QRは末尾の空白まで含めて61桁が1レコード。
+    private let moltenQRD10E = "AK6805D10E50N10B         U543820000MB    S600700000020908    "
+    private let moltenTagD10E = "D10E-50-N10B@0UBL00"
+    private let moltenQRPAF1 = "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+    private let moltenTagPAF1FirstBox = "PAF1-15-422@0NKD3C"
+    private let moltenTagPAF1SecondBox = "PAF1-15-422@0NLL3C"
     // 同じ品番BCKE-34-716Bで納品番号だけが異なる2枚の納品書。
-    private let moltecQRUAG7520 = "AK6805BCKE34716B         UAG7520000FA3P20F-DAM000010809080000"
-    private let moltecTagUAG7520 = "BCKE-34-716B@0GGI30"
-    private let moltecQRUAG7530 = "AK6805BCKE34716B         UAG7530000FA3P20F-DAM000010809080500"
-    private let moltecTagUAG7530FirstBox = "BCKE-34-716B@0GGC30"
-    private let moltecTagUAG7530SecondBox = "BCKE-34-716B@0G5Z30"
+    private let moltenQRUAG7520 = "AK6805BCKE34716B         UAG7520000FA3P20F-DAM000010809080000"
+    private let moltenTagUAG7520 = "BCKE-34-716B@0GGI30"
+    private let moltenQRUAG7530 = "AK6805BCKE34716B         UAG7530000FA3P20F-DAM000010809080500"
+    private let moltenTagUAG7530FirstBox = "BCKE-34-716B@0GGC30"
+    private let moltenTagUAG7530SecondBox = "BCKE-34-716B@0G5Z30"
     // 澤井製作所の納品書兼現品票QR(66桁)。カード番号が箱ごとに異なる。
     private let sawaiQR = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private let sawaiOtherCardQR = "DCLP675301BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
@@ -206,31 +206,31 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertTrue(restored.sessions.isEmpty)
     }
 
-    /// モルテックは同じ納品番号の全箱で納品書QRが同一なので、現品票の管理コードまで見て箱を区別する。
-    func testMoltecSameQRDifferentLabelsAreDistinctBoxes() {
+    /// モルテンは同じ納品番号の全箱で納品書QRが同一なので、現品票の管理コードまで見て箱を区別する。
+    func testMoltenSameQRDifferentLabelsAreDistinctBoxes() {
         let storageURL = temporaryStorageURL()
         defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
-        XCTAssertEqual(moltecQRPAF1.count, 61)
+        XCTAssertEqual(moltenQRPAF1.count, 61)
         let store = HistoryStore(storageURL: storageURL)
         store.beginSession()
 
         store.recordMatch(
             code: "PAF1-15-422",
-            qrPayload: moltecQRPAF1,
-            barcodePayload: moltecTagPAF1FirstBox
+            qrPayload: moltenQRPAF1,
+            barcodePayload: moltenTagPAF1FirstBox
         )
 
         XCTAssertFalse(
             store.activeSessionContainsMatchedBox(
-                qrPayload: moltecQRPAF1,
-                barcodePayload: moltecTagPAF1SecondBox
+                qrPayload: moltenQRPAF1,
+                barcodePayload: moltenTagPAF1SecondBox
             )
         )
 
         store.recordMatch(
             code: "PAF1-15-422",
-            qrPayload: moltecQRPAF1,
-            barcodePayload: moltecTagPAF1SecondBox
+            qrPayload: moltenQRPAF1,
+            barcodePayload: moltenTagPAF1SecondBox
         )
 
         XCTAssertEqual(store.activeSessionMatchCount(code: "PAF1-15-422"), 2)
@@ -238,38 +238,38 @@ final class HistoryStoreTests: XCTestCase {
     }
 
     /// 同じ納品書QRと同じ現品票の組み合わせは、同じ箱の二重検査として検出する。
-    func testMoltecSameQRSameLabelIsDuplicate() {
+    func testMoltenSameQRSameLabelIsDuplicate() {
         let storageURL = temporaryStorageURL()
         defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
-        XCTAssertEqual(moltecQRD10E.count, 61)
+        XCTAssertEqual(moltenQRD10E.count, 61)
         // 末尾の空白4桁もレコードの一部
-        XCTAssertTrue(moltecQRD10E.hasSuffix("20908    "))
+        XCTAssertTrue(moltenQRD10E.hasSuffix("20908    "))
         let store = HistoryStore(storageURL: storageURL)
         store.beginSession()
 
         store.recordMatch(
             code: "D10E-50-N10B",
-            qrPayload: moltecQRD10E,
-            barcodePayload: moltecTagD10E
+            qrPayload: moltenQRD10E,
+            barcodePayload: moltenTagD10E
         )
 
         XCTAssertTrue(
             store.activeSessionContainsMatchedBox(
-                qrPayload: moltecQRD10E,
-                barcodePayload: moltecTagD10E
+                qrPayload: moltenQRD10E,
+                barcodePayload: moltenTagD10E
             )
         )
         // 末尾空白が落ちた読取値や小文字の管理コードでも同じ箱として扱う
         XCTAssertTrue(
             store.activeSessionContainsMatchedBox(
-                qrPayload: String(moltecQRD10E.dropLast(4)),
-                barcodePayload: " \(moltecTagD10E.lowercased())\n"
+                qrPayload: String(moltenQRD10E.dropLast(4)),
+                barcodePayload: " \(moltenTagD10E.lowercased())\n"
             )
         )
         // 管理コードが違えば別の箱
         XCTAssertFalse(
             store.activeSessionContainsMatchedBox(
-                qrPayload: moltecQRD10E,
+                qrPayload: moltenQRD10E,
                 barcodePayload: "D10E-50-N10B@0UXL0K"
             )
         )
@@ -307,25 +307,25 @@ final class HistoryStoreTests: XCTestCase {
     func testDeliverySummaryCountsBoxesAndQuantity() {
         let storageURL = temporaryStorageURL()
         defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
-        XCTAssertEqual(moltecQRUAG7520.count, 61)
-        XCTAssertEqual(moltecQRUAG7530.count, 61)
+        XCTAssertEqual(moltenQRUAG7520.count, 61)
+        XCTAssertEqual(moltenQRUAG7530.count, 61)
         let store = HistoryStore(storageURL: storageURL)
         store.beginSession()
 
         store.recordMatch(
             code: "BCKE-34-716B",
-            qrPayload: moltecQRUAG7520,
-            barcodePayload: moltecTagUAG7520
+            qrPayload: moltenQRUAG7520,
+            barcodePayload: moltenTagUAG7520
         )
         store.recordMatch(
             code: "BCKE-34-716B",
-            qrPayload: moltecQRUAG7530,
-            barcodePayload: moltecTagUAG7530FirstBox
+            qrPayload: moltenQRUAG7530,
+            barcodePayload: moltenTagUAG7530FirstBox
         )
         store.recordMatch(
             code: "BCKE-34-716B",
-            qrPayload: moltecQRUAG7530,
-            barcodePayload: moltecTagUAG7530SecondBox
+            qrPayload: moltenQRUAG7530,
+            barcodePayload: moltenTagUAG7530SecondBox
         )
 
         XCTAssertEqual(
@@ -359,17 +359,17 @@ final class HistoryStoreTests: XCTestCase {
 
         store.recordMatch(
             code: "BCKE-34-716B",
-            qrPayload: moltecQRUAG7520,
-            barcodePayload: moltecTagUAG7520
+            qrPayload: moltenQRUAG7520,
+            barcodePayload: moltenTagUAG7520
         )
-        XCTAssertEqual(store.activeSession?.destination, .moltec)
+        XCTAssertEqual(store.activeSession?.destination, .molten)
 
         store.recordMatch(code: "BCJH-52-81GG", qrPayload: sawaiQR, barcodePayload: sawaiTag)
-        XCTAssertEqual(store.activeSession?.destination, .moltec)
+        XCTAssertEqual(store.activeSession?.destination, .molten)
 
         let restored = HistoryStore(storageURL: storageURL)
-        XCTAssertEqual(restored.sessions.first?.destination, .moltec)
-        XCTAssertEqual(restored.sessions.first?.resolvedDestination, .moltec)
+        XCTAssertEqual(restored.sessions.first?.destination, .molten)
+        XCTAssertEqual(restored.sessions.first?.resolvedDestination, .molten)
 
         // QR全文を渡さない経路でも、明示指定した仕向地で確定できる
         store.endActiveSession()
@@ -384,22 +384,22 @@ final class HistoryStoreTests: XCTestCase {
         let store = HistoryStore(storageURL: storageURL)
 
         // アクティブセッションがなければ何も起きない
-        store.setActiveSessionDestinationIfNeeded(.moltec)
+        store.setActiveSessionDestinationIfNeeded(.molten)
         XCTAssertTrue(store.sessions.isEmpty)
 
         store.beginSession()
-        store.setActiveSessionDestinationIfNeeded(.moltec)
-        XCTAssertEqual(store.activeSession?.destination, .moltec)
+        store.setActiveSessionDestinationIfNeeded(.molten)
+        XCTAssertEqual(store.activeSession?.destination, .molten)
 
         store.setActiveSessionDestinationIfNeeded(.sawai)
-        XCTAssertEqual(store.activeSession?.destination, .moltec)
+        XCTAssertEqual(store.activeSession?.destination, .molten)
 
         let restored = HistoryStore(storageURL: storageURL)
-        XCTAssertEqual(restored.activeSession?.destination, .moltec)
+        XCTAssertEqual(restored.activeSession?.destination, .molten)
 
         // 記録時にも確定済みの仕向地は書き換えない
         store.recordMatch(code: "BCJH-52-81GG", qrPayload: sawaiQR, barcodePayload: sawaiTag)
-        XCTAssertEqual(store.activeSession?.destination, .moltec)
+        XCTAssertEqual(store.activeSession?.destination, .molten)
     }
 
     /// 仕向地を持たない旧バージョンの履歴も読み込め、最初の記録のQRから仕向地を推定できる。
@@ -443,18 +443,18 @@ final class HistoryStoreTests: XCTestCase {
 
         store.recordMatch(
             code: "BCKE-34-716B",
-            qrPayload: moltecQRUAG7530,
-            barcodePayload: moltecTagUAG7530FirstBox
+            qrPayload: moltenQRUAG7530,
+            barcodePayload: moltenTagUAG7530FirstBox
         )
         store.recordMatch(
             code: "BCKE-34-716B",
-            qrPayload: moltecQRUAG7520,
-            barcodePayload: moltecTagUAG7520
+            qrPayload: moltenQRUAG7520,
+            barcodePayload: moltenTagUAG7520
         )
         store.recordMatch(
             code: "BCKE-34-716B",
-            qrPayload: moltecQRUAG7530,
-            barcodePayload: moltecTagUAG7530SecondBox
+            qrPayload: moltenQRUAG7530,
+            barcodePayload: moltenTagUAG7530SecondBox
         )
         store.recordMatch(code: "BCJH-52-81GG", qrPayload: sawaiQR, barcodePayload: sawaiTag)
 
@@ -468,7 +468,7 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(deliveryGroups.first?.record.partNumber, "BCKE34716B")
         XCTAssertEqual(
             deliveryGroups.first?.entries.map(\.barcodePayload),
-            [moltecTagUAG7530FirstBox, moltecTagUAG7530SecondBox]
+            [moltenTagUAG7530FirstBox, moltenTagUAG7530SecondBox]
         )
         XCTAssertEqual(deliveryGroups.last?.boxCount, 1)
         XCTAssertEqual(deliveryGroups.last?.totalQuantity, 108)
@@ -486,20 +486,20 @@ final class HistoryStoreTests: XCTestCase {
 
         store.recordMatch(
             code: "BCKE-34-716B",
-            qrPayload: moltecQRUAG7530,
-            barcodePayload: moltecTagUAG7530FirstBox
+            qrPayload: moltenQRUAG7530,
+            barcodePayload: moltenTagUAG7530FirstBox
         )
         store.recordMatch(
             code: "BCKE-34-716B",
-            qrPayload: moltecQRUAG7530,
-            barcodePayload: moltecTagUAG7530SecondBox
+            qrPayload: moltenQRUAG7530,
+            barcodePayload: moltenTagUAG7530SecondBox
         )
         XCTAssertEqual(store.activeSession?.deliveryNumberCount, 1)
 
         store.recordMatch(
             code: "BCKE-34-716B",
-            qrPayload: moltecQRUAG7520,
-            barcodePayload: moltecTagUAG7520
+            qrPayload: moltenQRUAG7520,
+            barcodePayload: moltenTagUAG7520
         )
         // 澤井製作所の記録は納品番号を持たないため数に入らない
         store.recordMatch(code: "BCJH-52-81GG", qrPayload: sawaiQR, barcodePayload: sawaiTag)

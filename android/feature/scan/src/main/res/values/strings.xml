@@ -10,7 +10,7 @@
     <string name="scan_end_session_button">セッションを終了</string>
     <string name="scan_count_format">%1$d件照合済み</string>
     <string name="scan_destination_sawai">澤井製作所</string>
-    <string name="scan_destination_moltec">モルテック</string>
+    <string name="scan_destination_molten">モルテン</string>
     <string name="scan_session_destination_format">仕向地：%1$s</string>
     <string name="scan_session_default_name">照合セッション</string>
     <string name="scan_name_support">名前は空欄のままでも開始できます</string>
@@ -82,7 +82,7 @@
     <string name="scan_result_match_description">品目番号が一致しています。記録しました。</string>
     <string name="scan_result_mismatch_description">品目番号が一致しません。記録していません。</string>
     <string name="scan_result_duplicate_description">このコードは照合件数に加えていません。次のコードを読み取ってください。</string>
-    <string name="scan_result_moltec_box_summary">納品番号 %1$s は本セッションで%2$d箱目（累計 %3$d個）</string>
+    <string name="scan_result_molten_box_summary">納品番号 %1$s は本セッションで%2$d箱目（累計 %3$d個）</string>
     <string name="scan_invalid_camera_qr">無効なQRコードです。納品書兼現品票のQRコードを読み取ってください。</string>
     <string name="scan_invalid_camera_code128">無効なバーコードです。現品票のCode 128バーコードを読み取ってください。</string>
     <string name="scan_invalid_session">セッションを開始してから読み取ってください。</string>
