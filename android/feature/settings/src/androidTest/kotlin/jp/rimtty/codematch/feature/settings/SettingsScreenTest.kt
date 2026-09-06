@@ -247,6 +247,102 @@ class SettingsScreenTest {
         assertTrue(actions.contains(SettingsUiAction.SetAutoAdvanceEnabled(true)))
     }
 
+    /**
+     * iOS plays the tapped sound straight from the row's click handler
+     * (SettingsScreen.swift's SoundOptionRow action -> FeedbackPlayer.preview),
+     * so selecting a sound must emit both the setting write and one preview.
+     */
+    @Test
+    fun selectingASoundRowSetsItAndPreviewsItOnce() {
+        val actions = mutableListOf<SettingsUiAction>()
+        composeRule.setContent {
+            MaterialTheme { SettingsScreen(SettingsUiState(), onAction = actions::add) }
+        }
+
+        // The preview is bound to the click, never to a state observer, so the
+        // first composition (and any restore/rotation) stays silent.
+        composeRule.runOnIdle { assertEquals(emptyList<SettingsUiAction>(), soundActions(actions)) }
+
+        composeRule.onAllNodesWithTag(SettingsTestTags.SUCCESS_SOUND).get(4)
+            .performScrollTo().performClick()
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf(
+                    SettingsUiAction.SetSuccessSound(SuccessSound.CHIME),
+                    SettingsUiAction.PreviewSuccessSound(SuccessSound.CHIME),
+                ),
+                soundActions(actions),
+            )
+            actions.clear()
+        }
+
+        composeRule.onAllNodesWithTag(SettingsTestTags.FAILURE_SOUND).get(1)
+            .performScrollTo().performClick()
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf(
+                    SettingsUiAction.SetFailureSound(FailureSound.BUZZER),
+                    SettingsUiAction.PreviewFailureSound(FailureSound.BUZZER),
+                ),
+                soundActions(actions),
+            )
+        }
+    }
+
+    /** iOS previews unconditionally, including for the already-selected row. */
+    @Test
+    fun reSelectingTheCurrentSoundPreviewsItAgain() {
+        val actions = mutableListOf<SettingsUiAction>()
+        composeRule.setContent {
+            MaterialTheme { SettingsScreen(SettingsUiState(), onAction = actions::add) }
+        }
+
+        // SettingsUiState() defaults to POS_BEEP / ALARM, both at index 2.
+        composeRule.onAllNodesWithTag(SettingsTestTags.SUCCESS_SOUND).get(2)
+            .performScrollTo().performClick()
+        composeRule.onAllNodesWithTag(SettingsTestTags.FAILURE_SOUND).get(2)
+            .performScrollTo().performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf(
+                    SettingsUiAction.SetSuccessSound(SuccessSound.POS_BEEP),
+                    SettingsUiAction.PreviewSuccessSound(SuccessSound.POS_BEEP),
+                    SettingsUiAction.SetFailureSound(FailureSound.ALARM),
+                    SettingsUiAction.PreviewFailureSound(FailureSound.ALARM),
+                ),
+                soundActions(actions),
+            )
+        }
+    }
+
+    /** The dedicated play button previews without changing the selection. */
+    @Test
+    fun theRowPreviewButtonOnlyPreviews() {
+        val actions = mutableListOf<SettingsUiAction>()
+        composeRule.setContent {
+            MaterialTheme { SettingsScreen(SettingsUiState(), onAction = actions::add) }
+        }
+
+        composeRule.onAllNodesWithTag(SettingsTestTags.SUCCESS_PREVIEW).get(1)
+            .performScrollTo().performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf(SettingsUiAction.PreviewSuccessSound(SuccessSound.SAMPLE_2)),
+                soundActions(actions),
+            )
+        }
+    }
+
+    private fun soundActions(actions: List<SettingsUiAction>): List<SettingsUiAction> =
+        actions.filter {
+            it is SettingsUiAction.SetSuccessSound ||
+                it is SettingsUiAction.PreviewSuccessSound ||
+                it is SettingsUiAction.SetFailureSound ||
+                it is SettingsUiAction.PreviewFailureSound
+        }
+
     @Test
     fun languageStateRedrawsSettingsTextWithoutWaitingForActivityRecreation() {
         val state = mutableStateOf(SettingsUiState())

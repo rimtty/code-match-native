@@ -1449,7 +1449,14 @@ private fun SoundChoiceRow(
             .heightIn(min = 56.dp)
             .selectable(
                 selected = selected,
-                onClick = onSelected,
+                // iOS previews the tapped sound from the row's own click
+                // handler, including when the current option is re-selected.
+                // Playing from the click (never from a state observer) keeps
+                // restore/rotation silent.
+                onClick = {
+                    onSelected()
+                    onPreview()
+                },
                 role = Role.RadioButton,
             )
             .testTag(choiceTag),
