@@ -1,18 +1,32 @@
 package jp.rimtty.codematch.core.matching
 
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CodeMatcherTest {
-    // Real label data used by the Swift tests and by the shared fixture.
+    // Real label data used by the Swift tests and by the shared fixture
+    // (destination Sawai, 66 characters).
     private val qrPayload =
         "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private val barcodePayload = "BCJH-52-81GG@1N5X0C"
+
+    // Destination Moltec, 61 characters. The trailing spaces are part of the
+    // record, so never let an editor trim these literals.
+    private val moltecQrPayload =
+        "AK6805D10E50N10B         U543820000MB    S600700000020908    "
+    private val moltecBarcodePayload = "D10E-50-N10B@0UBL00"
+
+    // A Moltec pair whose part number is nine characters (a 4-2-3 tag).
+    private val moltecShortPartQrPayload =
+        "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+    private val moltecShortPartBarcodePayload = "PAF1-15-422@0NKD3C"
 
     @Test
     fun normalizeUppercasesAndKeepsOnlyAsciiLettersAndDigits() {
@@ -59,9 +73,9 @@ class CodeMatcherTest {
     }
 
     @Test
-    fun compareUsesOnlyConservativeContainmentForNonStandardQr() {
+    fun nonStandardQrNeverMatchesEvenWhenItContainsThePartNumber() {
         assertEquals(
-            MatchResult.MATCH,
+            MatchResult.MISMATCH,
             CodeMatcher.compare("PART:BCJH-52-81GG;QTY:12", barcodePayload)
         )
         assertEquals(
@@ -84,7 +98,10 @@ class CodeMatcherTest {
     @Test
     fun formatPartNumberUsesTheFourTwoFourDisplayShape() {
         assertEquals("BCJH-52-81GG", CodeMatcher.formatPartNumber("BCJH5281GG"))
+        // A nine-character Moltec part number prints as 4-2-3.
+        assertEquals("PAF1-15-422", CodeMatcher.formatPartNumber("PAF115422"))
         assertEquals("ABC", CodeMatcher.formatPartNumber("ABC"))
+        assertEquals("ABCDEFGHIJK", CodeMatcher.formatPartNumber("ABCDEFGHIJK"))
         assertEquals("abcd-ef-ghij", CodeMatcher.formatPartNumber("abcdefghij"))
     }
 
@@ -162,8 +179,8 @@ class CodeMatcherTest {
         val json = resource!!.bufferedReader().use { it.readText() }
         val fixture = SharedFixtureJson.decode(json)
 
-        assertEquals(1, fixture.schemaVersion)
-        assertEquals(23, fixture.cases.size)
+        assertEquals(2, fixture.schemaVersion)
+        assertEquals(35, fixture.cases.size)
         assertEquals(
             "Shared fixture IDs must be unique",
             fixture.cases.size,
@@ -184,6 +201,14 @@ class CodeMatcherTest {
                     qrPayload = fixtureCase.qrPayload,
                     barcodePayload = fixtureCase.barcodePayload
                 )
+            )
+
+            // Cases that declare a destination also pin the detector's answer.
+            val destination = fixtureCase.destination ?: return@forEach
+            assertEquals(
+                "Shared fixture destination failed: ${fixtureCase.id}",
+                destination,
+                CodeMatcher.detectDestination(fixtureCase.qrPayload)?.id
             )
         }
 
@@ -244,6 +269,205 @@ class CodeMatcherTest {
         assertEquals("LAB14", label12?.supplyPointCode)
     }
 
+    @Test
+    fun moltecRecordParsesAllFieldsFromRealPayloads() {
+        assertEquals(61, moltecShortPartQrPayload.length)
+        val shortPart = MoltecQrRecord.parse(moltecShortPartQrPayload)
+        assertNotNull(shortPart)
+        assertEquals("AK6805", shortPart?.ordererCode)
+        assertEquals("PAF115422", shortPart?.partNumber)
+        assertEquals("UAG5560", shortPart?.deliveryNumber)
+        assertEquals("FA2", shortPart?.deliveryDestination)
+        assertEquals("P59", shortPart?.tyLocation)
+        assertEquals("01FEM", shortPart?.supplyPoint)
+        assertEquals(120, shortPart?.packQuantity)
+        assertEquals("0908", shortPart?.instructionDate)
+        assertEquals("0000", shortPart?.instructionTime)
+        assertEquals(moltecShortPartQrPayload, shortPart?.canonicalPayload)
+
+        // The blank TY location and the blank time field become null.
+        assertEquals(61, moltecQrPayload.length)
+        val blankOptionals = MoltecQrRecord.parse(moltecQrPayload)
+        assertNotNull(blankOptionals)
+        assertEquals("D10E50N10B", blankOptionals?.partNumber)
+        assertEquals("U543820", blankOptionals?.deliveryNumber)
+        assertEquals("MB", blankOptionals?.deliveryDestination)
+        assertNull(blankOptionals?.tyLocation)
+        assertEquals("S6007", blankOptionals?.supplyPoint)
+        assertEquals(2, blankOptionals?.packQuantity)
+        assertEquals("0908", blankOptionals?.instructionDate)
+        assertNull(blankOptionals?.instructionTime)
+    }
+
+    @Test
+    fun moltecRecordPadsShortPayloadAndCanonicalizesIdentity() {
+        val stripped = moltecQrPayload.dropLast(4)
+        assertEquals(57, stripped.length)
+        assertEquals(moltecQrPayload, MoltecQrRecord.canonicalPayload(stripped))
+        assertEquals(
+            MoltecQrRecord.parse(moltecQrPayload)?.canonicalPayload,
+            MoltecQrRecord.parse(stripped)?.canonicalPayload
+        )
+        // Lowercase callbacks are uppercased rather than rejected.
+        assertEquals(
+            moltecQrPayload,
+            MoltecQrRecord.parse(moltecQrPayload.lowercase())?.canonicalPayload
+        )
+
+        assertNull(MoltecQrRecord.parse(moltecQrPayload.dropLast(5)))
+        assertNull(MoltecQrRecord.parse("$moltecQrPayload "))
+    }
+
+    @Test
+    fun moltecRecordRejectsWrongLengthQuantityDateTimeAndPartField() {
+        // Characters 7-16 are left aligned, so a leading space is invalid.
+        assertNull(MoltecQrRecord.parse(replaceCharAt(moltecQrPayload, 6, ' ')))
+        // Characters 47-53 (pack quantity) are digits only.
+        assertNull(MoltecQrRecord.parse(replaceCharAt(moltecQrPayload, 46, 'X')))
+        // Characters 54-57 (date) are digits only.
+        assertNull(MoltecQrRecord.parse(replaceCharAt(moltecQrPayload, 53, 'X')))
+        // Characters 58-61 are either four digits or four spaces.
+        val brokenTime = moltecShortPartQrPayload.dropLast(4) + "00 0"
+        assertEquals(61, brokenTime.length)
+        assertNull(MoltecQrRecord.parse(brokenTime))
+        // Characters outside the record alphabet are rejected.
+        assertNull(MoltecQrRecord.parse(replaceCharAt(moltecQrPayload, 0, '*')))
+
+        assertFalse(MoltecQrRecord.isValidScanPayload(qrPayload))
+        assertFalse(MoltecQrRecord.isValidScanPayload(barcodePayload))
+        assertTrue(MoltecQrRecord.isValidScanPayload(moltecQrPayload))
+    }
+
+    @Test
+    fun detectDestinationSeparatesSawaiAndMoltecAndRejectsOthers() {
+        assertEquals(Destination.SAWAI, CodeMatcher.detectDestination(qrPayload))
+        assertEquals(Destination.MOLTEC, CodeMatcher.detectDestination(moltecQrPayload))
+        // Transport terminators are tolerated on both destinations.
+        assertEquals(Destination.SAWAI, CodeMatcher.detectDestination("$qrPayload\r\n"))
+        assertEquals(Destination.MOLTEC, CodeMatcher.detectDestination("$moltecQrPayload\r\n"))
+        // A Sawai record has no padding at its edges, so added whitespace is
+        // tolerated; a Moltec record is padded, so the same whitespace overflows it.
+        assertEquals(Destination.SAWAI, CodeMatcher.detectDestination(" $qrPayload \n"))
+        assertNull(CodeMatcher.detectDestination(" $moltecQrPayload "))
+
+        assertNull(CodeMatcher.detectDestination("PART:BCJH-52-81GG;QTY:12"))
+        assertNull(CodeMatcher.detectDestination("X".repeat(66)))
+        assertNull(CodeMatcher.detectDestination(barcodePayload))
+        // Shorter than the minimum Moltec payload: never padded up.
+        assertNull(CodeMatcher.detectDestination(moltecQrPayload.dropLast(5)))
+        // Leading spaces are data, not padding, so a shifted record is rejected.
+        val shifted = " " + moltecQrPayload.dropLast(1)
+        assertEquals(61, shifted.length)
+        assertNull(CodeMatcher.detectDestination(shifted))
+
+        assertEquals(66, CodeMatcher.expectedQrLength(Destination.SAWAI))
+        assertEquals(61, CodeMatcher.expectedQrLength(Destination.MOLTEC))
+    }
+
+    @Test
+    fun tagValidationAllowsFourTwoThreeOnlyForMoltec() {
+        assertTrue(
+            TagBarcodeRecord.isValidScanPayload(
+                moltecShortPartBarcodePayload,
+                Destination.MOLTEC
+            )
+        )
+        assertFalse(
+            TagBarcodeRecord.isValidScanPayload(
+                moltecShortPartBarcodePayload,
+                Destination.SAWAI
+            )
+        )
+        // The single-argument overload keeps the Sawai rule for the scan module.
+        assertFalse(TagBarcodeRecord.isValidScanPayload(moltecShortPartBarcodePayload))
+
+        Destination.entries.forEach { destination ->
+            assertTrue(TagBarcodeRecord.isValidScanPayload(barcodePayload, destination))
+            assertTrue(TagBarcodeRecord.isValidScanPayload(moltecBarcodePayload, destination))
+            assertFalse(TagBarcodeRecord.isValidScanPayload("PAF1-15-42@0NKD3C", destination))
+            assertFalse(TagBarcodeRecord.isValidScanPayload("PAF1-15-42200@0NKD3C", destination))
+            assertFalse(TagBarcodeRecord.isValidScanPayload(moltecQrPayload, destination))
+        }
+    }
+
+    @Test
+    fun boxIdentityIncludesTagOnlyForMoltec() {
+        // A Sawai slip carries its own card number, so the tag is irrelevant.
+        val sawaiIdentity = CodeMatcher.boxIdentity(qrPayload, barcodePayload)
+        assertEquals(qrPayload, sawaiIdentity)
+        assertEquals(sawaiIdentity, CodeMatcher.boxIdentity(qrPayload, null))
+        assertEquals(sawaiIdentity, CodeMatcher.boxIdentity(qrPayload, "BCJH-52-81GG@ZZZZZZ"))
+
+        // A Moltec slip repeats per box, so the tag distinguishes the boxes.
+        val firstBox = CodeMatcher.boxIdentity(moltecQrPayload, moltecBarcodePayload)
+        assertNotNull(firstBox)
+        assertNotEquals(
+            firstBox,
+            CodeMatcher.boxIdentity(moltecQrPayload, "D10E-50-N50B@0UXL0K")
+        )
+        assertEquals(
+            firstBox,
+            CodeMatcher.boxIdentity(moltecQrPayload.dropLast(4), moltecBarcodePayload)
+        )
+        assertNull(CodeMatcher.boxIdentity(moltecQrPayload, null))
+        assertNull(CodeMatcher.boxIdentity(moltecQrPayload, "   "))
+
+        assertNull(CodeMatcher.boxIdentity("PART:BCJH-52-81GG;QTY:12", barcodePayload))
+        assertNull(CodeMatcher.boxIdentity("", barcodePayload))
+    }
+
+    @Test
+    fun partNumberFromQrIsDestinationAware() {
+        assertEquals("BCJH5281GG", CodeMatcher.partNumberFromQr(qrPayload))
+        assertEquals("D10E50N10B", CodeMatcher.partNumberFromQr(moltecQrPayload))
+        assertEquals("PAF115422", CodeMatcher.partNumberFromQr(moltecShortPartQrPayload))
+        // A card-number prefix alone no longer identifies a destination.
+        assertNull(CodeMatcher.partNumberFromQr(qrPayload.take(20)))
+        assertNull(CodeMatcher.partNumberFromQr(moltecQrPayload.dropLast(5)))
+        // A Sawai payload keeps matching when the scanner adds whitespace.
+        assertEquals("BCJH5281GG", CodeMatcher.partNumberFromQr(" ${qrPayload.lowercase()}\n"))
+        assertEquals(
+            MatchResult.MATCH,
+            CodeMatcher.compare(" ${qrPayload.lowercase()}\n", barcodePayload)
+        )
+    }
+
+    /**
+     * The seven Moltec pairs (moltec-NN) must pass the scan boundaries shared by
+     * camera and Bluetooth (61-character QR record, 4-2-3/4-2-4@code tag format),
+     * and the QR part number must equal the tag part number.
+     */
+    @Test
+    fun sharedMoltecFixturesPassBothScanBoundaries() {
+        val resource = javaClass.getResourceAsStream("/matching-cases.json")
+        assertNotNull("matching-cases.json must be on the test runtime classpath", resource)
+        val fixture = SharedFixtureJson.decode(resource!!.bufferedReader().use { it.readText() })
+        val moltecPairs =
+            fixture.cases.filter { it.id.startsWith("moltec-") && it.expected == "match" }
+        assertEquals(7, moltecPairs.size)
+
+        moltecPairs.forEach { pair ->
+            assertTrue(pair.id, MoltecQrRecord.isValidScanPayload(pair.qrPayload))
+            assertTrue(
+                pair.id,
+                TagBarcodeRecord.isValidScanPayload(pair.barcodePayload, Destination.MOLTEC)
+            )
+            assertEquals(pair.id, Destination.MOLTEC, CodeMatcher.detectDestination(pair.qrPayload))
+            val record = MoltecQrRecord.parse(pair.qrPayload)
+            assertEquals(
+                pair.id,
+                CodeMatcher.partNumberFromBarcode(pair.barcodePayload),
+                record?.partNumber
+            )
+            // Only the PAF1 series carries a nine-character part number.
+            val expectedLength = if (pair.id.contains("PAF1")) 9 else 10
+            assertEquals(pair.id, expectedLength, record?.partNumber?.length)
+        }
+    }
+
+    private fun replaceCharAt(payload: String, index: Int, character: Char): String =
+        payload.substring(0, index) + character + payload.substring(index + 1)
+
     private object SharedFixtureJson {
         private val gson = com.google.gson.Gson()
 
@@ -264,5 +488,6 @@ class CodeMatcherTest {
         var qrPayload: String = ""
         var barcodePayload: String = ""
         var expected: String = ""
+        var destination: String? = null
     }
 }

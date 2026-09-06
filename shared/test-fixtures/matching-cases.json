@@ -1,34 +1,38 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "notes": [
     "label-NN cases are the 12 field label pairs documented in the customer spec (docs/qr-barcode-spec-analysis.html, git-ignored). Both payloads are the real values decoded from the label photos (Vision, 2026-09-06); the QR is the complete 66-character record.",
     "label-AA-qr-vs-label-BB-tag cases pair a QR with the tag of the neighbouring label of the same series (e.g. 52 vs 55) to pin the most likely field mix-up as a mismatch.",
-    "box-a / box-b are two boxes of the same part (BCJH-55-81GG) photographed with the same tag barcode and different card numbers (DAAL134140 / DAAL134150): the basis for the duplicate rule keying on the QR record, not the part number."
+    "box-a / box-b are two boxes of the same part (BCJH-55-81GG) photographed with the same tag barcode and different card numbers (DAAL134140 / DAAL134150): the basis for the duplicate rule keying on the QR record, not the part number.",
+    "moltec-NN cases are the Vision-decoded slip/label pairs of destination モルテック (spec §6.5, docs/qr-barcode-spec-analysis.html, git-ignored). QR payloads keep their trailing spaces and are exactly 61 characters; `destination` is the value the destination detector must return for the QR."
   ],
   "cases": [
     {
       "id": "standard-match",
       "qrPayload": "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
       "barcodePayload": "BCJH-52-81GG@1N5X0C",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
       "id": "different-part-number",
       "qrPayload": "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
       "barcodePayload": "BCJH-55-81GG@1KVV0C",
-      "expected": "mismatch"
+      "expected": "mismatch",
+      "destination": "sawai"
     },
     {
       "id": "management-code-is-ignored",
       "qrPayload": "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
       "barcodePayload": "BCJH-52-81GG@ZZZZZZ",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
-      "id": "non-standard-qr-containment",
+      "id": "non-standard-qr-is-mismatch",
       "qrPayload": "PART:BCJH-52-81GG;QTY:12",
       "barcodePayload": "BCJH-52-81GG@1N5X0C",
-      "expected": "match"
+      "expected": "mismatch"
     },
     {
       "id": "empty-values",
@@ -40,109 +44,211 @@
       "id": "label-01-BCJH-52-81GG",
       "qrPayload": "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
       "barcodePayload": "BCJH-52-81GG@1N5X0C",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
       "id": "label-02-BCJH-55-81GG",
       "qrPayload": "DCLP675340BCJH5581GG020000120000001200L000000000000BLBDILLU93   0*",
       "barcodePayload": "BCJH-55-81GG@1KVV0C",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
       "id": "label-03-DFR5-55-8SDA",
       "qrPayload": "DAYA004930DFR5558SDA020000300000003000Y      000000BYBYTLYB16   0*",
       "barcodePayload": "DFR5-55-8SDA@0JYI0U",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
       "id": "label-04-DFR5-52-8SDA",
       "qrPayload": "DAYA004560DFR5528SDA020000300000003000Y      000000BYBYTLYB15   0*",
       "barcodePayload": "DFR5-52-8SDA@0JSJ0U",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
       "id": "label-05-DFR5-55-8SEC",
       "qrPayload": "DAYA004970DFR5558SEC020000600000006000Y      000000BYBYTLYB16   0*",
       "barcodePayload": "DFR5-55-8SEC@07OX1O",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
       "id": "label-06-DFR5-52-8SEC",
       "qrPayload": "DAYA004630DFR5528SEC020000600000006000Y      000000BYBYTLYB15   0*",
       "barcodePayload": "DFR5-52-8SEC@07A51O",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
       "id": "label-07-DFR5-45-8SDC",
       "qrPayload": "DAYA003950DFR5458SDC020000400000004000Y      000000BYBYTLYB14   0*",
       "barcodePayload": "DFR5-45-8SDC@0DYH14",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
       "id": "label-08-DFR5-42-8SDC",
       "qrPayload": "DAYA003420DFR5428SDC020000400000004000Y      000000BYBYTLYB13   0*",
       "barcodePayload": "DFR5-42-8SDC@0D7Q14",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
       "id": "label-09-DFR5-55-81GA",
       "qrPayload": "DAYA005100DFR55581GA  0001000000010000Y      000000BYBYTLYB16   0*",
       "barcodePayload": "DFR5-55-81GA@001C2S",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
       "id": "label-10-DFR5-52-81GA",
       "qrPayload": "DAYA004770DFR55281GA  0001000000010000Y      000000BYBYTLYB15   0*",
       "barcodePayload": "DFR5-52-81GA@001F2S",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
       "id": "label-11-BCJH-45-81MC",
       "qrPayload": "DAYA003360BCJH4581MC020003360000033600Y      000000BYBYTLYB14   0*",
       "barcodePayload": "BCJH-45-81MC@01V79C",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
       "id": "label-12-KAAA-55-D86B",
       "qrPayload": "DAAL068510KAAA55D86B020000180000001800A      000000BAB15LAB14   0*",
       "barcodePayload": "KAAA-55-D86B@0Y5U0I",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
       "id": "label-03-qr-vs-label-04-tag",
       "qrPayload": "DAYA004930DFR5558SDA020000300000003000Y      000000BYBYTLYB16   0*",
       "barcodePayload": "DFR5-52-8SDA@0JSJ0U",
-      "expected": "mismatch"
+      "expected": "mismatch",
+      "destination": "sawai"
     },
     {
       "id": "label-05-qr-vs-label-06-tag",
       "qrPayload": "DAYA004970DFR5558SEC020000600000006000Y      000000BYBYTLYB16   0*",
       "barcodePayload": "DFR5-52-8SEC@07A51O",
-      "expected": "mismatch"
+      "expected": "mismatch",
+      "destination": "sawai"
     },
     {
       "id": "label-07-qr-vs-label-08-tag",
       "qrPayload": "DAYA003950DFR5458SDC020000400000004000Y      000000BYBYTLYB14   0*",
       "barcodePayload": "DFR5-42-8SDC@0D7Q14",
-      "expected": "mismatch"
+      "expected": "mismatch",
+      "destination": "sawai"
     },
     {
       "id": "label-09-qr-vs-label-10-tag",
       "qrPayload": "DAYA005100DFR55581GA  0001000000010000Y      000000BYBYTLYB16   0*",
       "barcodePayload": "DFR5-52-81GA@001F2S",
-      "expected": "mismatch"
+      "expected": "mismatch",
+      "destination": "sawai"
     },
     {
       "id": "box-a-BCJH-55-81GG",
       "qrPayload": "DAAL134140BCJH5581GG020000120000001200A      000000BAB15LAB07   0*",
       "barcodePayload": "BCJH-55-81GG@1KVQ0C",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
     },
     {
       "id": "box-b-BCJH-55-81GG",
       "qrPayload": "DAAL134150BCJH5581GG020000120000001200A      000000BAB15LAB07   0*",
       "barcodePayload": "BCJH-55-81GG@1KVQ0C",
-      "expected": "match"
+      "expected": "match",
+      "destination": "sawai"
+    },
+    {
+      "id": "moltec-01-D10E-50-N10B",
+      "qrPayload": "AK6805D10E50N10B         U543820000MB    S600700000020908    ",
+      "barcodePayload": "D10E-50-N10B@0UBL00",
+      "expected": "match",
+      "destination": "moltec"
+    },
+    {
+      "id": "moltec-01-trailing-spaces-stripped",
+      "qrPayload": "AK6805D10E50N10B         U543820000MB    S600700000020908",
+      "barcodePayload": "D10E-50-N10B@0UBL00",
+      "expected": "match",
+      "destination": "moltec"
+    },
+    {
+      "id": "moltec-02-PAF1-15-422",
+      "qrPayload": "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000",
+      "barcodePayload": "PAF1-15-422@0NKD3C",
+      "expected": "match",
+      "destination": "moltec"
+    },
+    {
+      "id": "moltec-03-PAF1-15-422-second-box",
+      "qrPayload": "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000",
+      "barcodePayload": "PAF1-15-422@0NLL3C",
+      "expected": "match",
+      "destination": "moltec"
+    },
+    {
+      "id": "moltec-04-BCKE-34-716B",
+      "qrPayload": "AK6805BCKE34716B         UAG7520000FA3P20F-DAM000010809080000",
+      "barcodePayload": "BCKE-34-716B@0GGI30",
+      "expected": "match",
+      "destination": "moltec"
+    },
+    {
+      "id": "moltec-05-BCKE-34-716B",
+      "qrPayload": "AK6805BCKE34716B         UAG7530000FA3P20F-DAM000010809080500",
+      "barcodePayload": "BCKE-34-716B@0GGC30",
+      "expected": "match",
+      "destination": "moltec"
+    },
+    {
+      "id": "moltec-06-BCKE-34-716B-second-box",
+      "qrPayload": "AK6805BCKE34716B         UAG7530000FA3P20F-DAM000010809080500",
+      "barcodePayload": "BCKE-34-716B@0G5Z30",
+      "expected": "match",
+      "destination": "moltec"
+    },
+    {
+      "id": "moltec-02-qr-vs-PAF1-15-423-tag",
+      "qrPayload": "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000",
+      "barcodePayload": "PAF1-15-423@0N5L3C",
+      "expected": "mismatch",
+      "destination": "moltec"
+    },
+    {
+      "id": "moltec-01-qr-vs-D10E-50-N50B-tag",
+      "qrPayload": "AK6805D10E50N10B         U543820000MB    S600700000020908    ",
+      "barcodePayload": "D10E-50-N50B@0UXL0K",
+      "expected": "mismatch",
+      "destination": "moltec"
+    },
+    {
+      "id": "moltec-02-qr-vs-ten-char-superstring-tag",
+      "qrPayload": "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000",
+      "barcodePayload": "PAF1-15-4220@0NKD3C",
+      "expected": "mismatch",
+      "destination": "moltec"
+    },
+    {
+      "id": "moltec-qr-vs-sawai-tag",
+      "qrPayload": "AK6805D10E50N10B         U543820000MB    S600700000020908    ",
+      "barcodePayload": "BCJH-52-81GG@1N5X0C",
+      "expected": "mismatch",
+      "destination": "moltec"
+    },
+    {
+      "id": "sawai-qr-vs-moltec-tag",
+      "qrPayload": "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
+      "barcodePayload": "D10E-50-N10B@0UBL00",
+      "expected": "mismatch",
+      "destination": "sawai"
     }
   ]
 }
