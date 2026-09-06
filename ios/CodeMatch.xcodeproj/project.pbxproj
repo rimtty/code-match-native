@@ -25,6 +25,7 @@
 		A10000000000000000000104 /* BluetoothScannerServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000104 /* BluetoothScannerServiceTests.swift */; };
 		A10000000000000000000105 /* BluetoothScannerFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000105 /* BluetoothScannerFlowTests.swift */; };
 		A10000000000000000000106 /* HistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000106 /* HistoryStoreTests.swift */; };
+		A10000000000000000000107 /* SessionPDFExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000107 /* SessionPDFExporterTests.swift */; };
 		A1000000000000000000000C /* CodeMatchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* CodeMatchUITests.swift */; };
 		A1000000000000000000000D /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* RootTabView.swift */; };
 		A1000000000000000000000E /* HistoryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* HistoryModels.swift */; };
@@ -77,6 +78,7 @@
 		A20000000000000000000104 /* BluetoothScannerServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothScannerServiceTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000105 /* BluetoothScannerFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothScannerFlowTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000106 /* HistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStoreTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000107 /* SessionPDFExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPDFExporterTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000000D /* CodeMatchUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeMatchUITests.swift; sourceTree = "<group>"; };
 		A20000000000000000000010 /* CodeMatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CodeMatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000011 /* CodeMatchTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CodeMatchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -226,6 +228,7 @@
 				A20000000000000000000104 /* BluetoothScannerServiceTests.swift */,
 				A20000000000000000000105 /* BluetoothScannerFlowTests.swift */,
 				A20000000000000000000106 /* HistoryStoreTests.swift */,
+				A20000000000000000000107 /* SessionPDFExporterTests.swift */,
 			);
 			path = CodeMatchTests;
 			sourceTree = "<group>";
@@ -450,6 +453,7 @@
 				A10000000000000000000104 /* BluetoothScannerServiceTests.swift in Sources */,
 				A10000000000000000000105 /* BluetoothScannerFlowTests.swift in Sources */,
 				A10000000000000000000106 /* HistoryStoreTests.swift in Sources */,
+				A10000000000000000000107 /* SessionPDFExporterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

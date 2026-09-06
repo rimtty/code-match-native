@@ -149,6 +149,37 @@ final class CodeMatchUITests: XCTestCase {
         )
         XCTAssertEqual(scannerTitle.label, "QRコードを読み取る")
         XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
+
+        // セッションを終了すると、履歴にも仕向地とモルテックの納品書情報が残る。
+        app.buttons["endSessionButton"].tap()
+        app.alerts.buttons["終了する"].tap()
+        XCTAssertTrue(app.buttons["startSessionButton"].waitForExistence(timeout: 5))
+
+        app.tabBars.buttons["履歴"].tap()
+        XCTAssertTrue(app.navigationBars["照合履歴"].waitForExistence(timeout: 3))
+        let sessionRow = app.buttons["historySessionRow"]
+        XCTAssertTrue(sessionRow.waitForExistence(timeout: 3))
+        sessionRow.tap()
+
+        // LabeledContentは見出しと値を1つの読み上げ要素にまとめる。
+        let sessionDestination = app.staticTexts["historySessionDestination"]
+        XCTAssertTrue(sessionDestination.waitForExistence(timeout: 3))
+        XCTAssertEqual(sessionDestination.label, "仕向地、モルテック")
+
+        let matchEntryRow = app.buttons["matchEntryRow"]
+        XCTAssertTrue(matchEntryRow.waitForExistence(timeout: 3))
+        matchEntryRow.tap()
+
+        let boxEntryRow = app.buttons["boxEntryRow"]
+        XCTAssertTrue(boxEntryRow.waitForExistence(timeout: 3))
+        boxEntryRow.tap()
+
+        // モルテックの納品書情報（QR解析）に納品番号が並ぶ。
+        XCTAssertTrue(app.staticTexts["納品番号"].waitForExistence(timeout: 3))
+        let deliveryNumber = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "UAG5560", "UAG5560")
+        ).firstMatch
+        XCTAssertTrue(deliveryNumber.waitForExistence(timeout: 3))
     }
 
     func testSettingsDiscoversAndConnectsMockScanner() {
