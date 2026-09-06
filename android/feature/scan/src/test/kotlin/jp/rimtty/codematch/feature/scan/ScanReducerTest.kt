@@ -306,6 +306,42 @@ class ScanReducerTest {
     }
 
     @Test
+    fun cameraCode128RequiresBusinessPayloadFormat() {
+        val reducer = ScanReducer()
+        val waitingQr = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+        val waitingCode = reducer.reduce(
+            waitingQr,
+            ScanEvent.PayloadReceived(ScanPayload.qr(qrPayload, InputSource.CAMERA)),
+        ).state
+        assertEquals(ScanPhase.WAITING_CODE_128, waitingCode.phase)
+
+        val invalidValues = listOf(
+            "BCJH-52-81GG",
+            "BCJH-52-81GG@",
+            "HELLO-WORLD",
+            "1234567890",
+            "https://example.com/tissue",
+        )
+        for (value in invalidValues) {
+            val rejected = reducer.reduce(
+                waitingCode,
+                ScanEvent.PayloadReceived(ScanPayload.code128(value, InputSource.CAMERA)),
+            )
+            assertEquals(value, waitingCode, rejected.state)
+            val invalid = rejected.effects.single() as ScanEffect.InvalidScan
+            assertEquals(value, ScanFormat.CODE_128, invalid.expectedFormat)
+            assertEquals(value, InvalidScanReason.INVALID_PAYLOAD, invalid.reason)
+        }
+
+        val accepted = reducer.reduce(
+            waitingCode,
+            ScanEvent.PayloadReceived(ScanPayload.code128(barcodePayload, InputSource.CAMERA)),
+        )
+        assertEquals(ScanPhase.RESULT, accepted.state.phase)
+        assertEquals(MatchResult.MATCH, (accepted.state.scan as ScanState.Result).result)
+    }
+
+    @Test
     fun rereadQrReturnsToQrAndPreservesMatchedCount() {
         val reducer = ScanReducer()
         var state = ScanReducer.initial()

@@ -615,6 +615,38 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertEqual(context.viewModel.qrValue, ScannerViewModel.sampleQRPayload)
     }
 
+    func testCameraRejectsUnrelatedCode128AndKeepsWaitingForTagBarcode() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        let camera = context.viewModel.camera
+        context.viewModel.cameraScanner(camera, didRead: ScannerViewModel.sampleQRPayload, type: .qr)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        try? await Task.sleep(for: .milliseconds(300))
+
+        // 業務外のCode 128（@なしの品番、URL、数字列など）はCode 128待機を保持し、
+        // 同じ値が2フレーム届いても確定候補にしない。
+        for payload in [
+            "BCJH-52-81GG",
+            "HELLO-WORLD",
+            "1234567890",
+            "https://example.com/tissue"
+        ] {
+            context.viewModel.cameraScanner(camera, didRead: payload, type: .code128)
+            context.viewModel.cameraScanner(camera, didRead: payload, type: .code128)
+            XCTAssertEqual(context.viewModel.step, .barcode, payload)
+            XCTAssertTrue(context.viewModel.barcodeValue.isEmpty, payload)
+            XCTAssertTrue(context.viewModel.message.contains("Code 128バーコードではありません"), payload)
+        }
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+
+        // 準拠した現品票のCode 128は従来どおり同一値2フレームで確定する。
+        context.viewModel.cameraScanner(camera, didRead: ScannerViewModel.sampleBarcodePayload, type: .code128)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        context.viewModel.cameraScanner(camera, didRead: ScannerViewModel.sampleBarcodePayload, type: .code128)
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+    }
+
     func testBluetoothDistinguishesUnrelatedCodesFromWrongOrder() async {
         let context = makeContext()
         defer { context.cleanup() }

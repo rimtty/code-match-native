@@ -1,5 +1,11 @@
 {
   "schemaVersion": 1,
+  "notes": [
+    "label-NN cases come from the 12 field label pairs documented in the customer spec (docs/qr-barcode-spec-analysis.html, git-ignored).",
+    "The first 22 QR characters (card number | item number | suffix) of every label-NN case are the real decoded values.",
+    "Only label-01 and label-09 carry the real full 66-character QR record. The remaining ten reuse a synthetic tail (quantities, factory, warehouse, supply point) so the record stays 66 characters; replace the tail with the real decode when the label photos are re-read.",
+    "label-AA-qr-vs-label-BB-tag cases pair a QR with the tag of the neighbouring label of the same series (e.g. 52 vs 55) to pin the most likely field mix-up as a mismatch."
+  ],
   "cases": [
     {
       "id": "standard-match",
@@ -29,6 +35,102 @@
       "id": "empty-values",
       "qrPayload": "",
       "barcodePayload": "",
+      "expected": "mismatch"
+    },
+    {
+      "id": "label-01-BCJH-52-81GG",
+      "qrPayload": "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
+      "barcodePayload": "BCJH-52-81GG@1N5X0C",
+      "expected": "match"
+    },
+    {
+      "id": "label-02-BCJH-55-81GG",
+      "qrPayload": "DCLP675340BCJH5581GG020000120000001200L000000000000BLBDILLU92   0*",
+      "barcodePayload": "BCJH-55-81GG@1KVV0C",
+      "expected": "match"
+    },
+    {
+      "id": "label-03-DFR5-55-8SDA",
+      "qrPayload": "DAYA004930DFR5558SDA020001000000010000Y      000000BYBYTLYB16   0*",
+      "barcodePayload": "DFR5-55-8SDA@0JYI0U",
+      "expected": "match"
+    },
+    {
+      "id": "label-04-DFR5-52-8SDA",
+      "qrPayload": "DAYA004560DFR5528SDA020001000000010000Y      000000BYBYTLYB16   0*",
+      "barcodePayload": "DFR5-52-8SDA@0JSJ0U",
+      "expected": "match"
+    },
+    {
+      "id": "label-05-DFR5-55-8SEC",
+      "qrPayload": "DAYA004970DFR5558SEC020001000000010000Y      000000BYBYTLYB16   0*",
+      "barcodePayload": "DFR5-55-8SEC@07OX1O",
+      "expected": "match"
+    },
+    {
+      "id": "label-06-DFR5-52-8SEC",
+      "qrPayload": "DAYA004630DFR5528SEC020001000000010000Y      000000BYBYTLYB16   0*",
+      "barcodePayload": "DFR5-52-8SEC@07A51O",
+      "expected": "match"
+    },
+    {
+      "id": "label-07-DFR5-45-8SDC",
+      "qrPayload": "DAYA003950DFR5458SDC020001000000010000Y      000000BYBYTLYB16   0*",
+      "barcodePayload": "DFR5-45-8SDC@0DYH14",
+      "expected": "match"
+    },
+    {
+      "id": "label-08-DFR5-42-8SDC",
+      "qrPayload": "DAYA003420DFR5428SDC020001000000010000Y      000000BYBYTLYB16   0*",
+      "barcodePayload": "DFR5-42-8SDC@0D7Q14",
+      "expected": "match"
+    },
+    {
+      "id": "label-09-DFR5-55-81GA",
+      "qrPayload": "DAYA005100DFR55581GA  0001000000010000Y      000000BYBYTLYB16   0*",
+      "barcodePayload": "DFR5-55-81GA@001C2S",
+      "expected": "match"
+    },
+    {
+      "id": "label-10-DFR5-52-81GA",
+      "qrPayload": "DAYA004770DFR55281GA  0001000000010000Y      000000BYBYTLYB16   0*",
+      "barcodePayload": "DFR5-52-81GA@001F2S",
+      "expected": "match"
+    },
+    {
+      "id": "label-11-BCJH-45-81MC",
+      "qrPayload": "DAYA003360BCJH4581MC020001000000010000Y      000000BYBYTLYB16   0*",
+      "barcodePayload": "BCJH-45-81MC@01V79C",
+      "expected": "match"
+    },
+    {
+      "id": "label-12-KAAA-55-D86B",
+      "qrPayload": "DAAL068510KAAA55D86B020001000000010000Y      000000BYBYTLYB16   0*",
+      "barcodePayload": "KAAA-55-D86B@0Y5U0I",
+      "expected": "match"
+    },
+    {
+      "id": "label-03-qr-vs-label-04-tag",
+      "qrPayload": "DAYA004930DFR5558SDA020001000000010000Y      000000BYBYTLYB16   0*",
+      "barcodePayload": "DFR5-52-8SDA@0JSJ0U",
+      "expected": "mismatch"
+    },
+    {
+      "id": "label-05-qr-vs-label-06-tag",
+      "qrPayload": "DAYA004970DFR5558SEC020001000000010000Y      000000BYBYTLYB16   0*",
+      "barcodePayload": "DFR5-52-8SEC@07A51O",
+      "expected": "mismatch"
+    },
+    {
+      "id": "label-07-qr-vs-label-08-tag",
+      "qrPayload": "DAYA003950DFR5458SDC020001000000010000Y      000000BYBYTLYB16   0*",
+      "barcodePayload": "DFR5-42-8SDC@0D7Q14",
+      "expected": "mismatch"
+    },
+    {
+      "id": "label-09-qr-vs-label-10-tag",
+      "qrPayload": "DAYA005100DFR55581GA  0001000000010000Y      000000BYBYTLYB16   0*",
+      "barcodePayload": "DFR5-52-81GA@001F2S",
       "expected": "mismatch"
     }
   ]

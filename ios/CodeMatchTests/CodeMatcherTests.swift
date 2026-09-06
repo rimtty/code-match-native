@@ -43,17 +43,21 @@ final class CodeMatcherTests: XCTestCase {
         XCTAssertEqual(CodeMatcher.compare(qrPayload: qrPayload, barcodePayload: barcodePayload), .match)
     }
 
-    func testSharedMatchingFixtures() throws {
+    private func loadSharedMatchingFixtures() throws -> SharedMatchingFixtures {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let fixtureURL = repositoryRoot
             .appendingPathComponent("shared/test-fixtures/matching-cases.json")
-        let fixtures = try JSONDecoder().decode(
+        return try JSONDecoder().decode(
             SharedMatchingFixtures.self,
             from: Data(contentsOf: fixtureURL)
         )
+    }
+
+    func testSharedMatchingFixtures() throws {
+        let fixtures = try loadSharedMatchingFixtures()
 
         XCTAssertEqual(fixtures.schemaVersion, 1)
         XCTAssertFalse(fixtures.cases.isEmpty)
@@ -77,6 +81,29 @@ final class CodeMatcherTests: XCTestCase {
                 expected,
                 "Shared fixture failed: \(fixture.id)"
             )
+        }
+    }
+
+    /// 仕様書 §4 の現場ラベル12組（label-NN）は、照合結果だけでなくカメラ・BLE共通の
+    /// 読取境界（66桁QR検証、4-2-4@管理コード検証）も通り、QRの品目番号と
+    /// 現品票の品番が一致する。#9・#10 は枝番が空白。
+    func testSharedLabelPairsPassBothScanBoundaries() throws {
+        let labelPairs = try loadSharedMatchingFixtures().cases.filter {
+            $0.id.hasPrefix("label-") && $0.expected == "match"
+        }
+        XCTAssertEqual(labelPairs.count, 12)
+
+        for pair in labelPairs {
+            XCTAssertTrue(KanbanQRRecord.isValidScanPayload(pair.qrPayload), pair.id)
+            XCTAssertTrue(TagBarcodeRecord.isValidScanPayload(pair.barcodePayload), pair.id)
+            let record = KanbanQRRecord.parse(pair.qrPayload)
+            XCTAssertEqual(
+                record?.partNumber,
+                CodeMatcher.partNumber(fromBarcode: pair.barcodePayload),
+                pair.id
+            )
+            let expectsBlankSuffix = pair.id.hasPrefix("label-09") || pair.id.hasPrefix("label-10")
+            XCTAssertEqual(record?.partSuffix, expectsBlankSuffix ? nil : "02", pair.id)
         }
     }
 

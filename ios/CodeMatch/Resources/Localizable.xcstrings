@@ -5177,6 +5177,22 @@
         }
       }
     },
+    "現品票のCode 128バーコードではありません。現品票のCode 128バーコードを枠に合わせてください。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This is not a product-tag Code 128 barcode. Fit the Code 128 barcode on the product tag into the frame."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現品票のCode 128バーコードではありません。現品票のCode 128バーコードを枠に合わせてください。"
+          }
+        }
+      }
+    },
     "結果を確認して「次のコードを照合」を押してください。" : {
       "localizations" : {
         "en" : {

@@ -1,6 +1,7 @@
 package jp.rimtty.codematch.feature.scan
 
 import jp.rimtty.codematch.core.matching.CodeMatcher
+import jp.rimtty.codematch.core.matching.TagBarcodeRecord
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
 import jp.rimtty.codematch.core.model.ScanSessionCheckpoint
 import jp.rimtty.codematch.scanner.api.ConfigurationState
@@ -161,10 +162,14 @@ class ScanSessionCoordinator(
             return null
         }
 
+        // A camera Code 128 outside the product-tag business format skips
+        // stabilization: the reducer rejects it on the first frame and it
+        // never occupies the two-observation candidate slot (#78).
         val payloadToDispatch = if (
             payload.source == InputSource.CAMERA &&
             payload.format == ScanFormat.CODE_128 &&
-            state.phase == ScanPhase.WAITING_CODE_128
+            state.phase == ScanPhase.WAITING_CODE_128 &&
+            TagBarcodeRecord.isValidScanPayload(payload.value)
         ) {
             when (val stabilization = cameraStabilizer.submit(payload.value, timestamp)) {
                 is ScanStabilizationResult.Accepted -> payload.copy(value = stabilization.value)

@@ -1128,8 +1128,15 @@ private fun ScanMessage(state: ScanUiState) {
             InvalidScanReason.OVERLONG_QR_PAYLOAD,
             InvalidScanReason.INVALID_PAYLOAD,
         )
+    val invalidCameraCode128 = state.inputSource == InputSource.CAMERA &&
+        state.phase == ScanPhase.WAITING_CODE_128 && invalid in setOf(
+            InvalidScanReason.EMPTY_PAYLOAD,
+            InvalidScanReason.INVALID_PAYLOAD,
+        )
     val invalidText = if (invalidCameraQr) {
         stringResource(R.string.scan_invalid_camera_qr)
+    } else if (invalidCameraCode128) {
+        stringResource(R.string.scan_invalid_camera_code128)
     } else when (invalid) {
         InvalidScanReason.SESSION_NOT_STARTED -> stringResource(R.string.scan_invalid_session)
         InvalidScanReason.WRONG_ORDER -> stringResource(R.string.scan_invalid_order)

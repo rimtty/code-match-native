@@ -228,6 +228,31 @@ class ScanSessionCoordinatorTest {
     }
 
     @Test
+    fun cameraCode128OutsideBusinessFormatIsRejectedWithoutStabilization() {
+        val coordinator = ScanSessionCoordinator(TestScanner())
+        coordinator.startSession()
+        coordinator.submitScanPayload(ScanPayload.qr(qrPayload, timestampMillis = 0L))
+
+        val rejected = coordinator.submitScanPayload(
+            ScanPayload.code128("HELLO-WORLD", timestampMillis = 300L),
+        )
+        assertTrue(rejected?.effects?.single() is ScanEffect.InvalidScan)
+        assertEquals(ScanPhase.WAITING_CODE_128, coordinator.state.phase)
+
+        // The rejected value never became a stabilizer candidate, so a valid
+        // tag still needs its own two observations before comparison.
+        assertNull(
+            coordinator.submitScanPayload(
+                ScanPayload.code128(barcodePayload, timestampMillis = 400L),
+            ),
+        )
+        val accepted = coordinator.submitScanPayload(
+            ScanPayload.code128(barcodePayload, timestampMillis = 500L),
+        )
+        assertEquals(ScanPhase.RESULT, accepted?.state?.phase)
+    }
+
+    @Test
     fun backgroundStopsScannerAndForegroundResumesCurrentFormat() {
         val scanner = TestScanner().apply { markReady() }
         val coordinator = ScanSessionCoordinator(scanner)
