@@ -28,6 +28,7 @@
     <string name="history_pdf_save_error">Could not save the PDF.</string>
     <string name="history_pdf_share_error">Could not share the PDF.</string>
     <string name="history_pdf_retry">Retry</string>
+    <string name="history_share_all_failed">Could not export the history</string>
 
     <string name="settings_screen_description">App settings for automatic next comparison and language</string>
     <string name="settings_headline">Settings</string>

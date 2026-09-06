@@ -23,6 +23,7 @@ data class HistoryUiLabels(
     val inspectionBoxes: String,
     val partCount: String,
     val namePlaceholder: String,
+    val shareAll: String,
     val savePdf: String,
     val sharePdf: String,
     val matchedCodes: String,

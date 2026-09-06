@@ -28,6 +28,7 @@
     <string name="history_pdf_save_error">PDFを保存できませんでした。</string>
     <string name="history_pdf_share_error">PDFを共有できませんでした。</string>
     <string name="history_pdf_retry">再試行</string>
+    <string name="history_share_all_failed">照合履歴の書き出しに失敗しました</string>
 
     <string name="settings_screen_description">自動次工程と言語などのアプリ設定画面</string>
     <string name="settings_headline">設定</string>

@@ -15,6 +15,7 @@
     <string name="history_inspection_boxes">検査箱数</string>
     <string name="history_part_count">品番数</string>
     <string name="history_name_placeholder">名前を入力（任意）</string>
+    <string name="history_share_all">照合履歴をすべて共有</string>
     <string name="history_save_pdf">PDFで保存</string>
     <string name="history_share_pdf">共有する</string>
     <string name="history_matched_codes">一致したコード</string>

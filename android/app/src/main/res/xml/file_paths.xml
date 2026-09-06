@@ -3,4 +3,7 @@
     <cache-path
         name="history_pdf"
         path="codematch-pdf/" />
+    <cache-path
+        name="history_export"
+        path="codematch-export/" />
 </paths>

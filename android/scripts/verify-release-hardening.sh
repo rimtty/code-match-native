@@ -267,13 +267,17 @@ check_backup_dump "$(compiled_xml xml/data_extraction_rules)" "data_extraction_r
 
 file_paths_dump="$(compiled_xml xml/file_paths)"
 grep -q -E '^ *E: paths( |$)' <<< "$file_paths_dump" || die "FileProvider paths root is missing"
-[[ "$(grep -c -E '^ *E: cache-path( |$)' <<< "$file_paths_dump")" == "1" ]] || \
-    die "FileProvider must expose exactly one cache-path"
+# Two scoped cache paths: the PDF report and the JSON history export. Each one
+# is a dedicated subdirectory, so no other cache content is ever shareable.
+[[ "$(grep -c -E '^ *E: cache-path( |$)' <<< "$file_paths_dump")" == "2" ]] || \
+    die "FileProvider must expose exactly two cache-paths"
 ! grep -q -E '^ *E: (files-path|external-path|root-path|external-files-path|external-cache-path|external-media-path)( |$)' <<< "$file_paths_dump" || \
     die "FileProvider exposes a broad or external path"
 grep -q -F 'A: name="history_pdf"' <<< "$file_paths_dump" || die "FileProvider cache path name is not history_pdf"
 grep -q -F 'A: path="codematch-pdf/"' <<< "$file_paths_dump" || die "FileProvider cache path is not codematch-pdf/"
-note "resources: demo tools off, backup/transfer exclusions present, FileProvider limited to cache/codematch-pdf/"
+grep -q -F 'A: name="history_export"' <<< "$file_paths_dump" || die "FileProvider cache path name is not history_export"
+grep -q -F 'A: path="codematch-export/"' <<< "$file_paths_dump" || die "FileProvider cache path is not codematch-export/"
+note "resources: demo tools off, backup/transfer exclusions present, FileProvider limited to cache/codematch-pdf/ and cache/codematch-export/"
 
 # --- DEX and native libraries -----------------------------------------------
 
@@ -345,8 +349,11 @@ source_hits="$(grep -rn -i -E \
     "${production_dirs[@]}" --include='*.kt' --include='*.java' || true)"
 [[ -z "$source_hits" ]] || die "production source persists or logs frames/images/payloads:"$'\n'"$source_hits"
 
-file_hits="$(grep -rn -E '(^|[^[:alnum:]_])File[[:space:]]*\(' "${production_dirs[@]}" --include='*.kt' --include='*.java' | grep -v 'core/export/src/main/.*/HistoryPdfExporter\.kt:' || true)"
-[[ -z "$file_hits" ]] || die "production source creates files outside the dedicated PDF exporter:"$'\n'"$file_hits"
+# The only production code allowed to create files is the export layer: the
+# PDF report and the JSON history export, each writing into its own scoped
+# app-private cache subdirectory that the FileProvider exposes.
+file_hits="$(grep -rn -E '(^|[^[:alnum:]_])File[[:space:]]*\(' "${production_dirs[@]}" --include='*.kt' --include='*.java' | grep -v -E 'core/export/src/main/.*/History(Pdf|Json)Exporter\.kt:' || true)"
+[[ -z "$file_hits" ]] || die "production source creates files outside the dedicated exporters:"$'\n'"$file_hits"
 
 analytics_hits="$(grep -rn -i -E 'FirebaseAnalytics|FirebaseCrashlytics|Crashlytics|Sentry|Bugsnag|NewRelic|Datadog|Mixpanel|PostHog|Countly|AnalyticsTracker|CrashReporter' \
     "${production_dirs[@]}" --include='*.kt' --include='*.java' || true)"
