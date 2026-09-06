@@ -147,12 +147,12 @@ class CodeMatcherTest {
 
     @Test
     fun tagRecordValidationRejectsReverseOrderAndWrongShape() {
-        assertTrue(TagBarcodeRecord.isValidScanPayload(barcodePayload))
-        assertTrue(TagBarcodeRecord.isValidScanPayload("KAAA-55-D86B@0Y5U0I"))
-        assertTrue(TagBarcodeRecord.isValidScanPayload("kAAA-55-d86b@0y5u0i"))
-        assertFalse(TagBarcodeRecord.isValidScanPayload(qrPayload))
-        assertFalse(TagBarcodeRecord.isValidScanPayload("BCJH-52-81GG"))
-        assertFalse(TagBarcodeRecord.isValidScanPayload("ABC-12-3456@1"))
+        assertTrue(TagBarcodeRecord.isValidScanPayload(barcodePayload, Destination.SAWAI))
+        assertTrue(TagBarcodeRecord.isValidScanPayload("KAAA-55-D86B@0Y5U0I", Destination.SAWAI))
+        assertTrue(TagBarcodeRecord.isValidScanPayload("kAAA-55-d86b@0y5u0i", Destination.SAWAI))
+        assertFalse(TagBarcodeRecord.isValidScanPayload(qrPayload, Destination.SAWAI))
+        assertFalse(TagBarcodeRecord.isValidScanPayload("BCJH-52-81GG", Destination.SAWAI))
+        assertFalse(TagBarcodeRecord.isValidScanPayload("ABC-12-3456@1", Destination.SAWAI))
     }
 
     @Test
@@ -240,7 +240,10 @@ class CodeMatcherTest {
 
         labelPairs.forEach { pair ->
             assertTrue(pair.id, KanbanQrRecord.isValidScanPayload(pair.qrPayload))
-            assertTrue(pair.id, TagBarcodeRecord.isValidScanPayload(pair.barcodePayload))
+            assertTrue(
+                pair.id,
+                TagBarcodeRecord.isValidScanPayload(pair.barcodePayload, Destination.SAWAI)
+            )
             val record = KanbanQrRecord.parse(pair.qrPayload)
             assertEquals(pair.id, CodeMatcher.partNumberFromBarcode(pair.barcodePayload), record?.partNumber)
             val expectsBlankSuffix = pair.id.startsWith("label-09") || pair.id.startsWith("label-10")
@@ -378,8 +381,6 @@ class CodeMatcherTest {
                 Destination.SAWAI
             )
         )
-        // The single-argument overload keeps the Sawai rule for the scan module.
-        assertFalse(TagBarcodeRecord.isValidScanPayload(moltecShortPartBarcodePayload))
 
         Destination.entries.forEach { destination ->
             assertTrue(TagBarcodeRecord.isValidScanPayload(barcodePayload, destination))

@@ -1,8 +1,8 @@
 package jp.rimtty.codematch.feature.scan
 
-import jp.rimtty.codematch.core.matching.CodeMatcher
 import jp.rimtty.codematch.core.matching.TagBarcodeRecord
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.ScanSessionCheckpoint
 import jp.rimtty.codematch.scanner.api.ConfigurationState
 import jp.rimtty.codematch.scanner.api.ConnectionState
@@ -31,24 +31,33 @@ class ScanSessionCoordinator(
     existingMatchedCount: Int = 0,
     private val cameraStabilizer: ScanStabilizer = ScanStabilizer(),
     restoredCheckpoint: ScanSessionCheckpoint? = null,
-    matchedQrPayloads: Collection<String> = emptyList(),
+    recordedBoxes: Collection<RecordedBox> = emptyList(),
+    sessionDestination: Destination? = null,
 ) : ExternalScannerListener {
     private val cameraAcceptanceLock = ScanAcceptanceLock()
     private var applyingScannerFormat = false
-    private val matchedQrPayloadIdentities = matchedQrPayloads
-        .map(CodeMatcher::payloadIdentity)
-        .filterTo(linkedSetOf()) { it.isNotEmpty() }
+    private val restoredBoxes: List<RecordedBox> = recordedBoxes.toList()
     private val restoredState: ScanSessionState? = restoredCheckpoint?.toScanSessionState(
         autoAdvanceEnabled = autoAdvanceEnabled,
         autoAdvanceDelay = autoAdvanceDelay,
-    )?.copy(matchedQrPayloadIdentities = matchedQrPayloadIdentities)
+    )?.let { restored ->
+        restored.copy(
+            recordedBoxes = restoredBoxes,
+            // Prefer the checkpoint's own lock, then the persisted session row,
+            // and only then the destination the restored boxes were matched at.
+            destination = restored.destination
+                ?: sessionDestination
+                ?: restoredBoxes.firstNotNullOfOrNull { it.destination },
+        )
+    }
     private val hasRestoredState: Boolean = restoredState != null
 
     var state: ScanSessionState = restoredState ?: ScanReducer.initial(
         autoAdvanceEnabled = autoAdvanceEnabled,
         autoAdvanceDelay = autoAdvanceDelay,
         existingMatchedCount = existingMatchedCount,
-        matchedQrPayloads = matchedQrPayloads,
+        recordedBoxes = restoredBoxes,
+        destination = sessionDestination,
     )
         private set
 
@@ -164,12 +173,17 @@ class ScanSessionCoordinator(
 
         // A camera Code 128 outside the product-tag business format skips
         // stabilization: the reducer rejects it on the first frame and it
-        // never occupies the two-observation candidate slot (#78).
+        // never occupies the two-observation candidate slot (#78). The format
+        // depends on the locked destination, so a 4-2-3 tag reaches the
+        // stabilizer only in a Moltec session.
         val payloadToDispatch = if (
             payload.source == InputSource.CAMERA &&
             payload.format == ScanFormat.CODE_128 &&
             state.phase == ScanPhase.WAITING_CODE_128 &&
-            TagBarcodeRecord.isValidScanPayload(payload.value)
+            TagBarcodeRecord.isValidScanPayload(
+                payload.value,
+                state.destination ?: Destination.SAWAI,
+            )
         ) {
             when (val stabilization = cameraStabilizer.submit(payload.value, timestamp)) {
                 is ScanStabilizationResult.Accepted -> payload.copy(value = stabilization.value)

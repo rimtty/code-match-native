@@ -1,6 +1,7 @@
 package jp.rimtty.codematch.feature.scan
 
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.scanner.api.ConfigurationState
 import jp.rimtty.codematch.scanner.api.InputSource
@@ -48,6 +49,8 @@ data class ScanUiState(
 ) {
     val scan: ScanState get() = session.scan
     val phase: ScanPhase get() = session.phase
+    /** Destination locked by the session's first accepted QR, if any. */
+    val destination: Destination? get() = session.destination
     val inputSource: InputSource get() = session.inputSource
     val expectedFormat: ScanFormat? get() = session.expectedFormat
     val matchedCount: Int get() = session.matchedCount

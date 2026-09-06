@@ -1,6 +1,9 @@
 package jp.rimtty.codematch.feature.scan
 
+import jp.rimtty.codematch.core.matching.CodeMatcher
+import jp.rimtty.codematch.core.matching.MoltecQrRecord
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanFormat
@@ -85,6 +88,67 @@ typealias WaitingCode128 = ScanState.WaitingCode128
 typealias WaitingForCode128 = ScanState.WaitingCode128
 typealias ResultState = ScanState.Result
 
+/**
+ * One box already recorded as a match in the active session.
+ *
+ * [identity] is the destination-aware box key: the Sawai slip QR identifies its
+ * own box, while a Moltec slip repeats for every box of the part and needs the
+ * product tag as well. The Moltec-only fields carry the slip's delivery number
+ * and pack quantity so the box number and the cumulative quantity can be
+ * derived without re-parsing every stored payload.
+ */
+data class RecordedBox(
+    val identity: String,
+    val code: String,
+    val destination: Destination?,
+    val deliveryNumber: String? = null,
+    val packQuantity: Int? = null,
+) {
+    companion object {
+        /**
+         * Build a box from the payloads that produced a match, or null when
+         * the pair has no box identity (an unknown QR, or a Moltec slip
+         * without its tag). [code] defaults to the formatted part number the
+         * reducer would have recorded.
+         */
+        fun fromPayloads(
+            qrPayload: String,
+            barcodePayload: String?,
+            code: String? = null,
+        ): RecordedBox? {
+            val identity = CodeMatcher.boxIdentity(qrPayload, barcodePayload) ?: return null
+            val destination = CodeMatcher.detectDestination(qrPayload)
+            val moltec = if (destination == Destination.MOLTEC) {
+                MoltecQrRecord.parse(qrPayload)
+            } else {
+                null
+            }
+            return RecordedBox(
+                identity = identity,
+                code = code?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: formattedPartNumber(qrPayload, barcodePayload),
+                destination = destination,
+                deliveryNumber = moltec?.deliveryNumber,
+                packQuantity = moltec?.packQuantity,
+            )
+        }
+
+        private fun formattedPartNumber(qrPayload: String, barcodePayload: String?): String {
+            val part = barcodePayload?.let(CodeMatcher::partNumberFromBarcode)
+                ?: CodeMatcher.partNumberFromQr(qrPayload)
+                ?: qrPayload
+            return CodeMatcher.formatPartNumber(part)
+        }
+    }
+}
+
+/** Per-delivery-number progress shown on a Moltec match result. */
+data class MoltecBoxSummary(
+    val deliveryNumber: String,
+    val boxNumber: Int,
+    val cumulativeQuantity: Int,
+)
+
 /** Immutable reducer state, including settings that affect countdowns. */
 data class ScanSessionState(
     val scan: ScanState = ScanState.Idle,
@@ -94,8 +158,16 @@ data class ScanSessionState(
     val inputSource: InputSource = InputSource.CAMERA,
     /** Existing matches restored by the session repository before start. */
     val initialMatchedCount: Int = 0,
-    /** Normalized full QR identities already recorded in this session. */
-    val matchedQrPayloadIdentities: Set<String> = emptySet(),
+    /**
+     * Destination locked by the first accepted QR of the session.
+     *
+     * Only [ScanEvent.EndSession] clears it: a mismatch, a QR reread, and the
+     * manual next action all stay inside the same session, so a slip of the
+     * other destination must keep being rejected until the operator ends it.
+     */
+    val destination: Destination? = null,
+    /** Boxes already recorded in this session, restored ones included. */
+    val recordedBoxes: List<RecordedBox> = emptyList(),
 ) {
     val state: ScanState get() = scan
     val phase: ScanPhase get() = scan.phase
@@ -111,6 +183,39 @@ data class ScanSessionState(
             ScanPhase.WAITING_QR -> ScanFormat.QR
             ScanPhase.WAITING_CODE_128 -> ScanFormat.CODE_128
             ScanPhase.IDLE, ScanPhase.RESULT -> null
+        }
+
+    /** Box keys already recorded in this session; the duplicate rule's input. */
+    val matchedBoxIdentities: Set<String>
+        get() = recordedBoxes.mapTo(linkedSetOf()) { it.identity }
+
+    /**
+     * Boxes and cumulative pack quantity recorded so far for one Moltec
+     * delivery number. Sawai boxes are counted per part number instead and
+     * never contribute here.
+     */
+    fun moltecSummary(deliveryNumber: String): MoltecBoxSummary {
+        val boxes = recordedBoxes.filter {
+            it.destination == Destination.MOLTEC && it.deliveryNumber == deliveryNumber
+        }
+        return MoltecBoxSummary(
+            deliveryNumber = deliveryNumber,
+            boxNumber = boxes.size,
+            cumulativeQuantity = boxes.sumOf { it.packQuantity ?: 0 },
+        )
+    }
+
+    /**
+     * The summary for the box shown on a Moltec match result, or null for any
+     * other state. [recordedBoxes] already contains the box just recorded, so
+     * the numbers describe the visible result rather than the previous one.
+     */
+    val moltecResultSummary: MoltecBoxSummary?
+        get() {
+            val current = scan as? ScanState.Result ?: return null
+            if (current.result != MatchResult.MATCH) return null
+            val record = MoltecQrRecord.parse(current.qrPayload) ?: return null
+            return moltecSummary(record.deliveryNumber)
         }
 }
 
@@ -157,6 +262,9 @@ enum class InvalidScanReason {
     INCOMPLETE_QR_PAYLOAD,
     OVERLONG_QR_PAYLOAD,
     INVALID_PAYLOAD,
+
+    /** A valid QR of the destination this session is not locked to. */
+    WRONG_DESTINATION,
 }
 
 /** Side effects are data so platform UI and persistence can handle them later. */
@@ -184,6 +292,18 @@ sealed interface ScanEffect {
         val barcodePayload: String,
         val code: String,
         val matchNumber: Int,
+        /** Destination this session is locked to; persisted with the session. */
+        val destination: Destination,
+        /**
+         * Box number inside the session: boxes of the same delivery number for
+         * [Destination.MOLTEC], boxes of the same part number for
+         * [Destination.SAWAI].
+         */
+        val boxNumber: Int,
+        /** Moltec only: the slip's delivery number. */
+        val deliveryNumber: String? = null,
+        /** Moltec only: pack quantity summed over the delivery number's boxes. */
+        val cumulativeQuantity: Int? = null,
     ) : ScanEffect {
         val partNumber: String get() = code
     }

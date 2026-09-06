@@ -1,5 +1,6 @@
 package jp.rimtty.codematch.feature.scan
 
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.core.model.ScanCheckpointInputSource
 import jp.rimtty.codematch.core.model.ScanCheckpointPhase
@@ -38,6 +39,12 @@ class ScanSessionCoordinatorTest {
     private val qrPayload =
         "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private val barcodePayload = "BCJH-52-81GG@1N5X0C"
+
+    // Destination Moltec, with a nine-character part number printed as a
+    // 4-2-3 tag. The QR's trailing spaces are record data.
+    private val moltecQrPayload =
+        "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+    private val moltecShortPartBarcode = "PAF1-15-422@0NKD3C"
 
     @Test
     fun restartOnMatchKeepsResultAndCountThenManualNextResumesQr() {
@@ -506,6 +513,91 @@ class ScanSessionCoordinatorTest {
         assertEquals(ScanPhase.WAITING_QR, restored.state.phase)
         assertEquals(1, restored.state.matchedCount)
         assertTrue(start.effects.none { it is ScanEffect.RecordMatch })
+    }
+
+    @Test
+    fun restoredCheckpointDestinationSeedsTheLock() {
+        val coordinator = ScanSessionCoordinator(
+            scanner = TestScanner(),
+            existingMatchedCount = 1,
+            restoredCheckpoint = ScanSessionCheckpoint(
+                sessionId = "session",
+                phase = ScanCheckpointPhase.WAITING_QR,
+                matchedCount = 1,
+                destination = Destination.MOLTEC,
+            ),
+            // The checkpoint is the freshest record of the lock and wins over
+            // a session row that has not been updated yet.
+            sessionDestination = Destination.SAWAI,
+        )
+
+        coordinator.startSession()
+
+        assertEquals(Destination.MOLTEC, coordinator.state.destination)
+    }
+
+    @Test
+    fun sessionDestinationSeedsTheLockWhenCheckpointHasNone() {
+        val coordinator = ScanSessionCoordinator(
+            scanner = TestScanner(),
+            existingMatchedCount = 2,
+            restoredCheckpoint = ScanSessionCheckpoint(
+                sessionId = "session",
+                phase = ScanCheckpointPhase.WAITING_QR,
+                matchedCount = 2,
+            ),
+            sessionDestination = Destination.MOLTEC,
+        )
+
+        coordinator.startSession()
+
+        assertEquals(Destination.MOLTEC, coordinator.state.destination)
+    }
+
+    @Test
+    fun recordedBoxesDeriveTheLockWhenNothingElseIsStored() {
+        val coordinator = ScanSessionCoordinator(
+            scanner = TestScanner(),
+            existingMatchedCount = 1,
+            recordedBoxes = listOfNotNull(
+                RecordedBox.fromPayloads(moltecQrPayload, moltecShortPartBarcode),
+            ),
+        )
+
+        coordinator.startSession()
+
+        assertEquals(Destination.MOLTEC, coordinator.state.destination)
+        assertEquals(1, coordinator.state.recordedBoxes.size)
+    }
+
+    @Test
+    fun cameraFourTwoThreeTagGoesThroughStabilizerOnlyInMoltecSession() {
+        val moltec = ScanSessionCoordinator(TestScanner())
+        moltec.startSession()
+        moltec.submitScanPayload(ScanPayload.qr(moltecQrPayload, timestampMillis = 0L))
+        assertEquals(Destination.MOLTEC, moltec.state.destination)
+
+        // A 4-2-3 tag is a valid Moltec product tag, so it takes the strict
+        // two-observation path instead of being rejected on the first frame.
+        assertNull(
+            moltec.submitScanPayload(
+                ScanPayload.code128(moltecShortPartBarcode, timestampMillis = 300L),
+            ),
+        )
+        val accepted = moltec.submitScanPayload(
+            ScanPayload.code128(moltecShortPartBarcode, timestampMillis = 400L),
+        )
+        assertEquals(ScanPhase.RESULT, accepted?.state?.phase)
+        assertEquals(MatchResult.MATCH, accepted?.state?.result)
+
+        val sawai = ScanSessionCoordinator(TestScanner())
+        sawai.startSession()
+        sawai.submitScanPayload(ScanPayload.qr(qrPayload, timestampMillis = 0L))
+        val rejected = sawai.submitScanPayload(
+            ScanPayload.code128(moltecShortPartBarcode, timestampMillis = 300L),
+        )
+        assertTrue(rejected?.effects?.single() is ScanEffect.InvalidScan)
+        assertEquals(ScanPhase.WAITING_CODE_128, sawai.state.phase)
     }
 
     private class TestScanner : ExternalScanner {

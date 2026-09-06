@@ -1,11 +1,18 @@
 package jp.rimtty.codematch.feature.scan
 
+import jp.rimtty.codematch.core.matching.CodeMatcher
 import jp.rimtty.codematch.core.model.ScanCheckpointInputSource
 import jp.rimtty.codematch.core.model.ScanCheckpointPhase
 import jp.rimtty.codematch.core.model.ScanSessionCheckpoint
 import jp.rimtty.codematch.scanner.api.InputSource
 
-/** Convert the in-memory state into the small durable checkpoint contract. */
+/**
+ * Convert the in-memory state into the small durable checkpoint contract.
+ *
+ * The destination lock is written in every phase, Waiting QR included: after a
+ * mismatch or a reread there is no accepted QR left to derive it from, and the
+ * session must still reject slips of the other destination.
+ */
 fun ScanSessionState.toScanSessionCheckpoint(
     sessionId: String,
     cameraWasSelectedByUser: Boolean = false,
@@ -18,6 +25,7 @@ fun ScanSessionState.toScanSessionCheckpoint(
             matchedCount = current.matchedCount,
             inputSource = inputSource.toCheckpointSource(),
             cameraWasSelectedByUser = cameraWasSelectedByUser,
+            destination = destination,
         )
 
         is ScanState.WaitingCode128 -> ScanSessionCheckpoint(
@@ -27,6 +35,7 @@ fun ScanSessionState.toScanSessionCheckpoint(
             matchedCount = current.matchedCount,
             inputSource = inputSource.toCheckpointSource(),
             cameraWasSelectedByUser = cameraWasSelectedByUser,
+            destination = destination,
         )
 
         is ScanState.Result -> ScanSessionCheckpoint(
@@ -38,6 +47,7 @@ fun ScanSessionState.toScanSessionCheckpoint(
             matchedCount = current.matchedCount,
             inputSource = inputSource.toCheckpointSource(),
             cameraWasSelectedByUser = cameraWasSelectedByUser,
+            destination = destination,
         )
     }
     return checkpoint.takeIf { it.isSupportedAndValid() }
@@ -49,6 +59,9 @@ fun ScanSessionState.toScanSessionCheckpoint(
  * Countdown is intentionally not restored. A process may have been stopped
  * for an arbitrary amount of time, so resuming at a terminal result must wait
  * for an explicit user action rather than auto-advancing unexpectedly.
+ *
+ * The recorded boxes are not part of the checkpoint either: they are restored
+ * from the session's history rows by [ScanSessionCoordinator].
  */
 fun ScanSessionCheckpoint.toScanSessionState(
     autoAdvanceEnabled: Boolean,
@@ -75,6 +88,10 @@ fun ScanSessionCheckpoint.toScanSessionState(
         autoAdvanceSecondsRemaining = null,
         inputSource = inputSource.toScannerSource(),
         initialMatchedCount = matchedCount,
+        // An older checkpoint carries no destination. Deriving it from the
+        // accepted QR keeps the lock alive across the upgrade instead of
+        // letting the next slip of the other destination through.
+        destination = destination ?: qrPayload?.let(CodeMatcher::detectDestination),
     )
 }
 

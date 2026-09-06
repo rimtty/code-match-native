@@ -236,15 +236,6 @@ data class TagBarcodeRecord(
             Regex("[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{3,4}@[A-Z0-9]+")
 
         /**
-         * Strict scanner-boundary validation for the Sawai product tag format
-         * (4-2-4). This single-argument form is what the scan module still calls;
-         * it keeps that behaviour unchanged until the module becomes
-         * destination-aware.
-         */
-        fun isValidScanPayload(payload: String): Boolean =
-            isValidScanPayload(payload, Destination.SAWAI)
-
-        /**
          * Strict scanner-boundary validation for the product tag format of one
          * destination: Sawai part numbers always end in a four-character block,
          * Moltec part numbers end in three or four. Lowercase input is accepted

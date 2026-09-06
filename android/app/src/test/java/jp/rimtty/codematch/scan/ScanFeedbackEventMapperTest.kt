@@ -1,5 +1,6 @@
 package jp.rimtty.codematch.scan
 
+import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchResult
 import jp.rimtty.codematch.feature.scan.InvalidScanReason
 import jp.rimtty.codematch.feature.scan.ScanEffect
@@ -31,6 +32,8 @@ class ScanFeedbackEventMapperTest {
                 barcodePayload = "barcode",
                 code = "CODE",
                 matchNumber = 1,
+                destination = Destination.SAWAI,
+                boxNumber = 1,
             ),
         )
 
@@ -80,8 +83,8 @@ class ScanFeedbackEventMapperTest {
         val effects = listOf(
             ScanEffect.ScanAccepted,
             ScanEffect.ScanAccepted,
-            ScanEffect.RecordMatch("qr", "barcode", "CODE", 1),
-            ScanEffect.RecordMatch("qr", "barcode", "CODE", 1),
+            ScanEffect.RecordMatch("qr", "barcode", "CODE", 1, Destination.SAWAI, 1),
+            ScanEffect.RecordMatch("qr", "barcode", "CODE", 1, Destination.SAWAI, 1),
         )
 
         assertEquals(
