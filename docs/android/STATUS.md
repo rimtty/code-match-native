@@ -20,7 +20,7 @@
 | History / settings / PDF | Room（schema v2）/DataStore、日英リソースとper-app locale双方向同期、0件破棄・名称変更・詳細・削除のapp E2E、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test。Pixel 7では日英切替、1ページ/複数ページPDFのDownloads保存と共有先での表示、音量0/通常音量の音・触覚をユーザーが承認 |
 | Camera | CameraX/ML Kit adapter、工程別ROI、権限・lifecycle・focus・format切替の非同期境界test。Pixel 7縦画面で実ラベルのQR→Code 128一致、復帰後のCode 128、タップfocus、権限の拒否・恒久拒否・再許可、ガイド枠内外の読取境界、無関係QR拒否、不一致の表示・音・振動・非加算をユーザーが承認 |
 | BLE | SDK非依存の安全コア（command直列化、全設定snapshot、復元前Ready禁止、known-device store、再接続予算）、公式SDK adapter、公式native通知parser、工程別symbology制限（QR待機はQRのみ、Code 128待機はCode 128のみ）、照明の接続時OFF適用、読取チューニング（差分時のみ書込・readback確認）、診断ログの共有・保存、R8 vendor-log除去。Pixel 7 / BCST-36では検索・接続・fresh readback、QR→Code 128一致、背景復元、QR待機中のapp force-stop後の自動再接続、手動切断後の工程保持と再接続、電源OFF→ONの自動再接続、通常終了・手動切断・電源再起動後の開始前設定との一致（独立probe）、照明の初期OFFと手動ON/OFFをユーザーが承認。2026-09-05に`release` APKでBCST-36と接続し、QR→Code 128の照合完了をユーザーが確認（#56）。2026-09-06にPixel 7で読取チューニング「適用済み」と赤光約4秒、診断ログの共有・保存をユーザーが確認 |
-| Privacy / release | Manifest、backup/D2D除外規則、専用FileProvider、`test-release-hardening.sh` / `verify-release-hardening.sh` / `verify-release-scanner-apk.sh`によるsource/APK/AAB/依存グラフ検査（Fake・analytics・INTERNET・legacy Bluetooth・位置情報の不在、`:scanner:inateck`とarm64 native libraryの同梱、vendor raw-log除去、ML Kit registrar保持）。Pixel 7のnetstatsで当該UIDの通信量エントリなし |
+| Privacy / release | Manifest、backup/D2D除外規則、専用FileProvider、`verify-release-hardening.sh`によるAPK/依存グラフ/source検査（Fake・analytics・INTERNET・legacy Bluetooth・位置情報の不在、`:scanner:inateck`とarm64 native libraryの同梱、vendor raw-log除去、ML Kit registrar保持）。Pixel 7のnetstatsで当該UIDの通信量エントリなし |
 
 個別の端末・commit・ユーザー承認と自動確認の区別は、[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)の実施記録、Issue #19 / #23 / #56、および本ページ末尾の履歴を参照してください。
 
@@ -44,26 +44,25 @@ ROIのclamp（#5）はiOSとAndroidでpolicyが異なるため`P`のまま、act
 
 ## 再現可能なチェック
 
-Androidプロジェクトで次を実行できます（`rg`、JDK 21、Android SDK 37が必要）。
+Androidプロジェクトで次を実行できます（JDK 21、Android SDK 37が必要）。
 
 ```sh
 cd android
 ./gradlew testDebugUnitTest lintDebug assembleDebug
 bash scripts/run-connected-tests.sh
 bash scripts/setup-inateck-sdk.sh
-./gradlew assembleRelease bundleRelease
+./gradlew :app:assembleRelease
 ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > /tmp/codematch-release-dependencies.txt
-bash scripts/test-release-hardening.sh
-bash scripts/verify-release-scanner-apk.sh
-bash scripts/verify-release-hardening.sh \
-  --apk app/build/outputs/apk/release/app-release.apk \
-  --aab app/build/outputs/bundle/release/app-release.aab \
-  --dependency-report /tmp/codematch-release-dependencies.txt
+bash scripts/verify-release-hardening.sh --dependency-report /tmp/codematch-release-dependencies.txt
 ```
 
 JDK/SDKがない環境ではGradle結果を推測せず、実行不能として記録します。エミュレーター・CIのinstrumentation成功は、カメラの実読取やBLE通信の実機成功を意味しません。
 
 ## 履歴
+
+### 2026-09-06 テスト・CIの整理
+
+開発経緯で残っていた検証基盤のうち、製品の振る舞いを検査していないものを削除した。SDK調査用の`tools/sdk-probe`・`tools/sdk-fault-probe`と`scanner:inateck`のdebug専用fault decorator、CIで実行されない`scanner:inateck`のandroidTest（物理scanner・native command gate）、OS force-stop用の別application ID runner（`run-process-recovery-tests.sh`）とそのguard test、AAB言語配信の`BundleLanguageVerifier`（配付はAPKのみ）、checker自身のmeta test（`test-release-hardening.sh`）、lintの`MissingTranslation`と重複していた`LocaleResourceParityTest`を廃止した。release検証は`verify-release-hardening.sh`一本（APK・依存グラフ・source）に統合し、`verify-release-scanner-apk.sh`を吸収した。Android CIは`android/**`と`shared/**`の変更時だけ実行し、emulatorはPixel 7と同じAPI 36のみとした。JVM test 375件、release APK検査、Pixel 7でのlibrary module instrumentation、iOS unit 87件・device buildで確認した。
 
 以下は各時点の記述をそのまま残した記録です。「未完了」「実機ゲートに残す」「非配付`scannerPoc`」などの表現は当時のものであり、現在の扱いは上記「運用形態」「打ち切った確認項目」が優先します。
 

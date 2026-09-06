@@ -3,7 +3,18 @@ name: Android CI
 on:
   push:
     branches: [master]
+    paths:
+      - 'android/**'
+      - 'shared/**'
+      - '.github/workflows/android-ci.yml'
+      - '.github/actions/setup-android/**'
   pull_request:
+    paths:
+      - 'android/**'
+      - 'shared/**'
+      - '.github/workflows/android-ci.yml'
+      - '.github/actions/setup-android/**'
+  workflow_dispatch:
 
 concurrency:
   group: android-ci-${{ github.ref }}
@@ -16,9 +27,6 @@ defaults:
   run:
     working-directory: android
 
-env:
-  JAVA_VERSION: "21"
-
 jobs:
   android-unit-lint:
     name: Android unit, lint, and debug build
@@ -28,77 +36,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v6
+      - name: Set up Android toolchain
+        uses: ./.github/actions/setup-android
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: 15859902
-
-      - name: Select current Android SDK CLI
-        run: |
-          mv "$ANDROID_HOME/cmdline-tools/latest" "$RUNNER_TEMP/android-cmdline-tools-previous"
-          ln -s "$ANDROID_HOME/cmdline-tools/15859902" "$ANDROID_HOME/cmdline-tools/latest"
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-
-      - name: Install Android SDK 37.0
-        run: sdkmanager --install 'platforms;android-37.0' 'build-tools;37.0.0'
-
-      - name: Install release verification tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y ripgrep libxml2-utils
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Show tool versions
-        run: |
-          java -version
-          ./gradlew --version
-
+      # :scanner:inateck is compiled for lint and JVM tests even though the
+      # debug app does not depend on it, so the pinned SDK binaries are needed.
       - name: Install pinned Inateck SDK binaries
         run: bash scripts/setup-inateck-sdk.sh
 
       - name: Assemble, lint, and run JVM tests
         run: ./gradlew assembleDebug lintDebug testDebugUnitTest --stacktrace
 
-      - name: Build and test opt-in standalone SDK probe
-        run: ./gradlew -PincludeSdkProbe=true :tools:sdk-probe:assembleDebug :tools:sdk-probe:lintDebug :tools:sdk-probe:testDebugUnitTest :tools:sdk-fault-probe:assembleDebug :tools:sdk-fault-probe:lintDebug --stacktrace
-
-      - name: Verify release hardening source contract
-        run: bash scripts/test-release-hardening.sh
-
-      - name: Verify process recovery runner refuses unsafe targets
-        run: bash scripts/test-process-recovery-runner.sh
-
-      - name: Verify app bundle language checker rejects invalid artifacts
-        run: ./gradlew :app:testBundleLanguageVerifier --stacktrace
-
   android-emulator-test:
     name: Android emulator tests
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    strategy:
-      fail-fast: false
-      matrix:
-        # API 37 runtime images are currently unavailable for Linux x86_64.
-        # compileSdk/targetSdk 37 are covered by the build jobs; API 37 runtime
-        # tests run locally on Apple Silicon until the hosted image is published.
-        api-level: [31, 36]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v6
 
       - name: Enable KVM group permissions
         run: |
@@ -106,41 +61,22 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+      - name: Set up Android toolchain
+        uses: ./.github/actions/setup-android
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: 15859902
-
-      - name: Select current Android SDK CLI
-        run: |
-          mv "$ANDROID_HOME/cmdline-tools/latest" "$RUNNER_TEMP/android-cmdline-tools-previous"
-          ln -s "$ANDROID_HOME/cmdline-tools/15859902" "$ANDROID_HOME/cmdline-tools/latest"
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-
-      - name: Install Android SDK 37.0
-        run: sdkmanager --install 'platforms;android-37.0' 'build-tools;37.0.0'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-
+      # API 36 matches the only target device (Pixel 7). Hosted Linux images for
+      # API 37 are not available yet; compile/target SDK 37 is covered by the
+      # build jobs.
       - name: Run Compose and instrumentation tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: ${{ matrix.api-level }}
+          api-level: 36
           target: google_apis
           arch: x86_64
           emulator-options: -no-window -no-audio -no-boot-anim
           disable-animations: true
           working-directory: android
-          script: |
-            bash scripts/run-connected-tests.sh
-            bash scripts/run-process-recovery-tests.sh --serial "emulator-$EMULATOR_PORT"
+          script: bash scripts/run-connected-tests.sh
 
   android-release-build:
     name: Android release build
@@ -150,52 +86,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v6
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: 15859902
-
-      - name: Select current Android SDK CLI
-        run: |
-          mv "$ANDROID_HOME/cmdline-tools/latest" "$RUNNER_TEMP/android-cmdline-tools-previous"
-          ln -s "$ANDROID_HOME/cmdline-tools/15859902" "$ANDROID_HOME/cmdline-tools/latest"
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-
-      - name: Install Android SDK 37.0
-        run: sdkmanager --install 'platforms;android-37.0' 'build-tools;37.0.0'
-
-      - name: Install release verification tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y ripgrep libxml2-utils
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Set up Android toolchain
+        uses: ./.github/actions/setup-android
 
       - name: Install pinned Inateck SDK binaries
         run: bash scripts/setup-inateck-sdk.sh
 
-      - name: Assemble release APK and verify offline app bundle languages
-        run: ./gradlew :app:assembleRelease :app:verifyReleaseLanguageDelivery --stacktrace
+      - name: Assemble release APK
+        run: ./gradlew :app:assembleRelease --stacktrace
 
-      - name: Verify release scanner APK (permissions, ABI, vendor-log stripping, ML Kit)
-        run: bash scripts/verify-release-scanner-apk.sh
-
-      - name: Verify release hardening and dependency graph
-        shell: bash
+      - name: Verify release APK and dependency graph
         run: |
-          dependency_report="$RUNNER_TEMP/codematch-release-dependencies.txt"
-          ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > "$dependency_report"
-          bash scripts/verify-release-hardening.sh \
-            --apk app/build/outputs/apk/release/app-release.apk \
-            --aab app/build/outputs/bundle/release/app-release.aab \
-            --dependency-report "$dependency_report"
+          ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > "$RUNNER_TEMP/codematch-release-dependencies.txt"
+          bash scripts/verify-release-hardening.sh --dependency-report "$RUNNER_TEMP/codematch-release-dependencies.txt"

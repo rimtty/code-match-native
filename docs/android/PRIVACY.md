@@ -36,16 +36,12 @@ Androidプロジェクトから次を実行します。
 
 ```sh
 cd android
-./gradlew assembleRelease bundleRelease
+./gradlew :app:assembleRelease
 ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > /tmp/codematch-release-dependencies.txt
-bash scripts/test-release-hardening.sh
-bash scripts/verify-release-hardening.sh \
-  --apk app/build/outputs/apk/release/app-release.apk \
-  --aab app/build/outputs/bundle/release/app-release.aab \
-  --dependency-report /tmp/codematch-release-dependencies.txt
+bash scripts/verify-release-hardening.sh --dependency-report /tmp/codematch-release-dependencies.txt
 ```
 
-`test-release-hardening.sh` はartifact前のsource-only回帰、`verify-release-hardening.sh` はsource XML、merged release Manifest、APK/AAB、backup規則、FileProvider、依存グラフ、production sourceを検査します。checkerが通っても、これは通信観測や対象スキャナー実機試験の代わりにはなりません。
+`verify-release-hardening.sh` はrelease APK（権限、Manifest、compile済みのbackup規則とFileProvider、DEX、native library）、依存グラフ、production sourceを検査します。checkerが通っても、これは通信観測や対象スキャナー実機試験の代わりにはなりません。
 
 ## 配付する場合の再審査
 

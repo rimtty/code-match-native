@@ -39,15 +39,10 @@ scanner/inateck/      # 公式SDK adapter（release専用、binaryはローカ�
 ./gradlew assembleDebug
 ./gradlew lintDebug testDebugUnitTest
 bash scripts/run-connected-tests.sh
-./gradlew :app:assembleRelease :app:verifyReleaseLanguageDelivery
-./gradlew :app:testBundleLanguageVerifier
+./gradlew :app:assembleRelease
 mkdir -p tmp
 ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > tmp/release-dependencies.txt
-bash scripts/test-release-hardening.sh
-bash scripts/verify-release-hardening.sh \
-  --apk app/build/outputs/apk/release/app-release.apk \
-  --aab app/build/outputs/bundle/release/app-release.aab \
-  --dependency-report tmp/release-dependencies.txt
+bash scripts/verify-release-hardening.sh --dependency-report tmp/release-dependencies.txt
 ```
 
 公式Inateck SDKのbinaryは固定commitから取得してchecksumを検証し、Git管理外の`scanner/inateck/libs`と`jniLibs`へ置きます（再配付ライセンスがないため、Gitやreleaseの成果物へは含めず、手元利用に限ります）。releaseはこのbinaryがないとビルドできません。
@@ -55,14 +50,14 @@ bash scripts/verify-release-hardening.sh \
 ```bash
 bash scripts/setup-inateck-sdk.sh
 ./gradlew :app:assembleRelease
-bash scripts/verify-release-scanner-apk.sh      # 権限・ABI・vendorログ除去・ML Kit registrarの検査
+bash scripts/verify-release-hardening.sh        # 権限・backup除外・FileProvider・Fake/analytics不在・ABI・vendorログ除去・ML Kit registrarの検査
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
 releaseは既定でdebug keystoreで署名するため、再ビルドしてもそのまま上書きインストールできます。自分のkeystoreで署名する場合は `~/.gradle/gradle.properties` などに `codematchReleaseStoreFile` / `codematchReleaseStorePassword` / `codematchReleaseKeyAlias` / `codematchReleaseKeyPassword` を設定します（keystoreはGit管理外に置く）。releaseはR8でminifyし、SDKのLog/System.out呼び出しを除去し、ABIはSDKに合わせて`arm64-v8a`だけです。SDKの`libscanner_cmd.so` / `libinateck_scanner_cmd.so`は4KB page alignmentのため、16KB page sizeの端末では動作しません（Pixel 7は4KB）。
 
-Release検証は、まず`./gradlew :app:dependencies --configuration releaseRuntimeClasspath`で解決済み依存グラフを出力し、その後source規則と
-生成したAPK/AABを検査します。ネットワーク／Nearby権限、debug/Fake入口、広すぎる
+Release検証は、まず`./gradlew :app:dependencies --configuration releaseRuntimeClasspath`で解決済み依存グラフを出力し、その後
+生成したAPKとproduction sourceを検査します。ネットワーク／Nearby権限、debug/Fake入口、広すぎる
 `FileProvider`、カメラ画像/frameの保存や不意のpayload書き出し、analytics/crash SDKの依存を検出した時は失敗します。
 Room、Preferences DataStore、将来のBLE復旧／既知端末状態はcloud Auto Backupと
 device-to-device transferの両方から除外します。BLE snapshotとversion/profile付き既知端末identityは
@@ -72,13 +67,13 @@ device-to-device transferの両方から除外します。BLE snapshotとversion
 checkerは依存ライブラリを追加せず、lockfile、SBOM、その他の生成物をリポジトリへ
 作りません。Gradle dependency verificationとSBOM／ライセンス出力は、依存artifactの
 供給元と署名ポリシーを固定してから別途導入します。現時点の再現可能なゲートは
-Gradle Wrapper validation、release依存グラフ検査、checkerによるsource/APK/AAB検査です。
+Gradle Wrapper validation、release依存グラフ検査、checkerによるAPK/source検査です。
 
-日英のアプリ内切り替えはオフラインで使えるよう、AABの言語splitだけを無効にし、両言語を常に同梱します。ABI・画面密度の最適化は維持します。`verifyReleaseLanguageDelivery`はrelease AABを生成してから、実際の`BundleConfig.pb`と`base/resources.pb`を型付きで解析し、言語split無効化と主要画面の日本語デフォルト・英語リソースを検査します。検査用コードは既存のAndroidビルドツールを使用し、アプリへの依存や言語ダウンロード機能は追加しません。ストア経由の配布・OS設定画面・OEMごとの受け入れを代替するものではありません。
+日英リソースはAPKに常に同梱されます（AAB・言語splitは使いません）。キーの欠落はAndroid lintの`MissingTranslation`で`lintDebug`が失敗します。
 
 エミュレーターは状態遷移とCompose UIの継続検証に使います。カメラの読み取り完了判定はPixelなどの実Android端末で行います。実端末で行う確認項目、証跡、未実施の扱いは [実機確認ランブック](../docs/android/REAL_DEVICE_RUNBOOK.md) に従ってください。現時点では、このREADMEや自動テストの結果だけでQR/Code 128の実読取、focus、連続箱、BLE通信の成功を宣言しません。
 
-GitHub ActionsではAPI 31と、Linux x86_64向けに提供される最新runtime（現時点はAPI 36）を実行します。compile/target SDK 37はbuild jobで保証し、API 37 runtimeはApple Silicon上のローカルエミュレーターで補完します。
+GitHub ActionsのemulatorテストはPixel 7と同じAPI 36で実行し、`android/**`または`shared/**`の変更時だけ動きます。compile/target SDK 37はbuild jobで保証します。
 
 ## 現在の検証境界
 

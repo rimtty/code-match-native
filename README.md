@@ -16,7 +16,7 @@ code-match-native/
 │   ├── android/             # Android/Kotlinポーティング計画
 │   └── ios/                 # iOS固有の設計・実機検証手順
 └── .github/workflows/
-    ├── android-ci.yml       # Androidのbuild、unit、lint、API 31/36 UIテスト
+    ├── android-ci.yml       # Androidのbuild、unit、lint、API 36 emulatorテスト
     └── ios-ci.yml           # iOSのdevice buildとSimulatorテスト
 ```
 

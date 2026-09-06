@@ -43,21 +43,9 @@ bash scripts/run-connected-tests.sh
 
 これは実際の保存先や共有先アプリの受け入れを意味しません。最終実機確認では、1件と複数ページになる履歴について保存先を選び、保存したPDFを端末のviewerで開き、共有シートから少なくとも1つの受け取り先へ渡せることを確認します。履歴内容やpayloadをスクリーンショット・外部ログへ残さず、検証用データだけを使用してください。
 
-### エミュレーター限定のOS強制停止・復元検査
+### 通常debugアプリでのinstrumentation
 
-通常のdebugアプリは製品と同じapplication IDを使うため、業務端末で既定Room/DataStoreを消去するテストを実行してはいけません。OS強制停止の自動検査には次の専用runnerを使います。
-
-```sh
-cd android
-bash scripts/test-process-recovery-runner.sh
-bash scripts/run-process-recovery-tests.sh --serial emulator-5554
-```
-
-runnerは明示した`emulator-N`が実際にemulatorであることと、recovery app/test packageが未インストールであることを確認し、`-PcodematchProcessRecoveryTests=true`でビルドした`jp.rimtty.codematch.recoverytest`と対応test APKだけをインストールします。既存のrecovery packageがあればデータを消去せず拒否します。APKのpackageとinstrumentationの対象packageも完全一致で検査します。物理USB端末、対象未指定、通常debug/release/PoC APKは拒否します。通常ビルドにはこの専用test sourceを含めません。
-
-QR待機・Code 128待機・一致結果の各checkpointを合成データで準備し、起動中の対象PIDを確認してOSの`am force-stop`で停止、PID消失後に別のinstrumentationで新しいアプリprocessから復元を検査します。既存active sessionがあれば上書きせず失敗し、後始末は作成したsession IDだけに限定します。`pm clear`や通常アプリの削除は行いません。読み取り専用モードまたは破棄可能なemulatorを推奨します。専用debug manifest overlayはCAMERA権限を除去し、runnerも最終APKにCAMERA権限があれば拒否するため、実撮影やOSバージョン依存の権限flag操作は行いません。
-
-これはemulatorでのOS process境界の証拠であり、Pixel/Samsungの実操作、省電力制御、実カメラ、対象BLE scannerの接続・設定復元を代替しません。実機受入は後続の各ゲートで別途記録してください。
+通常のdebugアプリは製品と同じapplication IDを使うため、業務端末で`:app:connectedDebugAndroidTest`を実行すると既定のRoom/DataStoreが消去されます。実機ではlibrary module（`feature:*`、`core:*`、`scanner:camera`、`scanner:ble`）のテストだけを実行し、`:app`のinstrumentationはCIのemulatorに任せます。scan checkpointの復元はRoom/DataStore再オープンと`ScanViewModel`再生成で自動検査済みで、OS force-stopを伴う専用runnerは廃止しました。
 
 ## 2. カメラ受け入れゲート（M3）
 
@@ -108,14 +96,9 @@ Compose側には、主要画面のsemanticsと最小タッチ領域、履歴のc
 実機確認用debug APKと配布候補release artifactを混同しないでください。release検証は端末へインストールする前に行います。
 
 ```sh
-./gradlew assembleRelease bundleRelease
+./gradlew :app:assembleRelease
 ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > /tmp/codematch-release-dependencies.txt
-bash scripts/test-release-hardening.sh
-bash scripts/verify-release-hardening.sh \
-  --apk app/build/outputs/apk/release/app-release.apk \
-  --aab app/build/outputs/bundle/release/app-release.aab \
-  --dependency-report /tmp/codematch-release-dependencies.txt
-bash scripts/verify-release-scanner-apk.sh
+bash scripts/verify-release-hardening.sh --dependency-report /tmp/codematch-release-dependencies.txt
 ```
 
 確認する境界は次のとおりです。
@@ -136,7 +119,7 @@ checker通過は静的・artifact証拠です。パケット監査による無�
 cd android
 bash scripts/setup-inateck-sdk.sh
 ./gradlew :app:assembleRelease
-bash scripts/verify-release-scanner-apk.sh
+bash scripts/verify-release-hardening.sh
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
