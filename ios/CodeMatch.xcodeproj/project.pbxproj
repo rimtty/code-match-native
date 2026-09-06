@@ -19,6 +19,12 @@
 		A10000000000000000000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* Assets.xcassets */; };
 		A1000000000000000000000A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* PrivacyInfo.xcprivacy */; };
 		A1000000000000000000000B /* CodeMatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* CodeMatcherTests.swift */; };
+		A10000000000000000000101 /* CameraPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000101 /* CameraPreviewTests.swift */; };
+		A10000000000000000000102 /* AppLanguageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000102 /* AppLanguageTests.swift */; };
+		A10000000000000000000103 /* AutoAdvanceSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000103 /* AutoAdvanceSettingsTests.swift */; };
+		A10000000000000000000104 /* BluetoothScannerServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000104 /* BluetoothScannerServiceTests.swift */; };
+		A10000000000000000000105 /* BluetoothScannerFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000105 /* BluetoothScannerFlowTests.swift */; };
+		A10000000000000000000106 /* HistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000106 /* HistoryStoreTests.swift */; };
 		A1000000000000000000000C /* CodeMatchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* CodeMatchUITests.swift */; };
 		A1000000000000000000000D /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* RootTabView.swift */; };
 		A1000000000000000000000E /* HistoryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* HistoryModels.swift */; };
@@ -65,6 +71,12 @@
 		A2000000000000000000000A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A2000000000000000000000B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A2000000000000000000000C /* CodeMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeMatcherTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000101 /* CameraPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000102 /* AppLanguageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguageTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000103 /* AutoAdvanceSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoAdvanceSettingsTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000104 /* BluetoothScannerServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothScannerServiceTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000105 /* BluetoothScannerFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothScannerFlowTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000106 /* HistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStoreTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000000D /* CodeMatchUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeMatchUITests.swift; sourceTree = "<group>"; };
 		A20000000000000000000010 /* CodeMatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CodeMatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000011 /* CodeMatchTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CodeMatchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -208,6 +220,12 @@
 			isa = PBXGroup;
 			children = (
 				A2000000000000000000000C /* CodeMatcherTests.swift */,
+				A20000000000000000000101 /* CameraPreviewTests.swift */,
+				A20000000000000000000102 /* AppLanguageTests.swift */,
+				A20000000000000000000103 /* AutoAdvanceSettingsTests.swift */,
+				A20000000000000000000104 /* BluetoothScannerServiceTests.swift */,
+				A20000000000000000000105 /* BluetoothScannerFlowTests.swift */,
+				A20000000000000000000106 /* HistoryStoreTests.swift */,
 			);
 			path = CodeMatchTests;
 			sourceTree = "<group>";
@@ -426,6 +444,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1000000000000000000000B /* CodeMatcherTests.swift in Sources */,
+				A10000000000000000000101 /* CameraPreviewTests.swift in Sources */,
+				A10000000000000000000102 /* AppLanguageTests.swift in Sources */,
+				A10000000000000000000103 /* AutoAdvanceSettingsTests.swift in Sources */,
+				A10000000000000000000104 /* BluetoothScannerServiceTests.swift in Sources */,
+				A10000000000000000000105 /* BluetoothScannerFlowTests.swift in Sources */,
+				A10000000000000000000106 /* HistoryStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

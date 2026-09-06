@@ -8,7 +8,6 @@ android {
 
     defaultConfig {
         minSdk = 31
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
     }
 
@@ -56,7 +55,4 @@ dependencies {
     implementation(files("libs/jna-min.jar"))
 
     testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.core.ktx)
-    androidTestImplementation(libs.androidx.test.ext.junit)
-    androidTestImplementation(libs.androidx.test.runner)
 }

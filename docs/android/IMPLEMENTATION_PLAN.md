@@ -394,9 +394,9 @@ iOSで観測した`FF00`/`FF01`〜`FF05`やJSON形式は調査の手掛かりに
 - PDFはユーザーが保存・共有した時だけアプリ領域外へ出す。
 - FileProviderは専用cache subdirectoryだけを公開し、一時読み取り権限に限定する。
 - release buildでdebug/Fake scannerの入口を含めない。
-- `android/scripts/verify-release-hardening.sh`で、source XML、merged release manifest、APK/AABのpermission/debug/Fake/FileProvider、依存グラフ、production sourceのカメラ画像/frame保存や不意のpayload書き出し・analytics/crash参照を機械検査する。`test-release-hardening.sh`はartifact前の再利用可能なsource-only回帰テストとする。
+- `android/scripts/verify-release-hardening.sh`で、release APKのpermission/debug/Fake/FileProvider/backup規則/DEX/native library、依存グラフ、production sourceのカメラ画像/frame保存や不意のpayload書き出し・analytics/crash参照を機械検査する。
 
-Gradle dependency verificationとSBOM/ライセンス出力は、現行のVersion Catalog・Gradle Wrapper・CIキャッシュと署名済みartifactの供給元を固定できるまで導入しない。lockfileや巨大な生成物を追加せず、現段階ではWrapper validation、releaseRuntimeClasspathの保存検査、checkerのsource/APK/AAB検査を再現可能なゲートとして先行する。依存verification/SBOMは供給元・検証メタデータ・ライセンスの運用方針が決まった時点で別変更として追加する。
+Gradle dependency verificationとSBOM/ライセンス出力は、現行のVersion Catalog・Gradle Wrapper・CIキャッシュと署名済みartifactの供給元を固定できるまで導入しない。lockfileや巨大な生成物を追加せず、現段階ではWrapper validation、releaseRuntimeClasspathの保存検査、checkerのAPK/source検査を再現可能なゲートとして先行する。依存verification/SBOMは供給元・検証メタデータ・ライセンスの運用方針が決まった時点で別変更として追加する。
 
 ## 12. テスト戦略
 
@@ -437,7 +437,7 @@ Swift版の5本のUIテストを少なくとも次のシナリオへ対応させ
 
 ### 12.4 実機
 
-- エミュレーターはCIの継続証拠とし、API 31（対応下限）とGitHub Linux x86_64で提供される最新runtime（現時点はAPI 36）の両方で主要フローを確認する。compile/target SDK 37はbuild jobで保証し、API 37 runtimeは提供済みのApple Silicon用imageをローカルで確認する。カメラ完了判定は実Android端末で行う。
+- エミュレーターはCIの継続証拠とし、Pixel 7と同じAPI 36で主要フローを確認する。compile/target SDK 37はbuild jobで保証する。カメラ完了判定は実Android端末で行う。
 - Pixel 7（Android 16 / API 36）または同等の実Android端末でCameraX/ML Kit、タップフォーカス、回転、背景復帰、音・触覚を確認し、実施端末と結果を記録する。未接続時は未実施とする。
 - Samsung系のカメラと省電力/OEM差はIssue #57で対象外（打ち切り）。
 - BLE完了判定は対象scanner実機なしでは行わない。Pixel 7 / BCST-36での受入範囲と打ち切り項目は[`STATUS.md`](STATUS.md)。
@@ -457,15 +457,14 @@ Swift版の5本のUIテストを少なくとも次のシナリオへ対応させ
    - `testDebugUnitTest`
    - 共通fixtureのSwift/Kotlin期待値一致
 2. `android-emulator-test`
-   - API 31とhosted Linuxで利用可能な最新runtime（現時点はAPI 36）を固定し、下限互換性と直近runtime互換性を確認
-   - compile/target SDK 37はbuild job、API 37 runtimeはローカルApple Silicon emulatorで補完
+   - Pixel 7と同じAPI 36を固定
+   - compile/target SDK 37はbuild jobで保証
    - `connectedDebugAndroidTest`
    - Compose UI testとRoom migration test
 3. `android-release-build`
    - Fake scannerがrelease dependency graphへ入っていないこと
-   - `assembleRelease`と`bundleRelease`
-   - `scripts/verify-release-hardening.sh`でrelease APK/AABと`releaseRuntimeClasspath`を検査し、現段階のネットワーク/Nearby権限、debug/Fake入口、広すぎるFileProvider、画像/frame/payload保存、analytics/crash依存を拒否（releaseは`BLUETOOTH_SCAN`/`BLUETOOTH_CONNECT`だけを許可し、`:scanner:inateck`とarm64 native libraryの同梱を必須とする）
-   - `scripts/test-release-hardening.sh`でartifact前のsource-only規則（backup参照、FileProvider参照、allowBackup、Nearby権限）を回帰検査
+   - `assembleRelease`
+   - `scripts/verify-release-hardening.sh`でrelease APKと`releaseRuntimeClasspath`を検査し、現段階のネットワーク/Nearby権限、debug/Fake入口、広すぎるFileProvider、画像/frame/payload保存、analytics/crash依存を拒否（releaseは`BLUETOOTH_SCAN`/`BLUETOOTH_CONNECT`だけを許可し、`:scanner:inateck`とarm64 native libraryの同梱を必須とする）
 
 Gradle cache key、workflow concurrency、artifact名は`android-` prefixとし、`ios-ci.yml`と相互にcancelしない。
 
@@ -496,7 +495,7 @@ BLE以外は約31〜49人日、BLEはSDKとfirmwareの不確実性を除き約8�
 - Swift版のmatcher/parser 14テスト意図をKotlin testへ対応付ける
 - `core:matching`のproduction sourceに`android.*` / `androidx.*` importがなく、local JVM testで完走する
 
-実装とテスト資産は存在する。Gradle、Lint、instrumentationの結果は実行時のログまたはPRへ紐付ける。API 31/36のhosted CI結果、Swift/Kotlin fixture parityの同一PR実行結果を確認するまでは、この記述だけでM1のCI完了とは扱わない。
+実装とテスト資産は存在する。Gradle、Lint、instrumentationの結果は実行時のログまたはPRへ紐付ける。API 36のhosted CI結果、Swift/Kotlin fixture parityの同一PR実行結果を確認するまでは、この記述だけでM1のCI完了とは扱わない。
 
 ### M2: UI parity on Fake
 
@@ -506,7 +505,7 @@ BLE以外は約31〜49人日、BLEはSDKとfirmwareの不確実性を除き約8�
 
 M2のCompose/Fake実装、日英リソース、Room/DataStore、PDF、音・触覚、release Fake境界はこのcheckoutに含まれる。app E2Eでは0件破棄、履歴名称変更・詳細・削除、履歴選択のActivity再生成/画面往復/back stackを確認し、PDFは複数ページ実renderとSAF/FileProvider契約、一般化した失敗通知と再試行を自動検査する。scan checkpointはRoom schema v2で工程、受理済み値、結果、件数、入力元を保持し、MATCH記録と同一transactionで更新する。`core:data`のinstrumentationはテスト専用ランダムDBを各段階で閉じて再オープンし、active sessionとWAITING QR、WAITING Code 128、RESULTのcheckpoint、全設定値と言語が復元されることを検査する。さらにapp-level instrumentationはUUID付きの分離Room/DataStoreを使い、公開UI actionからWAITING Code 128を保存してDB再オープン後の新しい`ScanViewModel`へ復元し、MATCH済みRESULTが履歴entryを二重登録しないことを検査する。これらは永続ストレージとapp復元契約の証拠であり、OSのforce-stop/process kill後のアプリ再起動を実行した証拠ではない。320dp/840dpとfont scale 1.3/2.0の主要操作到達、実`LocaleManager`を使うper-app language双方向同期/no-loop、予測型「戻る」の完了・無効・cancel境界も自動化した。ローカル `origin/master` に見えるPR #14を含むM2 merge commitと、現在のM3/M4開発ブランチの結果を混同しない。実端末でのOS process kill/relaunch、OS設定画面からの言語変更、予測型「戻る」の視覚遷移、実DocumentProvider/共有先、TalkBack、Switch Access、複数OEMの人手確認は[`REAL_DEVICE_RUNBOOK.md`](REAL_DEVICE_RUNBOOK.md)の未完了ゲートとして残る。
 
-追加のOS process証拠: `run-process-recovery-tests.sh`は通常アプリと別application IDのopt-in testを使い、QR待機・Code 128待機・一致結果を永続化→実アプリPIDの確認→OS force-stop→PID消失→新しいApplication/MainActivityで復元、の3ケースを検査する。2026-09-04、API 37.1のread-only emulatorで全3ケース（seed/verify計6回）が成功し、全設定値/英語UI、受理済み値/件数、一致entryの非二重登録、countdown非再開を確認した。CIはAPI 31/36でも実行する。物理端末や既存recovery packageはrunnerで拒否し、通常データをclearしない。これは完了済み書込からの論理工程復元であり、書込途中の中断・実カメラ/BLE・OEM制御のゲートは閉じない。
+OS force-stopを伴う専用runner（`run-process-recovery-tests.sh`、別application IDのopt-in test）は2026-09-04にAPI 37.1 emulatorで3ケース成功したのち、checkpoint復元が`ScanViewModelCheckpointInstrumentationTest`と`core:data`の再オープンtestで固定されていることを理由に2026-09-06に廃止した。
 
 ### M3: Camera production ready
 

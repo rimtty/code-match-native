@@ -27,11 +27,11 @@ The cross-platform behavior contract lives in [docs/PRODUCT_SPEC.md](docs/PRODUC
 ## Repository layout
 
 - `ios/`: Xcode project, Swift sources, tests, Inateck iOS SDK bootstrap (`scripts/bootstrap_inateck_sdk.sh`, output in git-ignored `ios/Vendor/`), TestFlight tooling.
-- `android/`: Gradle project — `app`, `core/{model,matching,designsystem,data,export}`, `feature/{scan,history,settings}`, `scanner/{api,camera,fake,ble,inateck}`, `tools/{sdk-probe,sdk-fault-probe}`, `scripts/`.
+- `android/`: Gradle project — `app`, `core/{model,matching,designsystem,data,export}`, `feature/{scan,history,settings}`, `scanner/{api,camera,fake,ble,inateck}`, `scripts/`.
 - `shared/test-fixtures/`: platform-neutral matching cases (`matching-cases.json`) and printable scan images. Keep this free of Swift/Kotlin production code.
 - `shared/tools/generate_test_codes.swift`: regenerates the fixture images.
 - `docs/`: `PRODUCT_SPEC.md`, `ios/`, `android/`.
-- `.github/workflows/`: `ios-ci.yml` (device build + simulator tests) and `android-ci.yml` (unit/lint/build + emulator tests on API 31 and 36).
+- `.github/workflows/`: `ios-ci.yml` (device build + simulator tests) and `android-ci.yml` (unit/lint/build, emulator tests on API 36, release build + APK verification); both run only when their platform's paths change. Shared Android setup steps live in `.github/actions/setup-android`.
 
 ## Build & test
 
@@ -65,18 +65,18 @@ Run from `android/`. Needs JDK 21 (Android Studio's bundled JBR is fine) and And
 
 ```bash
 ./gradlew assembleDebug
-./gradlew lintDebug testDebugUnitTest          # JVM tests (~400)
+./gradlew lintDebug testDebugUnitTest          # JVM tests (~375)
 bash scripts/run-connected-tests.sh           # instrumentation on a connected device/emulator (~110)
 ./gradlew :app:assembleRelease
 bash scripts/setup-inateck-sdk.sh && ./gradlew :app:assembleRelease   # release bundles the official Inateck SDK (required binaries)
-bash scripts/verify-release-scanner-apk.sh                            # permissions, ABI, vendor-log stripping, ML Kit registrars
+bash scripts/verify-release-hardening.sh                              # release APK privacy/packaging gate (add --dependency-report for the graph check)
 ```
 
 Single JVM test: `./gradlew :core:matching:testDebugUnitTest --tests 'jp.rimtty.codematch.core.matching.CodeMatcherTest'`.
 
 The Inateck Android SDK has no redistribution license: `setup-inateck-sdk.sh` fetches pinned, checksum-verified binaries into git-ignored paths (`android/scanner/inateck/libs/*.jar`, `src/main/jniLibs/**`). Never commit them. Emulators have no usable camera or BLE; `scanner/fake` (`debugImplementation` only) drives the scan flow in debug builds and instrumentation tests.
 
-`scripts/verify-release-hardening.sh` / `test-release-hardening.sh` check the release APK/AAB for Fake entry points, forbidden permissions (INTERNET, legacy Bluetooth, location), analytics SDKs, and backup rules, and require the Inateck adapter and its arm64 native libraries to be present. Note the SDK's `.so` files are 4 KB page-aligned, so release does not run on 16 KB page-size devices (Pixel 7 is 4 KB).
+`scripts/verify-release-hardening.sh` is the single release gate: it inspects the release APK (forbidden permissions such as INTERNET, legacy Bluetooth, location; single exported MainActivity; backup/transfer exclusions and the scoped FileProvider in the compiled resources; no Fake or analytics classes; the Inateck adapter, its arm64 native libraries, stripped vendor logs, and ML Kit registrars in the DEX), the optional `releaseRuntimeClasspath` report, and production sources. No AAB is built or checked: the app is side-loaded as an APK only. Note the SDK's `.so` files are 4 KB page-aligned, so release does not run on 16 KB page-size devices (Pixel 7 is 4 KB).
 
 ## Architecture
 
@@ -109,7 +109,7 @@ Single `MainActivity` + Compose, Hilt DI, `NavigationSuiteScaffold` with three d
 - **`core/export`**: A4 multi-page PDF via `PdfDocument`; saved through `CreateDocument` and shared through a `FileProvider` limited to `cache/codematch-pdf/`.
 - **`scanner/api`**: `ExternalScanner` contract shared by camera/BLE/fake. **`scanner/camera`**: CameraX + bundled ML Kit, ROI limited to the on-screen guide (square for QR, wide for Code 128), only the format expected by the current step. **`scanner/ble`**: SDK-agnostic safety core — command queue, connection coordinator, per-step symbology restriction (QR step enables only flag 2022, Code 128 step only 2008, fresh readback required before Ready, full restore on session end/background), known-device store, reconnect budget. **`scanner/inateck`**: adapter over the official Inateck Android SDK 2.0.0 (`AndroidInateckSdkGateway`, native notification parser via JNA), illumination control (`lighting_lamp_control`, default 2 = always off on each connection, not restored on disconnect), and the connect-time tuning profile (`InateckTuningSettings`, applied after illumination settles, differences only, readback-confirmed). The BLE diagnostic log keeps 300 events; Settings can share it (ACTION_SEND text) or save it (SAF) via host-owned actions in `SettingsRoute`.
 - **DI per build type**: `app/src/debug` binds `FakeExternalScanner`; `app/src/release` binds `InateckExternalScanner` (`releaseImplementation(project(":scanner:inateck"))`). Release is minified (R8 strips the SDK's raw-payload logging via `app/scanner-rules.pro`), arm64-v8a only, and signed with the debug keystore unless `codematchRelease*` Gradle properties supply a local keystore. `app/src/release/AndroidManifest.xml` adds `BLUETOOTH_SCAN` (neverForLocation) / `BLUETOOTH_CONNECT` and removes the legacy permissions the SDK manifest brings in. `UnavailableExternalScanner` remains in `app/src/main` as a fallback type only.
-- **Strings**: `values/strings.xml` is Japanese (default), `values-en/` English; `LocaleResourceParityTest` in each feature module fails if a key is missing in either. In-app language and Android 13+ per-app locale are kept in sync by `AppLanguageSynchronizer`.
+- **Strings**: `values/strings.xml` is Japanese (default), `values-en/` English; Android lint's `MissingTranslation` check (run by `lintDebug`) fails the build if a key is missing in either. In-app language and Android 13+ per-app locale are kept in sync by `AppLanguageSynchronizer`.
 
 ## Conventions
 
