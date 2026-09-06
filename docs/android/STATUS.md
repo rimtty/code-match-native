@@ -15,9 +15,9 @@
 
 | 領域 | 確認済み（自動test・artifact検査・Pixel 7実機） |
 |---|---|
-| Domain / matching | 純Kotlin matcher/parser、shared fixture（`matching-cases.json`）、JVM test、Swift unit 71本/UI 5本との意図対応表（[`TEST_PARITY.md`](TEST_PARITY.md)） |
+| Domain / matching | 純Kotlin matcher/parser、仕向地判定（澤井製作所66桁 / モルテック61桁）と仕向地ごとのCode 128形式・箱固有キー、shared fixture（`matching-cases.json`、schemaVersion 2・35ケース・`destination`つき）、JVM test、Swiftの単体/UIテストとの意図対応表（[`TEST_PARITY.md`](TEST_PARITY.md)） |
 | UI / navigation | Composeの照合・履歴・設定、3 destination、system/predictive backの完了・無効・cancel境界、履歴選択のActivity再生成・destination往復・compact back stack、320dp/840dp・font scale 1.3/2.0の主要操作到達、動的案内・結果のpolite live region、emulatorでのQR待機・Code 128待機・一致結果のOS force-stop後UI復元。Pixel 7ではfont scale 1.3/2.0の主要表示・操作をユーザーが承認 |
-| History / settings / PDF | Room（schema v2）/DataStore、日英リソースとper-app locale双方向同期、0件破棄・名称変更・詳細・削除のapp E2E、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test。Pixel 7では日英切替、1ページ/複数ページPDFのDownloads保存と共有先での表示、音量0/通常音量の音・触覚をユーザーが承認 |
+| History / settings / PDF | Room（schema v3、セッションとcheckpointの仕向地列と`MIGRATION_2_3`を含む）/DataStore、日英リソースとper-app locale双方向同期、0件破棄・名称変更・詳細・削除のapp E2E、履歴詳細とPDFのモルテック項目（納品番号ごとの箱数・累計収容数と解析全項目）、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test。Pixel 7では日英切替、1ページ/複数ページPDFのDownloads保存と共有先での表示、音量0/通常音量の音・触覚をユーザーが承認 |
 | Camera | CameraX/ML Kit adapter、工程別ROI、権限・lifecycle・focus・format切替の非同期境界test。Pixel 7縦画面で実ラベルのQR→Code 128一致、復帰後のCode 128、タップfocus、権限の拒否・恒久拒否・再許可、ガイド枠内外の読取境界、無関係QR拒否、不一致の表示・音・振動・非加算をユーザーが承認 |
 | BLE | SDK非依存の安全コア（command直列化、全設定snapshot、復元前Ready禁止、known-device store、再接続予算）、公式SDK adapter、公式native通知parser、工程別symbology制限（QR待機はQRのみ、Code 128待機はCode 128のみ）、照明の接続時OFF適用、読取チューニング（差分時のみ書込・readback確認）、診断ログの共有・保存、R8 vendor-log除去。Pixel 7 / BCST-36では検索・接続・fresh readback、QR→Code 128一致、背景復元、QR待機中のapp force-stop後の自動再接続、手動切断後の工程保持と再接続、電源OFF→ONの自動再接続、通常終了・手動切断・電源再起動後の開始前設定との一致（独立probe）、照明の初期OFFと手動ON/OFFをユーザーが承認。2026-09-05に`release` APKでBCST-36と接続し、QR→Code 128の照合完了をユーザーが確認（#56）。2026-09-06にPixel 7で読取チューニング「適用済み」と赤光約4秒、診断ログの共有・保存をユーザーが確認 |
 | Privacy / release | Manifest、backup/D2D除外規則、専用FileProvider、`verify-release-hardening.sh`によるAPK/依存グラフ/source検査（Fake・analytics・INTERNET・legacy Bluetooth・位置情報の不在、`:scanner:inateck`とarm64 native libraryの同梱、vendor raw-log除去、ML Kit registrar保持）。Pixel 7のnetstatsで当該UIDの通信量エントリなし |
@@ -59,6 +59,18 @@ bash scripts/verify-release-hardening.sh --dependency-report /tmp/codematch-rele
 JDK/SDKがない環境ではGradle結果を推測せず、実行不能として記録します。エミュレーター・CIのinstrumentation成功は、カメラの実読取やBLE通信の実機成功を意味しません。
 
 ## 履歴
+
+### 2026-09-07 仕向地モルテック対応
+
+仕向地（澤井製作所 / モルテック）を照合の前提に加えた（Issue #84、子issue #85〜#92）。
+
+- 共通fixture `matching-cases.json` を schemaVersion 2・35ケースへ拡張し、各ケースへ`destination`を付けた。モルテックのQRは末尾空白を含む実測61桁レコードで、印刷用画像も `moltec-` の5点を追加した（PR #93）。
+- `core:model`に`Destination`、`core:matching`に`MoltecQrRecord`と仕向地判定（`detectDestination` / `expectedQrLength` / `canonicalQrPayload` / `boxIdentity`）を追加した。`TagBarcodeRecord.isValidScanPayload`は仕向地必須になり、モルテックでは`4-2-3`の品番も受理する。包含fallbackは削除し、どちらの様式としても解析できないQRは一致しない（PR #93）。
+- Room を v3 へ上げ、`sessions.destination`と`scan_checkpoints.destination`（いずれもnullable）と`MIGRATION_2_3`を追加した。`SessionDao.lockDestination`はnullのときだけ書くため、セッションの仕向地は一度決まると変わらない。checkpointの契約versionは1のまま（PR #94）。
+- 照合工程では最初に受理したQRで仕向地を固定し、別仕向地のQRを`InvalidScanReason.WRONG_DESTINATION`で拒否する。記録済みの箱（`recordedBoxes`）から重複（澤井製作所はQR、モルテックはQR＋Code 128）と、モルテックの納品番号ごとの箱数・累計収容数を算出する。解析できないQRの案内は、固定済みならそのレコード長、未固定なら57〜66の範囲で出し分ける（PR #96）。
+- 履歴詳細とPDFへ仕向地を出し、モルテックでは納品番号数、納品番号ごとの箱数・累計収容数、受注者・部品番号・納品番号・納入先・TYロケーション・供給先・収容数・納入指示日(JUMP)・時刻を表示する。澤井製作所の出力は変えていない（PR #98）。
+
+証跡: PR #93 / #94 / #96 / #98 の実行結果。JVM test 413件、instrumentation は Pixel 7 と CI emulator（API 36）で実行。iOS側は PR #93 / #95 / #97 / #99 が対応。実ラベル・実スキャナーによるモルテック照合の実機確認は未実施であり、この記述は自動testと成果物検査の範囲を示す。
 
 ### 2026-09-06 テスト・CIの整理
 
