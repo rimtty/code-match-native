@@ -360,7 +360,8 @@ final class ScannerViewModel: ObservableObject {
         cancelAutoAdvanceCountdown()
         guard !isEndingSession else { return }
         // アクティブセッションのidが残っているうちに記録する。
-        log("session_end")
+        // セッション系のイベントは工程を持たない（Android と同じ `none`）。
+        log("session_end", stepOverride: "none")
         isEndingSession = true
         scanLocked = true
         focusPoint = nil
@@ -840,14 +841,15 @@ final class ScannerViewModel: ObservableObject {
         barcode: String? = nil,
         code: String? = nil,
         boxNumber: Int? = nil,
-        message: String? = nil
+        message: String? = nil,
+        stepOverride: String? = nil
     ) {
         scanLog.record(
             ScanLogEvent(
                 at: Date(),
                 session: historyStore.activeSession?.id,
                 source: inputSource.scanLogValue,
-                step: step.scanLogValue,
+                step: stepOverride ?? step.scanLogValue,
                 event: event,
                 reason: reason,
                 destination: destination?.rawValue,

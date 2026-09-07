@@ -1575,7 +1575,7 @@ final class BluetoothScannerFlowTests: XCTestCase {
         let events = loggedEvents(context.scanLog)
         XCTAssertEqual(events.map(\.event), ["session_end"])
         XCTAssertEqual(events[0].session, sessionID)
-        XCTAssertEqual(events[0].step, "qr")
+        XCTAssertEqual(events[0].step, "none")
         XCTAssertEqual(events[0].source, "camera")
     }
 
