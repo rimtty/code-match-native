@@ -46,6 +46,12 @@ class ScanSessionCoordinatorTest {
         "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
     private val moltenShortPartBarcode = "PAF1-15-422@0NKD3C"
 
+    // Destination Denso, whose product tag prints a 6-4 part number. The QR's
+    // runs of spaces are blank item values.
+    private val densoQrPayload =
+        "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
+    private val densoBarcodePayload = "860150-7722@1DZ50O"
+
     @Test
     fun restartOnMatchKeepsResultAndCountThenManualNextResumesQr() {
         val scanner = TestScanner().apply {
@@ -595,6 +601,36 @@ class ScanSessionCoordinatorTest {
         sawai.submitScanPayload(ScanPayload.qr(qrPayload, timestampMillis = 0L))
         val rejected = sawai.submitScanPayload(
             ScanPayload.code128(moltenShortPartBarcode, timestampMillis = 300L),
+        )
+        assertTrue(rejected?.effects?.single() is ScanEffect.InvalidScan)
+        assertEquals(ScanPhase.WAITING_CODE_128, sawai.state.phase)
+    }
+
+    @Test
+    fun cameraSixFourTagGoesThroughStabilizerOnlyInDensoSession() {
+        val denso = ScanSessionCoordinator(TestScanner())
+        denso.startSession()
+        denso.submitScanPayload(ScanPayload.qr(densoQrPayload, timestampMillis = 0L))
+        assertEquals(Destination.DENSO, denso.state.destination)
+
+        // A 6-4 tag is a valid Denso product tag, so it takes the strict
+        // two-observation path instead of being rejected on the first frame.
+        assertNull(
+            denso.submitScanPayload(
+                ScanPayload.code128(densoBarcodePayload, timestampMillis = 300L),
+            ),
+        )
+        val accepted = denso.submitScanPayload(
+            ScanPayload.code128(densoBarcodePayload, timestampMillis = 400L),
+        )
+        assertEquals(ScanPhase.RESULT, accepted?.state?.phase)
+        assertEquals(MatchResult.MATCH, accepted?.state?.result)
+
+        val sawai = ScanSessionCoordinator(TestScanner())
+        sawai.startSession()
+        sawai.submitScanPayload(ScanPayload.qr(qrPayload, timestampMillis = 0L))
+        val rejected = sawai.submitScanPayload(
+            ScanPayload.code128(densoBarcodePayload, timestampMillis = 300L),
         )
         assertTrue(rejected?.effects?.single() is ScanEffect.InvalidScan)
         assertEquals(ScanPhase.WAITING_CODE_128, sawai.state.phase)

@@ -91,11 +91,11 @@ typealias ResultState = ScanState.Result
 /**
  * One box already recorded as a match in the active session.
  *
- * [identity] is the destination-aware box key: the Sawai slip QR identifies its
- * own box, while a Molten slip repeats for every box of the part and needs the
- * product tag as well. The Molten-only fields carry the slip's delivery number
- * and pack quantity so the box number and the cumulative quantity can be
- * derived without re-parsing every stored payload.
+ * [identity] is the destination-aware box key: a Sawai slip QR and a Denso
+ * kanban QR each identify their own box, while a Molten slip repeats for every
+ * box of the part and needs the product tag as well. The Molten-only fields
+ * carry the slip's delivery number and pack quantity so the box number and the
+ * cumulative quantity can be derived without re-parsing every stored payload.
  */
 data class RecordedBox(
     val identity: String,
@@ -126,18 +126,27 @@ data class RecordedBox(
             return RecordedBox(
                 identity = identity,
                 code = code?.trim()?.takeIf { it.isNotEmpty() }
-                    ?: formattedPartNumber(qrPayload, barcodePayload),
+                    ?: formattedPartNumber(qrPayload, barcodePayload, destination),
                 destination = destination,
                 deliveryNumber = molten?.deliveryNumber,
                 packQuantity = molten?.packQuantity,
             )
         }
 
-        private fun formattedPartNumber(qrPayload: String, barcodePayload: String?): String {
+        /**
+         * The part number printed the way the destination's product tag does:
+         * 6-4 for Denso, 4-2-4 or 4-2-3 otherwise. Formatting a Denso number
+         * without its destination would silently store `8601-50-7722`.
+         */
+        private fun formattedPartNumber(
+            qrPayload: String,
+            barcodePayload: String?,
+            destination: Destination?,
+        ): String {
             val part = barcodePayload?.let(CodeMatcher::partNumberFromBarcode)
                 ?: CodeMatcher.partNumberFromQr(qrPayload)
                 ?: qrPayload
-            return CodeMatcher.formatPartNumber(part)
+            return CodeMatcher.formatPartNumber(part, destination)
         }
     }
 }
@@ -191,8 +200,8 @@ data class ScanSessionState(
 
     /**
      * Boxes and cumulative pack quantity recorded so far for one Molten
-     * delivery number. Sawai boxes are counted per part number instead and
-     * never contribute here.
+     * delivery number. Sawai and Denso boxes are counted per part number
+     * instead and never contribute here.
      */
     fun moltenSummary(deliveryNumber: String): MoltenBoxSummary {
         val boxes = recordedBoxes.filter {
@@ -209,9 +218,13 @@ data class ScanSessionState(
      * The summary for the box shown on a Molten match result, or null for any
      * other state. [recordedBoxes] already contains the box just recorded, so
      * the numbers describe the visible result rather than the previous one.
+     *
+     * The destination lock gates the parse: a Sawai or Denso payload must never
+     * be probed for a delivery number it does not have.
      */
     val moltenResultSummary: MoltenBoxSummary?
         get() {
+            if (destination != Destination.MOLTEN) return null
             val current = scan as? ScanState.Result ?: return null
             if (current.result != MatchResult.MATCH) return null
             val record = MoltenQrRecord.parse(current.qrPayload) ?: return null
@@ -297,7 +310,7 @@ sealed interface ScanEffect {
         /**
          * Box number inside the session: boxes of the same delivery number for
          * [Destination.MOLTEN], boxes of the same part number for
-         * [Destination.SAWAI].
+         * [Destination.SAWAI] and [Destination.DENSO].
          */
         val boxNumber: Int,
         /** Molten only: the slip's delivery number. */

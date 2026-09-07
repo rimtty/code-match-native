@@ -48,6 +48,12 @@ class ScanScreenTest {
         "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
     private val moltenBarcodePayload = "PAF1-15-422@0NKD3C"
 
+    // Destination Denso: kanban 0140 of part 860150-7722, whose tag prints the
+    // part number as 6-4. The QR's runs of spaces are blank item values.
+    private val densoQrPayload =
+        "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
+    private val densoBarcodePayload = "860150-7722@1DZ50O"
+
     @Test
     fun inputPickerRemainsVisibleDuringCameraSwitchAndScannerRestore() {
         val state = mutableStateOf(ScanUiState(
@@ -273,6 +279,48 @@ class ScanScreenTest {
                 context.getString(
                     R.string.scan_session_destination_format,
                     context.getString(R.string.scan_destination_molten),
+                ),
+            )
+    }
+
+    @Test
+    fun densoMatchResultShowsDestinationBadgeAndPlainCard() {
+        val session = ScanSessionState(
+            scan = ScanState.Result(
+                qrPayload = densoQrPayload,
+                barcodePayload = densoBarcodePayload,
+                result = MatchResult.MATCH,
+                matchedCount = 1,
+            ),
+            destination = Destination.DENSO,
+            recordedBoxes = listOfNotNull(
+                RecordedBox.fromPayloads(densoQrPayload, densoBarcodePayload),
+            ),
+        )
+        composeRule.setContent {
+            ScanScreen(
+                ScanUiState.fromSession(session, sessionActive = true),
+                onAction = {},
+            )
+        }
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        // The card must print the Denso 6-4 form, not the Sawai 4-2-4 one.
+        composeRule.onNodeWithTag("scan_result_qr_part.value")
+            .performScrollTo()
+            .assertTextEquals("860150-7722")
+        composeRule.onNodeWithTag("scan_result_barcode_part.value")
+            .performScrollTo()
+            .assertTextEquals("860150-7722")
+        // Denso counts boxes per part number, so the Molten summary row that
+        // reports a delivery number must not appear.
+        composeRule.onAllNodesWithTag("scan_result_molten_box_summary").assertCountEquals(0)
+        composeRule.onNodeWithTag("scan_session_destination")
+            .performScrollTo()
+            .assertTextEquals(
+                context.getString(
+                    R.string.scan_session_destination_format,
+                    context.getString(R.string.scan_destination_denso),
                 ),
             )
     }

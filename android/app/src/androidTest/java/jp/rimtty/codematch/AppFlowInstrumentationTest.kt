@@ -4,12 +4,14 @@ import android.app.LocaleManager
 import android.os.Build
 import android.os.LocaleList
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -32,6 +34,7 @@ import jp.rimtty.codematch.core.model.AppSettings
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanPayload
 import jp.rimtty.codematch.scanner.fake.FakeExternalScanner
+import jp.rimtty.codematch.scan.ScanViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -358,6 +361,140 @@ class AppFlowInstrumentationTest {
         openDestination(R.string.destination_history)
         waitForTag(HistoryTestTags.SESSION_ROW)
         onNodeWithTag(HistoryTestTags.SESSION_ROW).assertIsDisplayed()
+    }
+
+    /**
+     * The Denso destination end to end: a JAMA kanban locks the session, the
+     * 6-4 tag matches, a second kanban of the same part is the second box, the
+     * same kanban is a duplicate whatever tag follows it, and a Sawai slip is
+     * refused with a message naming the locked destination.
+     */
+    @Test
+    fun fakeScannerDensoFlowCountsBoxesPerPartNumberAndLocksDestination() {
+        connectFakeScannerThroughSettings()
+        openDestination(R.string.destination_scan)
+        onNodeWithTag("scan_start_session").performClick()
+        waitForTag("scan_waiting_card")
+
+        // Box 1: kanban serial 0140 of part 860150-7722.
+        emitBluetooth(
+            ScanPayload.qr(
+                value = densoFirstBoxQrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 1_000L,
+            ),
+        )
+        emitBluetooth(
+            ScanPayload.code128(
+                value = densoFirstBoxBarcodePayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 2_000L,
+            ),
+        )
+        waitForTag("scan_result_card")
+        onNodeWithText("一致").assertIsDisplayed()
+        // The Denso part number is printed 6-4, never as a Sawai 4-2-4.
+        onNodeWithTag("scan_result_qr_part.value")
+            .performScrollTo()
+            .assertTextEquals("860150-7722")
+        // Boxes are counted per part number, so the Molten delivery summary
+        // must not appear.
+        onAllNodesWithTag("scan_result_molten_box_summary").assertCountEquals(0)
+        onNodeWithTag("scan_session_destination")
+            .performScrollTo()
+            .assertTextEquals("仕向地：デンソー")
+        assertSessionCount(1)
+        awaitActiveEntryCount(1)
+
+        // Box 2: a different kanban serial (0141) of the same part.
+        onNodeWithTag("scan_manual_next").performClick()
+        waitForText("QRコード読み取り")
+        emitBluetooth(
+            ScanPayload.qr(
+                value = densoSecondBoxQrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 3_000L,
+            ),
+        )
+        emitBluetooth(
+            ScanPayload.code128(
+                value = densoSecondBoxBarcodePayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 4_000L,
+            ),
+        )
+        waitForTag("scan_result_card")
+        onNodeWithText("一致").assertIsDisplayed()
+        assertSessionCount(2)
+        awaitActiveEntryCount(2)
+
+        // The kanban serial identifies the box, so re-reading kanban 0141 is
+        // the same physical box even though a new label follows it.
+        onNodeWithTag("scan_manual_next").performClick()
+        waitForText("QRコード読み取り")
+        emitBluetooth(
+            ScanPayload.qr(
+                value = densoSecondBoxQrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 5_000L,
+            ),
+        )
+        emitBluetooth(
+            ScanPayload.code128(
+                value = densoFirstBoxBarcodePayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 6_000L,
+            ),
+        )
+        waitForTag("scan_result_card")
+        onNodeWithText("すでに照合済みです").assertIsDisplayed()
+        assertSessionCount(2)
+        awaitActiveEntryCount(2)
+
+        // A Sawai slip cannot join a Denso session; the step never advances.
+        onNodeWithTag("scan_manual_next").performClick()
+        waitForText("QRコード読み取り")
+        emitBluetooth(
+            ScanPayload.qr(
+                value = qrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 7_000L,
+            ),
+        )
+        composeRule.onNodeWithText(
+            "このセッションは仕向地「デンソー」で照合中です",
+            substring = true,
+        ).performScrollTo().assertIsDisplayed()
+        // Scrolling to the message above can push the waiting card out of the
+        // compact CI emulator viewport; bring the title back before asserting.
+        onNodeWithText("QRコード読み取り").performScrollTo().assertIsDisplayed()
+        assertSessionCount(2)
+        assertActiveEntries(
+            expectedCodes = listOf(
+                "860150-7722",
+                "860150-7722",
+            ),
+        )
+
+        onNodeWithTag("scan_end_session").performClick()
+        onNodeWithText(composeRule.activity.getString(R.string.end_session_confirm))
+            .performClick()
+        waitForTag("scan_start_session")
+        awaitHistoryEntryCount(expectedSessions = 1, expectedEntries = 2)
+        openDestination(R.string.destination_history)
+        waitForTag(HistoryTestTags.SESSION_ROW)
+        composeRule.onNodeWithTag(HistoryTestTags.SESSION_DESTINATION, useUnmergedTree = true)
+            .assertTextEquals("デンソー")
+        onNodeWithTag(HistoryTestTags.SESSION_ROW).performClick()
+        waitForTag(HistoryTestTags.SESSION_DETAIL)
+        onNodeWithTag(HistoryTestTags.SESSION_DETAIL)
+            .performScrollToNode(hasTestTag(HistoryTestTags.GROUP_ROW))
+        onNodeWithTag(HistoryTestTags.GROUP_ROW).performClick()
+        waitForTag(HistoryTestTags.GROUP_DETAIL)
+        // Both kanbans carry one part number, so the group lists two boxes.
+        onNodeWithTag(HistoryTestTags.GROUP_DETAIL)
+            .performScrollToNode(hasText("2箱目"))
+        onNodeWithText("2箱目").assertIsDisplayed()
     }
 
     /**
@@ -953,5 +1090,15 @@ class AppFlowInstrumentationTest {
         const val moltenFirstBoxBarcodePayload = "PAF1-15-422@0NKD3C"
         const val moltenSecondBoxBarcodePayload = "PAF1-15-422@0NLL3C"
         const val moltenSecondDeliveryBarcodePayload = "D10E-50-N10B@0UBL00"
+
+        // Destination Denso. The first pair is the ViewModel's documented demo
+        // pair (kanban serial 0140); 0141 is the next box of the same part.
+        // The runs of spaces are blank item values, so these literals must
+        // never be reformatted.
+        const val densoFirstBoxQrPayload = ScanViewModel.SAMPLE_DENSO_QR_PAYLOAD
+        const val densoFirstBoxBarcodePayload = ScanViewModel.SAMPLE_DENSO_BARCODE_PAYLOAD
+        const val densoSecondBoxQrPayload =
+            "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0141SWS    20260908S0010000720000009924543330454333M6"
+        const val densoSecondBoxBarcodePayload = "860150-7722@1DZB0O"
     }
 }

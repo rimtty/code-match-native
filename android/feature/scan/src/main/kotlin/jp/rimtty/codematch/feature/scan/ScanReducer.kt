@@ -1,6 +1,7 @@
 package jp.rimtty.codematch.feature.scan
 
 import jp.rimtty.codematch.core.matching.CodeMatcher
+import jp.rimtty.codematch.core.matching.DensoKanbanQrRecord
 import jp.rimtty.codematch.core.matching.KanbanQrRecord
 import jp.rimtty.codematch.core.matching.MoltenQrRecord
 import jp.rimtty.codematch.core.matching.TagBarcodeRecord
@@ -173,8 +174,9 @@ class ScanReducer(
         barcodePayload: String,
     ): ScanReduction {
         val comparison = compare(qrPayload, barcodePayload)
-        // The box key is destination aware: a Sawai slip identifies its own
-        // box, a Molten slip needs the tag's management code as well.
+        // The box key is destination aware: a Sawai slip and a Denso kanban
+        // each identify their own box (a card number and a kanban serial), a
+        // Molten slip needs the tag's management code as well.
         val identity = CodeMatcher.boxIdentity(qrPayload, barcodePayload)
         val result = if (comparison == MatchResult.MATCH &&
             identity != null &&
@@ -215,6 +217,9 @@ class ScanReducer(
         val effects = buildList {
             add(ScanEffect.ScanAccepted)
             if (result == MatchResult.MATCH) {
+                // Detection already ran when the QR was accepted, so the
+                // fallback is unreachable in practice and only keeps the
+                // effect's destination non-null.
                 val destination = current.destination
                     ?: CodeMatcher.detectDestination(qrPayload)
                     ?: Destination.SAWAI
@@ -230,8 +235,9 @@ class ScanReducer(
                         code = code,
                         matchNumber = matchNumber,
                         destination = destination,
-                        // Molten counts boxes per delivery number; Sawai keeps
-                        // counting them per part number, as the history does.
+                        // Molten counts boxes per delivery number; Sawai and
+                        // Denso keep counting them per part number, as the
+                        // history does.
                         boxNumber = summary?.boxNumber
                             ?: next.recordedBoxes.count { it.code == code },
                         deliveryNumber = summary?.deliveryNumber,
@@ -420,18 +426,30 @@ class ScanReducer(
                 val length = observedQrLength(value, lockedDestination)
                 val expected = lockedDestination?.let(CodeMatcher::expectedQrLength)
                 when {
-                    // A payload that parses as either destination's record is
-                    // accepted here; the caller decides whether the session's
-                    // lock allows that destination.
+                    // A payload that parses as any of the three destinations'
+                    // records is accepted here; the caller decides whether the
+                    // session's lock allows that destination.
                     CodeMatcher.detectDestination(value) != null -> null
+                    // A Denso kanban declares its own item layout, so its
+                    // payload length varies and there is no expected length a
+                    // bad read could be measured against.
+                    lockedDestination == Destination.DENSO ->
+                        InvalidScanReason.INVALID_PAYLOAD
                     // A locked session knows exactly how long its record is.
                     expected != null && length < expected ->
                         InvalidScanReason.INCOMPLETE_QR_PAYLOAD
                     expected != null && length > expected ->
                         InvalidScanReason.OVERLONG_QR_PAYLOAD
                     expected != null -> InvalidScanReason.INVALID_PAYLOAD
-                    // Without a lock both records are still possible, so only a
-                    // length outside 57-66 is certainly truncated or padded.
+                    // A JAMA payload is a Denso kanban that failed to parse, so
+                    // the fixed Sawai/Molten lengths below say nothing about it.
+                    value.startsWith(
+                        DensoKanbanQrRecord.FORMAT_PREFIX,
+                        ignoreCase = true,
+                    ) -> InvalidScanReason.INVALID_PAYLOAD
+                    // Without a lock both fixed-length records are still
+                    // possible, so only a length outside 57-66 is certainly
+                    // truncated or padded.
                     length < MoltenQrRecord.MINIMUM_SCAN_PAYLOAD_LENGTH ->
                         InvalidScanReason.INCOMPLETE_QR_PAYLOAD
                     length > KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH ->
@@ -447,14 +465,12 @@ class ScanReducer(
             }
             // A Code 128 symbol likewise only proves the symbology. Camera and
             // Bluetooth input must both carry the product-tag business format
-            // (a 4-2-4 part number for Sawai, 4-2-3 or 4-2-4 for Molten,
-            // followed by @management code) before comparison runs.
+            // (a 4-2-4 part number for Sawai, 4-2-3 or 4-2-4 for Molten, 6-4
+            // for Denso, followed by @management code) before comparison runs.
+            // Before the lock any of the three is accepted; a QR is always read
+            // first, so in practice the destination is known here.
             payload.format == ScanFormat.CODE_128 ->
-                if (TagBarcodeRecord.isValidScanPayload(
-                        value,
-                        lockedDestination ?: Destination.SAWAI,
-                    )
-                ) {
+                if (TagBarcodeRecord.isValidScanPayload(value, lockedDestination)) {
                     null
                 } else {
                     InvalidScanReason.INVALID_PAYLOAD
@@ -467,18 +483,22 @@ class ScanReducer(
     /**
      * Length reported for an invalid QR.
      *
-     * A Molten record is space padded, so its surrounding spaces are data and
-     * must be counted; every other case keeps the trimmed length the Sawai
-     * messages have always shown.
+     * A Molten record is space padded and a Denso kanban carries blank item
+     * values, so their surrounding spaces are data and must be counted; every
+     * other case keeps the trimmed length the Sawai messages have always shown.
      */
     private fun observedQrLength(value: String, lockedDestination: Destination?): Int =
-        if (lockedDestination == Destination.MOLTEN) value.length else value.trim().length
+        when (lockedDestination) {
+            Destination.MOLTEN, Destination.DENSO -> value.length
+            Destination.SAWAI, null -> value.trim().length
+        }
 
     private fun recordedCode(qrPayload: String, barcodePayload: String): String {
         val part = CodeMatcher.partNumberFromBarcode(barcodePayload)
             ?: CodeMatcher.partNumberFromQr(qrPayload)
             ?: qrPayload
-        return CodeMatcher.formatPartNumber(part)
+        // The QR decides the printed form: only a Denso number is 6-4.
+        return CodeMatcher.formatPartNumber(part, CodeMatcher.detectDestination(qrPayload))
     }
 
     companion object {

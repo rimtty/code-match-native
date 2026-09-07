@@ -98,6 +98,22 @@ class ScanCheckpointMappingTest {
     }
 
     @Test
+    fun checkpointWithoutDestinationDerivesDensoFromAcceptedQr() {
+        val checkpoint = ScanSessionCheckpoint(
+            sessionId = "session",
+            phase = ScanCheckpointPhase.WAITING_CODE_128,
+            qrPayload = densoQr,
+            matchedCount = 0,
+        )
+
+        assertNull(checkpoint.destination)
+        assertEquals(
+            Destination.DENSO,
+            checkpoint.toScanSessionState(false, stateDelay())?.destination,
+        )
+    }
+
+    @Test
     fun idleStateDoesNotCreateACheckpoint() {
         assertNull(ScanSessionState().toScanSessionCheckpoint("session"))
     }
@@ -108,4 +124,9 @@ class ScanCheckpointMappingTest {
     private val moltenQr =
         "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
     private val moltenTag = "PAF1-15-422@0NKD3C"
+
+    // Destination Denso: the real kanban of box 0140. The runs of spaces are
+    // blank item values, so the literal must never be trimmed.
+    private val densoQr =
+        "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
 }

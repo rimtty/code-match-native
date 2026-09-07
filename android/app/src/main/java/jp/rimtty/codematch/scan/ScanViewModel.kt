@@ -892,5 +892,16 @@ class ScanViewModel @Inject constructor(
             "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
         private const val SAMPLE_BARCODE_PAYLOAD = "BCJH-52-81GG@1N5X0C"
         private const val SAMPLE_MISMATCH_BARCODE_PAYLOAD = "BCJH-55-81GG@1KVV0C"
+
+        /**
+         * The Denso demo pair (kanban serial 0140 of part 860150-7722). The
+         * demo action deliberately keeps using the Sawai pair above; these
+         * document the third destination's payload shape and drive the
+         * instrumentation flow. The runs of spaces are blank item values, so
+         * the literal must never be trimmed or reflowed.
+         */
+        internal const val SAMPLE_DENSO_QR_PAYLOAD =
+            "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
+        internal const val SAMPLE_DENSO_BARCODE_PAYLOAD = "860150-7722@1DZ50O"
     }
 }
