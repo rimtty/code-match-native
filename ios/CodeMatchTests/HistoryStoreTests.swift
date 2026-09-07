@@ -21,6 +21,13 @@ final class HistoryStoreTests: XCTestCase {
     private let sawaiQR = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private let sawaiOtherCardQR = "DCLP675301BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private let sawaiTag = "BCJH-52-81GG@1N5X0C"
+    // デンソーのかんばんQR(JAMA自己記述形式・221桁)。項目152のかんばん連番が箱ごとに異なる。
+    private let densoQRKanban0140 = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
+    private let densoQRKanban0141 = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0141SWS    20260908S0010000720000009924543330454333M6"
+    private let densoQRKanban0538 = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507791000000192D860C01008D86045M      0538SWS    20260908S0010007680000009924543420454342R6"
+    private let densoTag0140 = "860150-7722@1DZ50O"
+    private let densoTag0141 = "860150-7722@1DZB0O"
+    private let densoTag0538 = "860150-7791@01335C"
 
     func testSessionRecordsNormalizedMatchesAndEnds() {
         let storageURL = temporaryStorageURL()
@@ -300,6 +307,74 @@ final class HistoryStoreTests: XCTestCase {
                 qrPayload: sawaiOtherCardQR,
                 barcodePayload: sawaiTag
             )
+        )
+    }
+
+    /// デンソーの重複判定もQR全文だけで決まる。かんばん連番が箱ごとに異なるため。
+    func testDensoDuplicateRuleKeysOnQROnly() {
+        let storageURL = temporaryStorageURL()
+        defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
+        XCTAssertEqual(Destination.detect(qrPayload: densoQRKanban0140), .denso)
+        XCTAssertEqual(Destination.detect(qrPayload: densoQRKanban0141), .denso)
+        let store = HistoryStore(storageURL: storageURL)
+        store.beginSession()
+
+        store.recordMatch(
+            code: "860150-7722",
+            qrPayload: densoQRKanban0140,
+            barcodePayload: densoTag0140
+        )
+
+        // 現品票の管理コードが別でも、同じかんばんなら照合済みの箱
+        XCTAssertTrue(
+            store.activeSessionContainsMatchedBox(
+                qrPayload: densoQRKanban0140,
+                barcodePayload: densoTag0141
+            )
+        )
+        XCTAssertTrue(store.activeSessionContainsMatchedQRPayload(densoQRKanban0140))
+        // かんばん連番が違えば、同じ品番でも別の箱
+        XCTAssertFalse(
+            store.activeSessionContainsMatchedBox(
+                qrPayload: densoQRKanban0141,
+                barcodePayload: densoTag0140
+            )
+        )
+    }
+
+    /// デンソーは納品番号ではなく品番ごとに箱を数える（澤井製作所と同じ規則）。
+    func testDensoMatchCountPerPartNumber() {
+        let storageURL = temporaryStorageURL()
+        defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
+        let store = HistoryStore(storageURL: storageURL)
+        store.beginSession()
+
+        store.recordMatch(
+            code: "860150-7722",
+            qrPayload: densoQRKanban0140,
+            barcodePayload: densoTag0140
+        )
+        store.recordMatch(
+            code: "860150-7722",
+            qrPayload: densoQRKanban0141,
+            barcodePayload: densoTag0141
+        )
+        store.recordMatch(
+            code: "860150-7791",
+            qrPayload: densoQRKanban0538,
+            barcodePayload: densoTag0538
+        )
+
+        XCTAssertEqual(store.activeSessionMatchCount(code: "860150-7722"), 2)
+        XCTAssertEqual(store.activeSessionMatchCount(code: "860150-7791"), 1)
+        XCTAssertEqual(store.activeSession?.matchedCount, 3)
+        XCTAssertEqual(store.activeSession?.destination, .denso)
+        // 品番ごとに1グループ、その中に箱の記録が並ぶ（澤井製作所と同じ構造）。
+        XCTAssertEqual(store.activeSession?.groupedEntries.count, 2)
+        // 納品番号ごとの内訳はモルテン専用。デンソーのグループでは空のまま。
+        XCTAssertEqual(
+            store.activeSession?.groupedEntries.map(\.deliveryGroups.count),
+            [0, 0]
         )
     }
 

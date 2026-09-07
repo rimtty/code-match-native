@@ -2492,6 +2492,22 @@
         }
       }
     },
+    "モックCode 128（デンソー）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mock Code 128 (Denso)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モックCode 128（デンソー）"
+          }
+        }
+      }
+    },
     "モックCode 128（モルテン）" : {
       "localizations" : {
         "en" : {
@@ -2504,6 +2520,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "モックCode 128（モルテン）"
+          }
+        }
+      }
+    },
+    "モックQR（デンソー）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mock QR (Denso)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モックQR（デンソー）"
           }
         }
       }

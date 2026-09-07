@@ -260,8 +260,12 @@ struct ScannerScreen: View {
                         result: result,
                         sessionBoxNumber: viewModel.sessionBoxNumber,
                         deliverySummary: viewModel.deliverySummary,
-                        qrPartNumber: viewModel.qrPartNumber.map { CodeMatcher.format(partNumber: $0) },
-                        barcodePartNumber: viewModel.barcodePartNumber.map { CodeMatcher.format(partNumber: $0) }
+                        qrPartNumber: viewModel.qrPartNumber.map {
+                            CodeMatcher.format(partNumber: $0, destination: viewModel.destination)
+                        },
+                        barcodePartNumber: viewModel.barcodePartNumber.map {
+                            CodeMatcher.format(partNumber: $0, destination: viewModel.destination)
+                        }
                     )
                     .accessibilityIdentifier("resultView")
                 case .qr, .barcode:
@@ -452,12 +456,16 @@ struct ScannerScreen: View {
         VStack(spacing: 8) {
             CodeReadout(
                 label: AppLocalization.string("QR・納品書の品目番号"),
-                partNumber: viewModel.qrPartNumber.map { CodeMatcher.format(partNumber: $0) },
+                partNumber: viewModel.qrPartNumber.map {
+                    CodeMatcher.format(partNumber: $0, destination: viewModel.destination)
+                },
                 payload: viewModel.qrValue
             )
             CodeReadout(
                 label: AppLocalization.string("バーコード・現品票の品番"),
-                partNumber: viewModel.barcodePartNumber.map { CodeMatcher.format(partNumber: $0) },
+                partNumber: viewModel.barcodePartNumber.map {
+                    CodeMatcher.format(partNumber: $0, destination: viewModel.destination)
+                },
                 payload: viewModel.barcodeValue
             )
         }
@@ -640,6 +648,17 @@ struct ScannerScreen: View {
                             bluetoothScanner.simulateScan(ScannerViewModel.sampleMoltenBarcodePayload)
                         }
                         .accessibilityIdentifier("demoBluetoothMoltenBarcodeButton")
+                    }
+
+                    HStack {
+                        Button(AppLocalization.string("モックQR（デンソー）")) {
+                            bluetoothScanner.simulateScan(ScannerViewModel.sampleDensoQRPayload)
+                        }
+                        .accessibilityIdentifier("demoBluetoothDensoQRButton")
+                        Button(AppLocalization.string("モックCode 128（デンソー）")) {
+                            bluetoothScanner.simulateScan(ScannerViewModel.sampleDensoBarcodePayload)
+                        }
+                        .accessibilityIdentifier("demoBluetoothDensoBarcodeButton")
                     }
                 }
             }

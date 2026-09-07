@@ -79,6 +79,16 @@ final class ScannerViewModel: ObservableObject {
     /// 同じ納品書QRの2箱目。モルテンのQRは箱を区別しないため、現品票の管理コードだけが異なる。
     static let sampleMoltenSecondBoxBarcodePayload = "PAF1-15-422@0NLL3C"
     static let sampleMoltenMismatchBarcodePayload = "PAF1-15-423@0N5L3C"
+    /// 実ラベル由来のサンプルペイロード(仕向地 デンソー・品番 860150-7722)。
+    /// JAMA自己記述形式のかんばん。かんばん連番(項目152)が箱ごとに異なるため、
+    /// 重複判定は澤井製作所と同じくQR全文で行う。
+    static let sampleDensoQRPayload = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
+    static let sampleDensoBarcodePayload = "860150-7722@1DZ50O"
+    /// 同じ品番の2箱目。かんばん連番が0140から0141に変わる。
+    static let sampleDensoSecondBoxQRPayload = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0141SWS    20260908S0010000720000009924543330454333M6"
+    static let sampleDensoSecondBoxBarcodePayload = "860150-7722@1DZB0O"
+    /// 別品番(860150-7791)の現品票。不一致の確認に使う。
+    static let sampleDensoMismatchBarcodePayload = "860150-7791@01335C"
 
     var qrPartNumber: String? {
         CodeMatcher.partNumber(fromQR: qrValue)
@@ -445,7 +455,9 @@ final class ScannerViewModel: ObservableObject {
             camera.setActiveType(ExpectedCode.barcode.metadataType)
         }
         if let part = CodeMatcher.partNumber(fromQR: value) {
-            let partNumber = CodeMatcher.format(partNumber: part)
+            // 表記は仕向地ごとに違う(デンソーは6-4、それ以外は4-2-4/4-2-3)。
+            // ここでは受理したQRの仕向地をそのまま使う。
+            let partNumber = CodeMatcher.format(partNumber: part, destination: destination)
             let isBluetooth = inputSource == .bluetooth
             setLocalizedMessage {
                 let instruction = isBluetooth
@@ -686,6 +698,8 @@ final class ScannerViewModel: ObservableObject {
                     )
                 }
             } else {
+                // 澤井製作所とデンソーはQR自体が箱ごとに異なる(カード番号／かんばん連番)ため、
+                // 納品番号での集計は使わず、品番ごとに「本セッションでN箱目」を数える。
                 deliverySummary = nil
                 let boxNumber = historyStore.activeSessionMatchCount(code: recordedCode)
                 sessionBoxNumber = boxNumber
@@ -751,9 +765,13 @@ final class ScannerViewModel: ObservableObject {
     }
 
     /// 履歴へ残す値。読み取れた品番を優先し、抽出できない場合はQRの生値を使う。
+    /// 表記は仕向地ごとに違う(デンソーは6-4、それ以外は4-2-4/4-2-3)ため、
+    /// セッションで固定済みの仕向地を使う。デモ判定などQRの受理を経ない経路では
+    /// まだ固定されていないので、そのQRから判定し直す。
     private var recordedCode: String {
         if let part = barcodePartNumber ?? qrPartNumber {
-            return CodeMatcher.format(partNumber: part)
+            let destination = destination ?? Destination.detect(qrPayload: qrValue)
+            return CodeMatcher.format(partNumber: part, destination: destination)
         }
         return qrValue
     }

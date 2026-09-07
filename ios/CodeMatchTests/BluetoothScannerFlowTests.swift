@@ -1014,6 +1014,270 @@ final class BluetoothScannerFlowTests: XCTestCase {
         )
     }
 
+    func testDensoQRThenSixFourBarcodeMatches() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        // JAMA自己記述形式のかんばん。実物は221桁。
+        XCTAssertEqual(ScannerViewModel.sampleDensoQRPayload.count, 221)
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleDensoQRPayload)
+
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.viewModel.destination, .denso)
+        XCTAssertEqual(context.store.activeSession?.destination, .denso)
+        // デンソーの品番は6-4で表示する（4-2-4の8601-50-7722にしない）。
+        XCTAssertTrue(context.viewModel.message.contains("品目番号 860150-7722"))
+
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleDensoBarcodePayload)
+
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+        XCTAssertEqual(context.viewModel.sessionBoxNumber, 1)
+        // 納品番号ごとの集計はモルテン専用。デンソーでは使わない。
+        XCTAssertNil(context.viewModel.deliverySummary)
+        XCTAssertEqual(context.store.activeSession?.entries.first?.code, "860150-7722")
+        XCTAssertTrue(context.viewModel.message.contains("品目番号が一致しています"))
+    }
+
+    func testDensoSecondKanbanSamePartIsCountedAsSecondBox() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleDensoQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleDensoBarcodePayload)
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+
+        // かんばん連番が0140→0141と変わるので、同じ品番でも別の箱として数える。
+        context.viewModel.reset()
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleDensoSecondBoxQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleDensoSecondBoxBarcodePayload)
+
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 2)
+        XCTAssertEqual(context.viewModel.sessionBoxNumber, 2)
+        XCTAssertNil(context.viewModel.deliverySummary)
+        XCTAssertTrue(context.viewModel.message.contains("2箱目"))
+    }
+
+    func testDensoRescanOfSameKanbanIsDuplicate() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleDensoQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleDensoBarcodePayload)
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+
+        // 重複キーはQR全文。現品票の管理コードが別でも、同じかんばんなら同じ箱。
+        context.viewModel.reset()
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleDensoQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleDensoSecondBoxBarcodePayload)
+
+        XCTAssertEqual(context.viewModel.step, .result(.duplicate))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+        XCTAssertEqual(context.viewModel.sessionBoxNumber, 0)
+        XCTAssertNil(context.viewModel.deliverySummary)
+    }
+
+    func testDensoMismatchIsNotCounted() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleDensoQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+        // 同じ6-4の並びでも末尾が違えば別品番として扱う。
+        context.service.simulateScan(ScannerViewModel.sampleDensoMismatchBarcodePayload)
+
+        XCTAssertEqual(context.viewModel.step, .result(.mismatch))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+        XCTAssertNil(context.viewModel.deliverySummary)
+        XCTAssertEqual(context.viewModel.destination, .denso)
+    }
+
+    func testSessionLockedToDensoRejectsSawaiAndMoltenQR() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleDensoQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.viewModel.destination, .denso)
+
+        context.viewModel.rereadQR()
+        XCTAssertEqual(context.viewModel.step, .qr)
+        XCTAssertEqual(context.viewModel.destination, .denso)
+
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+
+        XCTAssertEqual(context.viewModel.step, .qr)
+        XCTAssertTrue(context.viewModel.qrValue.isEmpty)
+        XCTAssertTrue(context.viewModel.message.contains("デンソー"))
+        XCTAssertTrue(
+            context.viewModel.message.contains(
+                "このセッションは仕向地「デンソー」で照合中です。別の仕向地のQRコードは照合できません。仕向地を変えるにはセッションを終了してください。"
+            )
+        )
+        XCTAssertTrue(context.viewModel.message.contains("読み取った値は照合に使用していません"))
+
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleMoltenQRPayload)
+
+        XCTAssertEqual(context.viewModel.step, .qr)
+        XCTAssertTrue(context.viewModel.qrValue.isEmpty)
+        XCTAssertTrue(context.viewModel.message.contains("デンソー"))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+
+        // 同じ仕向地のQRはそのまま受理する。
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleDensoQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.viewModel.destination, .denso)
+    }
+
+    func testSawaiSessionRejectsDensoQR() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        let camera = context.viewModel.camera
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+
+        context.viewModel.cameraScanner(camera, didRead: ScannerViewModel.sampleQRPayload, type: .qr)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.viewModel.destination, .sawai)
+
+        context.viewModel.rereadQR()
+        XCTAssertEqual(context.viewModel.step, .qr)
+
+        context.viewModel.cameraScanner(
+            camera,
+            didRead: ScannerViewModel.sampleDensoQRPayload,
+            type: .qr
+        )
+
+        XCTAssertEqual(context.viewModel.step, .qr)
+        XCTAssertTrue(context.viewModel.qrValue.isEmpty)
+        XCTAssertTrue(context.viewModel.message.contains("澤井製作所"))
+        XCTAssertEqual(context.viewModel.destination, .sawai)
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+    }
+
+    func testSixFourBarcodeIsRejectedInSawaiAndMoltenSessions() async {
+        // 澤井製作所は4-2-4、モルテンは4-2-3/4-2-4。デンソーの6-4はどちらでも受理しない。
+        for (qrPayload, destination) in [
+            (ScannerViewModel.sampleQRPayload, Destination.sawai),
+            (ScannerViewModel.sampleMoltenQRPayload, Destination.molten)
+        ] {
+            let context = makeContext()
+            defer { context.cleanup() }
+            let camera = context.viewModel.camera
+
+            context.viewModel.cameraScanner(camera, didRead: qrPayload, type: .qr)
+            XCTAssertEqual(context.viewModel.step, .barcode)
+            XCTAssertEqual(context.viewModel.destination, destination)
+            try? await Task.sleep(for: .milliseconds(300))
+
+            context.viewModel.cameraScanner(
+                camera,
+                didRead: ScannerViewModel.sampleDensoBarcodePayload,
+                type: .code128
+            )
+            context.viewModel.cameraScanner(
+                camera,
+                didRead: ScannerViewModel.sampleDensoBarcodePayload,
+                type: .code128
+            )
+
+            XCTAssertEqual(context.viewModel.step, .barcode)
+            XCTAssertTrue(context.viewModel.barcodeValue.isEmpty)
+            XCTAssertTrue(
+                context.viewModel.message.contains("現品票のCode 128バーコードではありません")
+            )
+            XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+        }
+    }
+
+    func testDensoQRAtBarcodeStepIsWrongOrder() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleDensoQRPayload)
+        XCTAssertEqual(context.viewModel.step, .barcode)
+
+        // 別のかんばん（同じ仕向地）を現品票の代わりに読んだ場合は順序違いとして案内する。
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleDensoSecondBoxQRPayload)
+
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertTrue(context.viewModel.barcodeValue.isEmpty)
+        XCTAssertTrue(context.viewModel.message.contains("読み取り順序が違います"))
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+    }
+
+    func testDestinationIsRestoredFromActiveSessionForDenso() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleDensoQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleDensoBarcodePayload)
+        XCTAssertEqual(context.store.activeSession?.destination, .denso)
+
+        let restored = ScannerViewModel(
+            historyStore: context.store,
+            bluetoothScanner: context.service,
+            camera: CameraScanner()
+        )
+
+        XCTAssertEqual(restored.destination, .denso)
+    }
+
+    /// カメラ経路でもデンソーのQRを受理し、案内に6-4の品番を出す。
+    func testDensoQRViaCameraShowsSixFourPartNumber() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        let camera = context.viewModel.camera
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+
+        context.viewModel.cameraScanner(
+            camera,
+            didRead: ScannerViewModel.sampleDensoQRPayload,
+            type: .qr
+        )
+
+        XCTAssertEqual(context.viewModel.step, .barcode)
+        XCTAssertEqual(context.viewModel.destination, .denso)
+        XCTAssertTrue(context.viewModel.message.contains("品目番号 860150-7722"))
+    }
+
     private func makeContext(
         camera: CameraScanner = CameraScanner(),
         autoAdvanceEnabled: Bool = false,
