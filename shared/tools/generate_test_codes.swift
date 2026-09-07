@@ -84,4 +84,17 @@ try write(
     padding: 48
 )
 
+// 仕向地 デンソー: かんばんQRはJAMA自己記述形式の221桁（下の文字列を編集する際は
+// 項目144・402・515・516の空白の連なりを詰めないこと）。実物のQRは英数字モードだが、
+// CoreImageではモードを選べないのでバイトモードで生成する（読取結果は同じ文字列）。
+// 現品票のCode 128は品番6-4@管理コードで、管理コードはラベルごと（=箱ごと）に違う。
+let densoQR = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
+try write(qr(densoQR), name: "denso-qr.png", padding: 48)
+try write(code128("860150-7722@1DZ50O"), name: "denso-code128.png", padding: 48)
+try write(
+    code128("860150-7722@1DZB0O"),
+    name: "denso-code128-second-box.png",
+    padding: 48
+)
+
 print("Generated test codes in \(outputURL.path)")

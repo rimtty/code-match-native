@@ -3,13 +3,15 @@ package jp.rimtty.codematch.core.model
 /**
  * The delivery destination a slip QR belongs to.
  *
- * The two destinations print incompatible QR records, so the matching rules,
- * the accepted payload length, and the box identity all depend on which one a
+ * The destinations print incompatible QR records, so the matching rules, the
+ * accepted payload length, and the box identity all depend on which one a
  * payload came from:
  *
  * - [SAWAI] (澤井製作所): a 66-character kanban record carrying a card number.
  * - [MOLTEN] (モルテン): a 61-character delivery record whose trailing spaces
  *   are significant data.
+ * - [DENSO] (デンソー): a JAMA self-describing kanban record whose header
+ *   declares the item list, so its length varies with the item layout.
  *
  * [id] is the persisted representation. Keep it identical to the Swift
  * `Destination` raw value so saved settings and history stay portable.
@@ -17,6 +19,7 @@ package jp.rimtty.codematch.core.model
 enum class Destination(val id: String) {
     SAWAI("sawai"),
     MOLTEN("molten"),
+    DENSO("denso"),
     ;
 
     companion object {

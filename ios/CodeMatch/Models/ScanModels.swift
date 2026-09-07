@@ -66,13 +66,15 @@ enum ExpectedCode: Equatable {
     }
 }
 
-/// 仕向地。QRのレコード様式が仕向地ごとに異なるため、照合前にどちらかを判定する。
+/// 仕向地。QRのレコード様式が仕向地ごとに異なるため、照合前にどれかを判定する。
 ///
 /// - `sawai` (澤井製作所): 66桁固定長の納品書兼現品票レコード。
 /// - `molten` (モルテン): 61桁固定長の納品書レコード。末尾の空白も有効なデータ。
+/// - `denso` (デンソー): JAMA自己記述形式のかんばんレコード。ヘッダが項目定義を持つ可変長。
 enum Destination: String, Codable, CaseIterable, Equatable {
     case sawai
     case molten
+    case denso
 
     /// 澤井製作所QRの桁数。`KanbanQRRecord` の受理条件と同じ値を使う。
     private static let sawaiRecordLength = 66
@@ -94,9 +96,14 @@ enum Destination: String, Codable, CaseIterable, Equatable {
         return value
     }
 
-    /// QRペイロードの仕向地を判定する。どちらのレコード様式でもない場合は nil。
+    /// QRペイロードの仕向地を判定する。いずれのレコード様式でもない場合は nil。
+    ///
+    /// デンソーを最初に判定する: `KanbanQRRecord.parse` は寛容(先頭10桁が
+    /// `[A-Z]{4}[0-9]{6}`、20桁以上)なので、`JAMA501195…` をカード番号として
+    /// 受理してしまう。JAMA自己記述形式として解析できるQRは常にデンソーとする。
     static func detect(qrPayload raw: String) -> Destination? {
         let payload = stripTransportTerminators(raw)
+        if isDensoRecord(payload) { return .denso }
         if isSawaiRecord(payload) { return .sawai }
         if MoltenQRRecord.isValidScanPayload(payload) { return .molten }
 
@@ -110,6 +117,10 @@ enum Destination: String, Codable, CaseIterable, Equatable {
     private static func isSawaiRecord(_ payload: String) -> Bool {
         payload.count == sawaiRecordLength && KanbanQRRecord.parse(payload) != nil
     }
+
+    private static func isDensoRecord(_ payload: String) -> Bool {
+        payload.prefix(4).uppercased() == "JAMA" && DensoKanbanRecord.parse(payload) != nil
+    }
 }
 
 extension Destination {
@@ -118,6 +129,7 @@ extension Destination {
         switch self {
         case .sawai: AppLocalization.string("澤井製作所")
         case .molten: AppLocalization.string("モルテン")
+        case .denso: AppLocalization.string("デンソー")
         }
     }
 }
@@ -156,6 +168,8 @@ enum CodeMatcher {
             return KanbanQRRecord.parse(payload)?.partNumber
         case .molten:
             return MoltenQRRecord.parse(payload)?.partNumber
+        case .denso:
+            return DensoKanbanRecord.parse(payload)?.partNumber
         case nil:
             return nil
         }
@@ -172,16 +186,30 @@ enum CodeMatcher {
         return qrPart == barcodePart ? .match : .mismatch
     }
 
-    /// 品番を現品票の表記へ整形する。
+    /// 品番を現品票の表記へ整形する（仕向地不明の従来規則）。
     /// 10桁は4-2-4 (`BCJH5281GG` → `BCJH-52-81GG`)、9桁は4-2-3 (`PAF115422` → `PAF1-15-422`)。
     /// それ以外の桁数はそのまま返す。
     static func format(partNumber: String) -> String {
+        format(partNumber: partNumber, destination: nil)
+    }
+
+    /// 品番を仕向地の現品票の表記へ整形する。
+    /// デンソーの10桁は6-4 (`8601507722` → `860150-7722`)。
+    /// 澤井製作所・モルテン・仕向地未確定は従来の長さ規則(10→4-2-4 / 9→4-2-3)。
+    /// それ以外の桁数はそのまま返す。
+    static func format(partNumber: String, destination: Destination?) -> String {
+        if destination == .denso {
+            guard partNumber.count == densoPartNumberLength else { return partNumber }
+            return "\(partNumber.prefix(6))-\(partNumber.dropFirst(6))"
+        }
         guard partNumber.count == 10 || partNumber.count == 9 else { return partNumber }
         let head = partNumber.prefix(4)
         let mid = partNumber.dropFirst(4).prefix(2)
         let tail = partNumber.dropFirst(6)
         return "\(head)-\(mid)-\(tail)"
     }
+
+    private static let densoPartNumberLength = 10
 }
 
 /// 仕向地 澤井製作所の納品書兼現品票QR(66桁固定長レコード)の解析結果。
@@ -346,9 +374,182 @@ extension MoltenQRRecord {
     }
 }
 
+/// デンソーのかんばんQRが持つ項目1つ。項目番号は3桁の文字列。
+struct DensoKanbanItem: Equatable {
+    let id: String
+    let value: String
+}
+
+/// 仕向地 デンソーのかんばんQR(JAMA自己記述形式)の解析結果。
+///
+/// レコード構造:
+/// `JAMA` + 版1桁 + ヘッダ長4桁(L) + 前置き10桁 + (項目番号3桁 + 桁数2桁) × N + データ部
+///
+/// ヘッダ長 L は「ヘッダ長欄の先頭から項目定義の末尾まで」の桁数なので、
+/// ヘッダ本体は `payload[9 ..< 5+L]`、データ部は `payload[5+L...]`。
+/// 項目定義の桁数の合計はデータ部の長さと過不足なく一致しなければならない。
+///
+/// 221桁固定とは決めつけない: 実データは L=119・項目21・データ97桁だが、
+/// 項目構成が変わったかんばんも同じ規則で解析できるようにしてある。
+struct DensoKanbanRecord: Equatable {
+    let version: String            // JAMAに続く版1桁
+    let preamble: String           // ヘッダ本体の先頭10桁(内容は検証しない生値)
+    let formType: String?          // 100: 帳票区分
+    let partNumber: String         // 104: 部品番号(ハイフンなし10桁)
+    let packagingCode: String?     // 111: 包装
+    let packQuantity: Int          // 112: 収容数
+    let nextProcess: String?       // 121: 次区
+    let instructionCode: String?   // 124(+`-`+141): 指示
+    let kanbanSerial: String       // 152: かんばん連番(箱ごとに固有)
+    let managementNumber: String?  // 402: 管理番号
+    let deliveryDate: String?      // 519: 納入日 YYYYMMDD
+    let deliveryRun: String?       // 520: 便
+    let instructedQuantity: Int?   // 521: 指示数
+    let itemNumber: String?        // 523: アイテムNo
+    let receivingCode: String?     // 401: 受入
+    let orderedItems: [DensoKanbanItem] // 全項目の生値(ヘッダの並び順)
+    let items: [String: String]    // 項目番号 → 生値
+    let canonicalPayload: String   // 終端除去+大文字化した正規形(桁数はそのまま)
+
+    /// 様式の先頭固定文字列。
+    static let formatPrefix = "JAMA"
+    /// `JAMA` + 版1桁 + ヘッダ長4桁。
+    private static let headerFieldsLength = 9
+    /// ヘッダ本体の先頭に置かれる前置きの桁数。
+    private static let preambleLength = 10
+    /// 項目定義1つぶんの桁数(項目番号3桁 + 桁数2桁)。
+    private static let descriptorLength = 5
+
+    /// Bluetoothスキャナ入力をデンソーのかんばんQRとして受理できるかを判定する。
+    static func isValidScanPayload(_ payload: String) -> Bool {
+        parse(payload) != nil
+    }
+
+    /// 読取値の正規形。解析できない値は nil。
+    static func canonicalize(_ payload: String) -> String? {
+        parse(payload)?.canonicalPayload
+    }
+
+    static func parse(_ payload: String) -> DensoKanbanRecord? {
+        let record = Destination.stripTransportTerminators(payload).uppercased()
+        let characters = Array(record)
+        guard characters.count >= headerFieldsLength else { return nil }
+
+        func slice(_ range: Range<Int>) -> String { String(characters[range]) }
+        func isDigits(_ value: String) -> Bool {
+            !value.isEmpty && value.allSatisfy { $0.isASCII && $0.isNumber }
+        }
+        func trimmedOrNil(_ value: String?) -> String? {
+            let trimmed = value?.trimmingCharacters(in: .whitespaces)
+            return (trimmed?.isEmpty ?? true) ? nil : trimmed
+        }
+
+        guard slice(0..<4) == formatPrefix else { return nil }
+        let version = slice(4..<5)
+        guard isDigits(version) else { return nil }
+
+        let headerLengthField = slice(5..<headerFieldsLength)
+        guard isDigits(headerLengthField), let headerLength = Int(headerLengthField) else {
+            return nil
+        }
+        // ヘッダ長は「ヘッダ長欄の先頭から項目定義の末尾まで」なので、
+        // データ部の開始位置は 5 + L。
+        let dataStart = 5 + headerLength
+        guard characters.count >= dataStart else { return nil }
+
+        let headerBody = slice(headerFieldsLength..<dataStart)
+        guard headerBody.count >= preambleLength else { return nil }
+        let preamble = String(headerBody.prefix(preambleLength))
+        let descriptorField = String(headerBody.dropFirst(preambleLength))
+        guard !descriptorField.isEmpty, descriptorField.count % descriptorLength == 0 else {
+            return nil
+        }
+
+        let descriptorCharacters = Array(descriptorField)
+        var lengths: [(id: String, length: Int)] = []
+        var seenIDs = Set<String>()
+        var index = 0
+        while index < descriptorCharacters.count {
+            let id = String(descriptorCharacters[index..<(index + 3)])
+            let lengthField = String(descriptorCharacters[(index + 3)..<(index + descriptorLength)])
+            guard isDigits(id), isDigits(lengthField), let length = Int(lengthField) else {
+                return nil
+            }
+            // 同じ項目番号が2度出るレコードは解釈が定まらないので受理しない。
+            guard seenIDs.insert(id).inserted else { return nil }
+            lengths.append((id: id, length: length))
+            index += descriptorLength
+        }
+
+        let dataCharacters = Array(characters[dataStart...])
+        guard lengths.reduce(0, { $0 + $1.length }) == dataCharacters.count else { return nil }
+
+        var orderedItems: [DensoKanbanItem] = []
+        var items: [String: String] = [:]
+        var offset = 0
+        for entry in lengths {
+            let value = String(dataCharacters[offset..<(offset + entry.length)])
+            orderedItems.append(DensoKanbanItem(id: entry.id, value: value))
+            items[entry.id] = value
+            offset += entry.length
+        }
+
+        // 必須項目: 部品番号・収容数・かんばん連番。1つでも欠ければかんばんとして扱わない。
+        guard
+            let partNumber = trimmedOrNil(items["104"]),
+            partNumber.range(of: "^[A-Z0-9]{1,18}$", options: .regularExpression) != nil,
+            let packQuantityField = items["112"]?.trimmingCharacters(in: .whitespaces),
+            isDigits(packQuantityField),
+            let packQuantity = Int(packQuantityField),
+            let kanbanSerial = trimmedOrNil(items["152"])
+        else { return nil }
+
+        let instructionBase = trimmedOrNil(items["124"])
+        let instructionSuffix = trimmedOrNil(items["141"])
+        let instructionCode: String? = instructionBase.map { base in
+            instructionSuffix.map { "\(base)-\($0)" } ?? base
+        }
+        let instructedQuantityField = items["521"]?.trimmingCharacters(in: .whitespaces)
+
+        return DensoKanbanRecord(
+            version: version,
+            preamble: preamble,
+            formType: trimmedOrNil(items["100"]),
+            partNumber: partNumber,
+            packagingCode: trimmedOrNil(items["111"]),
+            packQuantity: packQuantity,
+            nextProcess: trimmedOrNil(items["121"]),
+            instructionCode: instructionCode,
+            kanbanSerial: kanbanSerial,
+            managementNumber: trimmedOrNil(items["402"]),
+            deliveryDate: trimmedOrNil(items["519"]),
+            deliveryRun: trimmedOrNil(items["520"]),
+            instructedQuantity: instructedQuantityField.flatMap { Int($0) },
+            itemNumber: trimmedOrNil(items["523"]),
+            receivingCode: trimmedOrNil(items["401"]),
+            orderedItems: orderedItems,
+            items: items,
+            canonicalPayload: record
+        )
+    }
+}
+
+extension DensoKanbanRecord {
+    /// 納入日の表示形。`20260908` → `2026/09/08`。8桁でない値はそのまま返す。
+    var formattedDeliveryDate: String? {
+        guard let deliveryDate else { return nil }
+        guard deliveryDate.count == 8 else { return deliveryDate }
+        let year = deliveryDate.prefix(4)
+        let month = deliveryDate.dropFirst(4).prefix(2)
+        let day = deliveryDate.dropFirst(6)
+        return "\(year)/\(month)/\(day)"
+    }
+}
+
 /// 「同じ箱を二重に検査していないか」を判定するための箱固有キー。
 ///
-/// 澤井製作所はカード番号がQRに含まれるためQR単体で箱を識別できるが、
+/// 澤井製作所はカード番号がQRに含まれるためQR単体で箱を識別でき、
+/// デンソーもかんばん連番(項目152)が箱ごとに違うのでQR単体で識別できる。
 /// モルテンのQRは1品番1レコードで箱を区別しないため、現品票の管理コードまで含める。
 enum BoxIdentity {
     static func make(qrPayload: String, barcodePayload: String?) -> String? {
@@ -357,7 +558,7 @@ enum BoxIdentity {
         }
 
         switch Destination.detect(qrPayload: qrPayload) {
-        case .sawai:
+        case .sawai, .denso:
             let qr = identity(qrPayload)
             return qr.isEmpty ? nil : qr
         case .molten:
@@ -375,17 +576,29 @@ struct TagBarcodeRecord: Equatable {
     let partNumber: String       // ハイフン付き品番
     let managementCode: String?  // @以降の管理コード
 
+    /// 澤井製作所の現品票: 品番は4-2-4。
+    private static let sawaiFormatPattern = "^[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{4}@[A-Z0-9]+$"
+    /// モルテンの現品票: 品番は4-2-3または4-2-4。
+    private static let moltenFormatPattern = "^[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{3,4}@[A-Z0-9]+$"
+    /// デンソーの現品票: 品番は6-4。
+    private static let densoFormatPattern = "^[A-Z0-9]{6}-[A-Z0-9]{4}@[A-Z0-9]+$"
+
     /// 現品票Code 128の業務フォーマット（品番@管理コード）かを確認する。
     /// 物理シンボル種別はSDK通知に含まれないため、QR文字列などを次工程で受理しない。
-    /// 品番の末尾ブロックは澤井製作所が4桁固定、モルテンは3桁または4桁。
-    /// 仕向地が未判定(nil)のときは、どちらの仕向地でも取りこぼさない緩い方を使う。
+    /// 品番の区切りは澤井製作所が4-2-4、モルテンが4-2-3または4-2-4、デンソーが6-4。
+    /// 仕向地が未判定(nil)のときは、どの仕向地でも取りこぼさないよう3つのORで判定する。
     static func isValidScanPayload(_ payload: String, destination: Destination?) -> Bool {
         let value = payload.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let tailLength = destination == .sawai ? "{4}" : "{3,4}"
-        return value.range(
-            of: "^[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]\(tailLength)@[A-Z0-9]+$",
-            options: .regularExpression
-        ) != nil
+        let patterns: [String]
+        switch destination {
+        case .sawai: patterns = [sawaiFormatPattern]
+        case .molten: patterns = [moltenFormatPattern]
+        case .denso: patterns = [densoFormatPattern]
+        case nil: patterns = [sawaiFormatPattern, moltenFormatPattern, densoFormatPattern]
+        }
+        return patterns.contains {
+            value.range(of: $0, options: .regularExpression) != nil
+        }
     }
 
     static func parse(_ payload: String) -> TagBarcodeRecord? {

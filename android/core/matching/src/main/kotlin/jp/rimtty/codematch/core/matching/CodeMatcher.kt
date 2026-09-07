@@ -48,11 +48,17 @@ object CodeMatcher {
         raw.trim { it == '\r' || it == '\n' || it == '\u0000' }
 
     /**
-     * Decide which destination a QR payload belongs to, or null when it is
-     * neither destination's record.
+     * Decide which destination a QR payload belongs to, or null when it is no
+     * destination's record.
+     *
+     * Denso is probed first: [KanbanQrRecord.parse] is deliberately tolerant
+     * (twenty characters or more whose first ten match `[A-Z]{4}[0-9]{6}`), so
+     * it accepts `JAMA501195…` as a card number. A payload that parses as a
+     * JAMA self-describing record is always Denso.
      */
     fun detectDestination(qrPayload: String): Destination? {
         val payload = stripTransportTerminators(qrPayload)
+        if (isDensoRecord(payload)) return Destination.DENSO
         if (isSawaiRecord(payload)) return Destination.SAWAI
         if (MoltenQrRecord.isValidScanPayload(payload)) return Destination.MOLTEN
 
@@ -63,17 +69,24 @@ object CodeMatcher {
         return if (isSawaiRecord(payload.trim())) Destination.SAWAI else null
     }
 
-    /** The complete QR record length of a destination. */
-    fun expectedQrLength(destination: Destination): Int = when (destination) {
+    /**
+     * The complete QR record length of a destination, or null when the
+     * destination has no fixed length: a Denso kanban declares its own item
+     * layout, so its payload length varies and can never be checked.
+     */
+    fun expectedQrLength(destination: Destination): Int? = when (destination) {
         Destination.SAWAI -> KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH
         Destination.MOLTEN -> MoltenQrRecord.RECORD_LENGTH
+        Destination.DENSO -> null
     }
 
     /**
      * Normalize a QR payload for identity comparisons.
      *
      * A Molten payload is padded back to its full record length so a scan that
-     * dropped the trailing spaces still identifies the same slip.
+     * dropped the trailing spaces still identifies the same slip. Sawai and
+     * Denso payloads carry no edge padding, so trimming and uppercasing is
+     * enough for them.
      */
     fun canonicalQrPayload(qrPayload: String): String =
         when (detectDestination(qrPayload)) {
@@ -85,14 +98,15 @@ object CodeMatcher {
     /**
      * The key that tells one physical box from another within a session.
      *
-     * A Sawai slip carries a card number, so its QR alone identifies the box. A
-     * Molten slip repeats for every box of the part, so the tag's management
-     * code has to be part of the key; without a tag there is no box identity.
-     * Returns null when the QR is not a valid record of either destination.
+     * A Sawai slip carries a card number and a Denso kanban carries a kanban
+     * serial (item 152), so their QR alone identifies the box. A Molten slip
+     * repeats for every box of the part, so the tag's management code has to be
+     * part of the key; without a tag there is no box identity. Returns null
+     * when the QR is not a valid record of any destination.
      */
     fun boxIdentity(qrPayload: String, barcodePayload: String?): String? =
         when (detectDestination(qrPayload)) {
-            Destination.SAWAI -> canonicalQrPayload(qrPayload)
+            Destination.SAWAI, Destination.DENSO -> canonicalQrPayload(qrPayload)
             Destination.MOLTEN -> {
                 val tag = payloadIdentity(barcodePayload.orEmpty())
                 if (tag.isEmpty()) null else canonicalQrPayload(qrPayload) + "|" + tag
@@ -109,14 +123,15 @@ object CodeMatcher {
     /**
      * Extract the item number from a slip QR at its destination's fixed
      * position: characters 11–20 for [Destination.SAWAI], characters 7–16 for
-     * [Destination.MOLTEN]. A payload that is neither destination's record
-     * returns null and can never produce a match.
+     * [Destination.MOLTEN], item 104 for [Destination.DENSO]. A payload that is
+     * no destination's record returns null and can never produce a match.
      */
     fun partNumberFromQr(raw: String): String? {
         val payload = stripTransportTerminators(raw)
         return when (detectDestination(payload)) {
             Destination.SAWAI -> KanbanQrRecord.parse(payload)?.partNumber
             Destination.MOLTEN -> MoltenQrRecord.parse(payload)?.partNumber
+            Destination.DENSO -> DensoKanbanQrRecord.parse(payload)?.partNumber
             null -> null
         }
     }
@@ -135,11 +150,17 @@ object CodeMatcher {
     }
 
     /**
-     * Format a part number the way the product tag prints it: 4-2-4 for a
-     * ten-character number, 4-2-3 for the nine-character Molten form. Values of
-     * any other length are returned unchanged.
+     * Format a part number the way the destination's product tag prints it:
+     * 6-4 for a ten-character Denso number, otherwise 4-2-4 for a
+     * ten-character number and 4-2-3 for the nine-character Molten form.
+     * Values of any other length are returned unchanged.
      */
-    fun formatPartNumber(partNumber: String): String {
+    fun formatPartNumber(partNumber: String, destination: Destination? = null): String {
+        if (destination == Destination.DENSO) {
+            if (partNumber.length != STANDARD_PART_NUMBER_LENGTH) return partNumber
+            return partNumber.substring(0, 6) + "-" + partNumber.substring(6)
+        }
+
         if (partNumber.length !in SHORT_PART_NUMBER_LENGTH..STANDARD_PART_NUMBER_LENGTH) {
             return partNumber
         }
@@ -153,6 +174,10 @@ object CodeMatcher {
     private fun isSawaiRecord(payload: String): Boolean =
         payload.length == KanbanQrRecord.REQUIRED_SCAN_PAYLOAD_LENGTH &&
             KanbanQrRecord.parse(payload) != null
+
+    private fun isDensoRecord(payload: String): Boolean =
+        payload.startsWith(DensoKanbanQrRecord.FORMAT_PREFIX, ignoreCase = true) &&
+            DensoKanbanQrRecord.parse(payload) != null
 
     private const val STANDARD_PART_NUMBER_LENGTH = 10
     private const val SHORT_PART_NUMBER_LENGTH = 9
@@ -234,18 +259,26 @@ data class TagBarcodeRecord(
             Regex("[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{4}@[A-Z0-9]+")
         private val moltenFormatPattern =
             Regex("[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{3,4}@[A-Z0-9]+")
+        private val densoFormatPattern =
+            Regex("[A-Z0-9]{6}-[A-Z0-9]{4}@[A-Z0-9]+")
 
         /**
          * Strict scanner-boundary validation for the product tag format of one
-         * destination: Sawai part numbers always end in a four-character block,
-         * Molten part numbers end in three or four. Lowercase input is accepted
-         * just as Swift's uppercase-before-regex implementation accepts it.
+         * destination: a Sawai part number is 4-2-4, a Molten part number is
+         * 4-2-3 or 4-2-4, and a Denso part number is 6-4. A null destination
+         * means the session has not locked one yet, so any of the three is
+         * accepted. Lowercase input is accepted just as Swift's
+         * uppercase-before-regex implementation accepts it.
          */
-        fun isValidScanPayload(payload: String, destination: Destination): Boolean {
+        fun isValidScanPayload(payload: String, destination: Destination?): Boolean {
             val value = payload.trim().uppercase(Locale.ROOT)
             return when (destination) {
                 Destination.SAWAI -> sawaiFormatPattern.matches(value)
                 Destination.MOLTEN -> moltenFormatPattern.matches(value)
+                Destination.DENSO -> densoFormatPattern.matches(value)
+                null -> sawaiFormatPattern.matches(value) ||
+                    moltenFormatPattern.matches(value) ||
+                    densoFormatPattern.matches(value)
             }
         }
 

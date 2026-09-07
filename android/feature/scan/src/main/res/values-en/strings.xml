@@ -13,6 +13,7 @@
     <string name="scan_count_format">%1$d matches checked</string>
     <string name="scan_destination_sawai">Sawai Seisakusho</string>
     <string name="scan_destination_molten">Molten</string>
+    <string name="scan_destination_denso">Denso</string>
     <string name="scan_session_destination_format">Ship-to: %1$s</string>
     <string name="scan_session_default_name">Comparison session</string>
     <string name="scan_name_support">You can start without a name</string>

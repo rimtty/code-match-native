@@ -47,6 +47,7 @@
     <string name="history_destination">Ship-to</string>
     <string name="history_destination_sawai">Sawai Seisakusho</string>
     <string name="history_destination_molten">Molten</string>
+    <string name="history_destination_denso">Denso</string>
     <string name="history_delivery_number_count">Delivery numbers</string>
     <string name="history_orderer_code">Orderer</string>
     <string name="history_molten_part_number">Part number</string>

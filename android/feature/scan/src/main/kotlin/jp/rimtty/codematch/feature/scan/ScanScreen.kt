@@ -1022,6 +1022,7 @@ private fun destinationName(destination: Destination): String = stringResource(
     when (destination) {
         Destination.SAWAI -> R.string.scan_destination_sawai
         Destination.MOLTEN -> R.string.scan_destination_molten
+        Destination.DENSO -> R.string.scan_destination_denso
     },
 )
 
@@ -1188,14 +1189,16 @@ private fun ScanMessage(state: ScanUiState) {
         InvalidScanReason.WRONG_ORDER -> stringResource(R.string.scan_invalid_order)
         InvalidScanReason.EMPTY_PAYLOAD -> stringResource(R.string.scan_invalid_empty)
         // The expected length is only known once the session is locked to a
-        // destination; before that the message names the observed length alone.
+        // destination that has a fixed record length; before that — and for a
+        // Denso session, whose record length varies — the message names the
+        // observed length alone.
         InvalidScanReason.INCOMPLETE_QR_PAYLOAD ->
             state.lastInvalidPayloadLength?.let { observedLength ->
-                state.destination?.let { destination ->
+                state.destination?.let { CodeMatcher.expectedQrLength(it) }?.let { expectedLength ->
                     stringResource(
                         R.string.scan_invalid_qr_incomplete_length,
                         observedLength,
-                        CodeMatcher.expectedQrLength(destination),
+                        expectedLength,
                     )
                 } ?: stringResource(
                     R.string.scan_invalid_qr_incomplete_length_unlocked,
@@ -1204,11 +1207,11 @@ private fun ScanMessage(state: ScanUiState) {
             } ?: stringResource(R.string.scan_invalid_qr_incomplete)
         InvalidScanReason.OVERLONG_QR_PAYLOAD ->
             state.lastInvalidPayloadLength?.let { observedLength ->
-                state.destination?.let { destination ->
+                state.destination?.let { CodeMatcher.expectedQrLength(it) }?.let { expectedLength ->
                     stringResource(
                         R.string.scan_invalid_qr_overlong_length,
                         observedLength,
-                        CodeMatcher.expectedQrLength(destination),
+                        expectedLength,
                     )
                 } ?: stringResource(
                     R.string.scan_invalid_qr_overlong_length_unlocked,
