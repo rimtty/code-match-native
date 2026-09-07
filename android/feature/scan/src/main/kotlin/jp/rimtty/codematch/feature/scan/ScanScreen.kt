@@ -905,11 +905,14 @@ private fun ScanResultCard(
     val isMatch = result.result == MatchResult.MATCH
     val isDuplicate = result.result == MatchResult.DUPLICATE
     val countdownSeconds = state.countdownSeconds
+    // The locked destination decides the printed form: a Denso part number is
+    // 6-4, every other destination keeps 4-2-4 / 4-2-3.
+    val destination = state.destination
     val qrPart = CodeMatcher.partNumberFromQr(result.qrPayload)
-        ?.let(CodeMatcher::formatPartNumber)
+        ?.let { CodeMatcher.formatPartNumber(it, destination) }
         ?: result.qrPayload
     val barcodePart = CodeMatcher.partNumberFromBarcode(result.barcodePayload)
-        ?.let(CodeMatcher::formatPartNumber)
+        ?.let { CodeMatcher.formatPartNumber(it, destination) }
         ?: result.barcodePayload
     Card(
         modifier = Modifier

@@ -158,6 +158,90 @@ class ScanViewModelCheckpointInstrumentationTest {
     }
 
     @Test
+    fun densoDestinationLockSurvivesIsolatedDatabaseReopen() = runBlocking {
+        val fixture = IsolatedScanFixture.open()
+        var firstOwner: TestViewModelOwner? = null
+        var secondOwner: TestViewModelOwner? = null
+        try {
+            val first = fixture.createViewModel()
+            firstOwner = first.first
+            val firstViewModel = first.second
+
+            firstViewModel.onAction(jp.rimtty.codematch.feature.scan.ScanUiAction.StartSession)
+            awaitState(firstViewModel, "session-start") { state ->
+                state.sessionActive && state.phase == ScanPhase.WAITING_QR
+            }
+            val sessionId = requireNotNull(fixture.history.activeSession.first()?.id)
+
+            // Destination Denso; the runs of spaces are blank item values.
+            val densoQrPayload =
+                "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
+            assertEquals(221, densoQrPayload.length)
+            firstViewModel.onAction(
+                jp.rimtty.codematch.feature.scan.ScanUiAction.ScanReceived(
+                    jp.rimtty.codematch.scanner.api.ScanPayload.qr(
+                        value = densoQrPayload,
+                        source = InputSource.CAMERA,
+                        timestampMillis = 1_000L,
+                    ),
+                ),
+            )
+            val afterQr = awaitState(firstViewModel, "denso-qr-transition") { state ->
+                state.phase == ScanPhase.WAITING_CODE_128 &&
+                    state.qrPayload == densoQrPayload
+            }
+            assertEquals(Destination.DENSO, afterQr.destination)
+
+            val persisted = awaitCheckpoint(fixture.history, sessionId, densoQrPayload)
+            assertEquals(Destination.DENSO, persisted?.destination)
+
+            firstOwner.viewModelStore.clear()
+            firstOwner = null
+            fixture.reopenDatabase()
+
+            val second = fixture.createViewModel()
+            secondOwner = second.first
+            val secondViewModel = second.second
+            val restored = awaitState(secondViewModel, "denso-lock-restoration") { state ->
+                state.sessionActive && state.phase == ScanPhase.WAITING_CODE_128
+            }
+            assertEquals(Destination.DENSO, restored.destination)
+
+            // A reread drops the accepted QR but must not drop the lock.
+            secondViewModel.onAction(jp.rimtty.codematch.feature.scan.ScanUiAction.RereadQr)
+            val afterReread = awaitState(secondViewModel, "reread") { state ->
+                state.phase == ScanPhase.WAITING_QR
+            }
+            assertEquals(Destination.DENSO, afterReread.destination)
+
+            secondViewModel.onAction(
+                jp.rimtty.codematch.feature.scan.ScanUiAction.ScanReceived(
+                    jp.rimtty.codematch.scanner.api.ScanPayload.qr(
+                        value =
+                            "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
+                        source = InputSource.CAMERA,
+                        timestampMillis = 5_000L,
+                    ),
+                ),
+            )
+            val rejected = awaitState(secondViewModel, "wrong-destination") { state ->
+                state.lastInvalidReason == InvalidScanReason.WRONG_DESTINATION
+            }
+            assertEquals(ScanPhase.WAITING_QR, rejected.phase)
+            assertEquals(Destination.DENSO, rejected.destination)
+
+            assertEquals(
+                Destination.DENSO,
+                fixture.history.activeSession.first { it?.id == sessionId }?.destination,
+            )
+        } finally {
+            secondOwner?.viewModelStore?.clear()
+            firstOwner?.viewModelStore?.clear()
+            fixture.close()
+        }
+    }
+
+    @Test
     fun moltenDestinationLockSurvivesIsolatedDatabaseReopen() = runBlocking {
         val fixture = IsolatedScanFixture.open()
         var firstOwner: TestViewModelOwner? = null

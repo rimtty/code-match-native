@@ -36,11 +36,27 @@ class ScanReducerTest {
     private val moltenTag2SecondBox = "PAF1-15-422@0NLL3C"
     private val moltenTag2OtherPart = "PAF1-15-423@0N5L3C"
 
+    // Destination Denso: the real 221-character kanbans of boxes 0140 and 0141
+    // of part 860150-7722 and of box 0538 of part 860150-7791. The runs of
+    // spaces are blank item values, so these literals must never be trimmed.
+    private val densoQrBox1 =
+        "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
+    private val densoQrBox2 =
+        "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0141SWS    20260908S0010000720000009924543330454333M6"
+    private val densoQrOtherPart =
+        "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507791000000192D860C01008D86045M      0538SWS    20260908S0010007680000009924543420454342R6"
+    private val densoTagBox1 = "860150-7722@1DZ50O"
+    private val densoTagBox2 = "860150-7722@1DZB0O"
+    private val densoTagOtherPart = "860150-7791@01335C"
+
     @Before
-    fun moltenFixturesKeepTheirPadding() {
+    fun moltenAndDensoFixturesKeepTheirPadding() {
         assertEquals(61, moltenQr1.length)
         assertEquals(57, moltenQr1Short.length)
         assertEquals(61, moltenQr2.length)
+        assertEquals(221, densoQrBox1.length)
+        assertEquals(221, densoQrBox2.length)
+        assertEquals(221, densoQrOtherPart.length)
     }
 
     @Test
@@ -820,6 +836,291 @@ class ScanReducerTest {
         assertEquals(ScanPhase.IDLE, ended.state.phase)
         assertNull(ended.state.destination)
         assertTrue(ended.state.recordedBoxes.isEmpty())
+    }
+
+    @Test
+    fun densoQrThenSixFourTagMatchesAndCountsPerPartNumber() {
+        val reducer = ScanReducer()
+        var state = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(densoQrBox1))).state
+        assertEquals(ScanPhase.WAITING_CODE_128, state.phase)
+        assertEquals(Destination.DENSO, state.destination)
+
+        val result = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.code128(densoTagBox1)),
+        )
+
+        assertEquals(MatchResult.MATCH, result.state.result)
+        assertEquals(1, result.state.matchedCount)
+        val record = result.effects.filterIsInstance<ScanEffect.RecordMatch>().single()
+        // A Denso tag prints a 6-4 part number, never the Sawai 4-2-4 form.
+        assertEquals("860150-7722", record.code)
+        assertEquals(Destination.DENSO, record.destination)
+        assertEquals(1, record.boxNumber)
+        // Denso counts boxes per part number, so the Molten-only fields stay
+        // empty and no delivery summary is shown.
+        assertNull(record.deliveryNumber)
+        assertNull(record.cumulativeQuantity)
+        assertNull(result.state.moltenResultSummary)
+    }
+
+    @Test
+    fun densoSecondKanbanSamePartIsSecondBox() {
+        val reducer = ScanReducer()
+        var state = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(densoQrBox1))).state
+        state = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.code128(densoTagBox1)),
+        ).state
+        state = reducer.reduce(state, ScanEvent.ManualNext).state
+
+        // A different kanban serial (0141) is another box of the same part.
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(densoQrBox2))).state
+        val second = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.code128(densoTagBox2)),
+        )
+
+        assertEquals(MatchResult.MATCH, second.state.result)
+        assertEquals(2, second.state.matchedCount)
+        val record = second.effects.filterIsInstance<ScanEffect.RecordMatch>().single()
+        assertEquals("860150-7722", record.code)
+        assertEquals(2, record.boxNumber)
+        assertNull(record.deliveryNumber)
+        assertNull(second.state.moltenResultSummary)
+    }
+
+    @Test
+    fun densoSameKanbanIsDuplicateEvenWithAnotherTag() {
+        val reducer = ScanReducer()
+        var state = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(densoQrBox1))).state
+        state = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.code128(densoTagBox1)),
+        ).state
+        state = reducer.reduce(state, ScanEvent.ManualNext).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(densoQrBox1))).state
+
+        // The kanban serial identifies the box, so the same kanban read with
+        // another label of the same part is still that one box.
+        val duplicate = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.code128(densoTagBox2)),
+        )
+
+        assertEquals(MatchResult.DUPLICATE, duplicate.state.result)
+        assertEquals(1, duplicate.state.matchedCount)
+        assertTrue(duplicate.effects.none { it is ScanEffect.RecordMatch })
+        assertEquals(1, duplicate.state.recordedBoxes.size)
+    }
+
+    @Test
+    fun densoSessionRejectsSawaiAndMoltenQrWithWrongDestination() {
+        val reducer = ScanReducer()
+        var denso = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+        denso = reducer.reduce(denso, ScanEvent.PayloadReceived(ScanPayload.qr(densoQrBox1))).state
+        denso = reducer.reduce(denso, ScanEvent.RereadQr).state
+        assertEquals(Destination.DENSO, denso.destination)
+
+        for (foreign in listOf(qrPayload, moltenQr1)) {
+            val rejected = reducer.reduce(
+                denso,
+                ScanEvent.PayloadReceived(ScanPayload.qr(foreign)),
+            )
+            assertEquals(denso, rejected.state)
+            assertEquals(
+                ScanEffect.InvalidScan(
+                    ScanFormat.QR,
+                    InvalidScanReason.WRONG_DESTINATION,
+                    foreign.length,
+                ),
+                rejected.effects.single(),
+            )
+        }
+
+        // The reverse direction: a Denso kanban never joins a Sawai session.
+        var sawai = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+        sawai = reducer.reduce(sawai, ScanEvent.PayloadReceived(ScanPayload.qr(qrPayload))).state
+        sawai = reducer.reduce(sawai, ScanEvent.RereadQr).state
+        val densoIntoSawai = reducer.reduce(
+            sawai,
+            ScanEvent.PayloadReceived(ScanPayload.qr(densoQrBox1)),
+        )
+        assertEquals(sawai, densoIntoSawai.state)
+        assertEquals(
+            InvalidScanReason.WRONG_DESTINATION,
+            (densoIntoSawai.effects.single() as ScanEffect.InvalidScan).reason,
+        )
+    }
+
+    @Test
+    fun sawaiAndMoltenSessionsRejectSixFourTag() {
+        val reducer = ScanReducer()
+        var sawai = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+        sawai = reducer.reduce(sawai, ScanEvent.PayloadReceived(ScanPayload.qr(qrPayload))).state
+        val intoSawai = reducer.reduce(
+            sawai,
+            ScanEvent.PayloadReceived(ScanPayload.code128(densoTagBox1)),
+        )
+        assertEquals(sawai, intoSawai.state)
+        assertEquals(
+            ScanEffect.InvalidScan(
+                ScanFormat.CODE_128,
+                InvalidScanReason.INVALID_PAYLOAD,
+                densoTagBox1.length,
+            ),
+            intoSawai.effects.single(),
+        )
+
+        var molten = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+        molten = reducer.reduce(molten, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr1))).state
+        val intoMolten = reducer.reduce(
+            molten,
+            ScanEvent.PayloadReceived(ScanPayload.code128(densoTagBox1)),
+        )
+        assertEquals(molten, intoMolten.state)
+        assertEquals(
+            ScanEffect.InvalidScan(
+                ScanFormat.CODE_128,
+                InvalidScanReason.INVALID_PAYLOAD,
+                densoTagBox1.length,
+            ),
+            intoMolten.effects.single(),
+        )
+
+        // A Denso session is the only one that accepts the 6-4 tag.
+        var denso = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+        denso = reducer.reduce(denso, ScanEvent.PayloadReceived(ScanPayload.qr(densoQrBox1))).state
+        val accepted = reducer.reduce(
+            denso,
+            ScanEvent.PayloadReceived(ScanPayload.code128(densoTagBox1)),
+        )
+        assertEquals(MatchResult.MATCH, accepted.state.result)
+    }
+
+    @Test
+    fun densoLockedInvalidQrIsInvalidWithoutLengthHint() {
+        val reducer = ScanReducer()
+        var state = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(densoQrBox1))).state
+        state = reducer.reduce(state, ScanEvent.RereadQr).state
+        assertEquals(Destination.DENSO, state.destination)
+
+        // A Denso kanban declares its own layout, so no length is "complete"
+        // or "too long": every unparseable payload is simply invalid.
+        for (value in listOf("X".repeat(50), "X".repeat(66), "X".repeat(240))) {
+            val rejected = reducer.reduce(
+                state,
+                ScanEvent.PayloadReceived(ScanPayload.qr(value)),
+            )
+            assertEquals(state, rejected.state)
+            assertEquals(
+                "length ${value.length}",
+                ScanEffect.InvalidScan(
+                    ScanFormat.QR,
+                    InvalidScanReason.INVALID_PAYLOAD,
+                    value.length,
+                ),
+                rejected.effects.single(),
+            )
+        }
+    }
+
+    @Test
+    fun unlockedJamaPrefixedInvalidQrIsInvalidNotIncomplete() {
+        val reducer = ScanReducer()
+        val waiting = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+
+        // A broken JAMA record is a Denso kanban of unknown length, so the
+        // 57-66 guidance the two fixed-length records use must not apply.
+        val truncated = densoQrBox1.take(40)
+        val rejected = reducer.reduce(
+            waiting,
+            ScanEvent.PayloadReceived(ScanPayload.qr(truncated)),
+        )
+        assertEquals(waiting, rejected.state)
+        assertEquals(
+            ScanEffect.InvalidScan(
+                ScanFormat.QR,
+                InvalidScanReason.INVALID_PAYLOAD,
+                truncated.length,
+            ),
+            rejected.effects.single(),
+        )
+
+        // 63 characters sit between the two fixed record lengths and would
+        // otherwise be reported as a truncated Sawai slip. The prefix is
+        // matched case insensitively, as the record parser is.
+        for (value in listOf(densoQrBox1.take(63), densoQrBox1.take(63).lowercase())) {
+            val between = reducer.reduce(
+                waiting,
+                ScanEvent.PayloadReceived(ScanPayload.qr(value)),
+            )
+            assertEquals(waiting, between.state)
+            assertEquals(
+                ScanEffect.InvalidScan(
+                    ScanFormat.QR,
+                    InvalidScanReason.INVALID_PAYLOAD,
+                    value.length,
+                ),
+                between.effects.single(),
+            )
+        }
+    }
+
+    @Test
+    fun restoredDensoBoxesSeedDuplicateAndPartCounts() {
+        val reducer = ScanReducer()
+        var state = reducer.reduce(
+            ScanReducer.initial(
+                existingMatchedCount = 1,
+                recordedBoxes = listOfNotNull(
+                    RecordedBox.fromPayloads(densoQrBox1, densoTagBox1),
+                ),
+            ),
+            ScanEvent.StartSession,
+        ).state
+        assertEquals(Destination.DENSO, state.destination)
+        assertEquals("860150-7722", state.recordedBoxes.single().code)
+
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(densoQrBox1))).state
+        val duplicate = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.code128(densoTagBox1)),
+        )
+        assertEquals(MatchResult.DUPLICATE, duplicate.state.result)
+        assertEquals(1, duplicate.state.matchedCount)
+
+        state = reducer.reduce(duplicate.state, ScanEvent.ManualNext).state
+        state = reducer.reduce(state, ScanEvent.PayloadReceived(ScanPayload.qr(densoQrBox2))).state
+        val second = reducer.reduce(
+            state,
+            ScanEvent.PayloadReceived(ScanPayload.code128(densoTagBox2)),
+        )
+        assertEquals(MatchResult.MATCH, second.state.result)
+        assertEquals(2, second.state.matchedCount)
+        assertEquals(
+            2,
+            second.effects.filterIsInstance<ScanEffect.RecordMatch>().single().boxNumber,
+        )
+
+        // Another part number starts its own box count in the same session.
+        var next = reducer.reduce(second.state, ScanEvent.ManualNext).state
+        next = reducer.reduce(
+            next,
+            ScanEvent.PayloadReceived(ScanPayload.qr(densoQrOtherPart)),
+        ).state
+        val otherPart = reducer.reduce(
+            next,
+            ScanEvent.PayloadReceived(ScanPayload.code128(densoTagOtherPart)),
+        )
+        val record = otherPart.effects.filterIsInstance<ScanEffect.RecordMatch>().single()
+        assertEquals("860150-7791", record.code)
+        assertEquals(1, record.boxNumber)
     }
 
     private fun matchedState(
