@@ -55,6 +55,7 @@ data class HistoryUiLabels(
     val destination: String,
     val destinationSawai: String,
     val destinationMolten: String,
+    val destinationDenso: String,
     val deliveryNumberCount: String,
     val ordererCode: String,
     val moltenPartNumber: String,

@@ -47,6 +47,7 @@
     <string name="history_destination">仕向地</string>
     <string name="history_destination_sawai">澤井製作所</string>
     <string name="history_destination_molten">モルテン</string>
+    <string name="history_destination_denso">デンソー</string>
     <string name="history_delivery_number_count">納品番号数</string>
     <string name="history_orderer_code">受注者</string>
     <string name="history_molten_part_number">部品番号</string>

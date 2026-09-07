@@ -28,6 +28,20 @@ final class CodeMatcherTests: XCTestCase {
     private let moltenShortPartQRPayload = "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
     private let moltenShortPartBarcodePayload = "PAF1-15-422@0NKD3C"
 
+    // 仕向地 デンソーの実データ（かんばん 0140・221桁）。
+    // 項目144・402・515・516の空白の連なりもデータなので、詰めないこと。
+    private let densoQRPayload =
+        "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
+    private let densoBarcodePayload = "860150-7722@1DZ50O"
+
+    // 項目構成を変えた合成かんばん（項目3つ・ヘッダ長も別）。
+    // デンソーを先に判定しないと、66桁は澤井製作所、61桁はモルテンとして
+    // 完全なレコードに見えてしまう。
+    private let densoSawaiLengthPayload =
+        "JAMA5002950000000031521010410112120140      8601507722000000000024"
+    private let densoMoltenLengthPayload =
+        "JAMA500295000000003104101120715210860150772200000240140123456"
+
     func testPartNumberFromBarcode() {
         XCTAssertEqual(CodeMatcher.partNumber(fromBarcode: barcodePayload), "BCJH5281GG")
         XCTAssertEqual(CodeMatcher.partNumber(fromBarcode: "KAAA-55-D86B@0Y5U0I"), "KAAA55D86B")
@@ -68,7 +82,7 @@ final class CodeMatcherTests: XCTestCase {
         let fixtures = try loadSharedMatchingFixtures()
 
         XCTAssertEqual(fixtures.schemaVersion, 2)
-        XCTAssertEqual(fixtures.cases.count, 35)
+        XCTAssertEqual(fixtures.cases.count, 47)
         XCTAssertEqual(
             Set(fixtures.cases.map(\.id)).count,
             fixtures.cases.count,
@@ -303,6 +317,12 @@ final class CodeMatcherTests: XCTestCase {
         let shifted = " " + String(moltenQRPayload.dropLast())
         XCTAssertEqual(shifted.count, 61)
         XCTAssertNil(Destination.detect(qrPayload: shifted))
+
+        // JAMA自己記述形式は桁数に関係なくデンソーとして判定する
+        XCTAssertEqual(Destination.detect(qrPayload: densoQRPayload), .denso)
+        XCTAssertEqual(Destination.detect(qrPayload: densoQRPayload + "\r\n"), .denso)
+        XCTAssertEqual(Destination.detect(qrPayload: densoQRPayload.lowercased()), .denso)
+        XCTAssertNil(Destination.detect(qrPayload: String(densoQRPayload.dropLast())))
     }
 
     func testMoltenQRRecordParsesAllFields() {
@@ -398,6 +418,17 @@ final class CodeMatcherTests: XCTestCase {
             CodeMatcher.compare(qrPayload: " \(qrPayload.lowercased())\n", barcodePayload: barcodePayload),
             .match
         )
+
+        // デンソーは固定位置ではなく、JAMAレコードの項目104から取り出す。
+        XCTAssertEqual(CodeMatcher.partNumber(fromQR: densoQRPayload), "8601507722")
+        XCTAssertEqual(
+            CodeMatcher.compare(qrPayload: densoQRPayload, barcodePayload: densoBarcodePayload),
+            .match
+        )
+        XCTAssertEqual(
+            CodeMatcher.compare(qrPayload: densoQRPayload, barcodePayload: "860150-7791@01335C"),
+            .mismatch
+        )
     }
 
     func testBoxIdentityPerDestination() {
@@ -433,6 +464,296 @@ final class CodeMatcherTests: XCTestCase {
 
         XCTAssertNil(
             BoxIdentity.make(qrPayload: "PART:BCJH-52-81GG;QTY:12", barcodePayload: barcodePayload)
+        )
+
+        // デンソーはかんばん連番(項目152)が箱ごとに違うので、澤井製作所と同じく
+        // QR単体で箱が決まり、現品票は箱の識別に使わない。
+        let densoIdentity = BoxIdentity.make(
+            qrPayload: densoQRPayload,
+            barcodePayload: densoBarcodePayload
+        )
+        XCTAssertEqual(densoIdentity, densoQRPayload)
+        XCTAssertEqual(
+            BoxIdentity.make(qrPayload: densoQRPayload, barcodePayload: nil),
+            densoIdentity
+        )
+        XCTAssertEqual(
+            BoxIdentity.make(qrPayload: densoQRPayload, barcodePayload: "860150-7722@1DZB0O"),
+            densoIdentity
+        )
+    }
+
+
+    // MARK: - 仕向地 デンソー
+
+    /// 仕向地デンソーの実データ7組は、照合結果だけでなく読取境界
+    /// （JAMA自己記述レコードの解析、6-4@管理コード検証）も通り、仕向地判定も安定する。
+    func testSharedDensoPairsPassBothScanBoundaries() throws {
+        let densoPairs = try loadSharedMatchingFixtures().cases.filter {
+            $0.id.hasPrefix("denso-") && $0.expected == "match"
+        }
+        XCTAssertEqual(densoPairs.count, 7)
+
+        for pair in densoPairs {
+            XCTAssertEqual(pair.qrPayload.count, 221, pair.id)
+            XCTAssertTrue(DensoKanbanRecord.isValidScanPayload(pair.qrPayload), pair.id)
+            XCTAssertTrue(
+                TagBarcodeRecord.isValidScanPayload(pair.barcodePayload, destination: .denso),
+                pair.id
+            )
+            // 6-4の現品票は他の仕向地のセッションでは受理しない。
+            XCTAssertFalse(
+                TagBarcodeRecord.isValidScanPayload(pair.barcodePayload, destination: .sawai),
+                pair.id
+            )
+            XCTAssertFalse(
+                TagBarcodeRecord.isValidScanPayload(pair.barcodePayload, destination: .molten),
+                pair.id
+            )
+            // 221桁のかんばんは澤井製作所(66桁)・モルテン(57〜61桁)には決して当てはまらない。
+            XCTAssertFalse(KanbanQRRecord.isValidScanPayload(pair.qrPayload), pair.id)
+            XCTAssertFalse(MoltenQRRecord.isValidScanPayload(pair.qrPayload), pair.id)
+            XCTAssertEqual(Destination.detect(qrPayload: pair.qrPayload), .denso, pair.id)
+
+            let record = DensoKanbanRecord.parse(pair.qrPayload)
+            XCTAssertEqual(
+                record?.partNumber,
+                CodeMatcher.partNumber(fromBarcode: pair.barcodePayload),
+                pair.id
+            )
+            XCTAssertEqual(record?.partNumber.count, 10, pair.id)
+            // 現品票は品番を6-4で印字する。
+            XCTAssertEqual(
+                CodeMatcher.format(partNumber: record?.partNumber ?? "", destination: .denso),
+                TagBarcodeRecord.parse(pair.barcodePayload)?.partNumber,
+                pair.id
+            )
+        }
+
+        // かんばん連番が箱ごとに違うので、7枚は7箱として区別できる（2品番）。
+        let serials = Set(densoPairs.compactMap { DensoKanbanRecord.parse($0.qrPayload)?.kanbanSerial })
+        XCTAssertEqual(serials.count, 7)
+        let identities = Set(densoPairs.compactMap {
+            BoxIdentity.make(qrPayload: $0.qrPayload, barcodePayload: $0.barcodePayload)
+        })
+        XCTAssertEqual(identities.count, 7)
+        let partNumbers = Set(densoPairs.compactMap { CodeMatcher.partNumber(fromQR: $0.qrPayload) })
+        XCTAssertEqual(partNumbers, ["8601507722", "8601507791"])
+    }
+
+    func testDensoKanbanRecordParsesAllItemsFromRealPayload() {
+        XCTAssertEqual(densoQRPayload.count, 221)
+        let record = DensoKanbanRecord.parse(densoQRPayload)
+
+        XCTAssertEqual(record?.version, "5")
+        XCTAssertEqual(record?.preamble, "5000001021")
+        XCTAssertEqual(record?.orderedItems.count, 21)
+        XCTAssertEqual(
+            record?.orderedItems.map(\.id),
+            [
+                "100", "104", "111", "112", "121", "124", "127", "141", "142", "144", "152",
+                "402", "515", "516", "519", "520", "521", "526", "523", "522", "401"
+            ]
+        )
+        XCTAssertEqual(record?.formType, "20")
+        XCTAssertEqual(record?.partNumber, "8601507722")
+        XCTAssertEqual(record?.packagingCode, "00")
+        XCTAssertEqual(record?.packQuantity, 24)
+        XCTAssertEqual(record?.nextProcess, "D850")
+        XCTAssertEqual(record?.instructionCode, "C01008-45")
+        XCTAssertEqual(record?.kanbanSerial, "0140")
+        XCTAssertEqual(record?.managementNumber, "SWS")
+        XCTAssertEqual(record?.deliveryDate, "20260908")
+        XCTAssertEqual(record?.formattedDeliveryDate, "2026/09/08")
+        XCTAssertEqual(record?.deliveryRun, "S001")
+        XCTAssertEqual(record?.instructedQuantity, 72)
+        XCTAssertEqual(record?.itemNumber, "9924543330")
+        XCTAssertEqual(record?.receivingCode, "M6")
+        // 空欄の項目は桁数のまま生値で保持する。
+        XCTAssertEqual(record?.items["144"], "      ")
+        XCTAssertEqual(record?.items["142"], "M")
+        XCTAssertEqual(record?.canonicalPayload, densoQRPayload)
+
+        // 小文字で通知された読取値は大文字化して受理する。
+        XCTAssertEqual(
+            DensoKanbanRecord.parse(densoQRPayload.lowercased())?.canonicalPayload,
+            densoQRPayload
+        )
+        XCTAssertEqual(DensoKanbanRecord.canonicalize(densoQRPayload), densoQRPayload)
+        XCTAssertTrue(DensoKanbanRecord.isValidScanPayload(densoQRPayload))
+        XCTAssertFalse(DensoKanbanRecord.isValidScanPayload(qrPayload))
+        XCTAssertFalse(DensoKanbanRecord.isValidScanPayload(moltenQRPayload))
+        XCTAssertFalse(DensoKanbanRecord.isValidScanPayload(densoBarcodePayload))
+    }
+
+    /// 汎用パーサであること（項目数・並び・ヘッダ長が変わっても解析できる）と、
+    /// デンソーを最初に判定していることを同時に固定する。
+    func testDensoKanbanRecordParsesDifferentItemLayout() {
+        let record = DensoKanbanRecord.parse(densoSawaiLengthPayload)
+        XCTAssertEqual(record?.orderedItems.map(\.id), ["152", "104", "112"])
+        XCTAssertEqual(record?.partNumber, "8601507722")
+        XCTAssertEqual(record?.packQuantity, 24)
+        XCTAssertEqual(record?.kanbanSerial, "0140")
+        // 宣言されていない項目は無いだけで、解析は成立する。
+        XCTAssertNil(record?.formType)
+        XCTAssertNil(record?.deliveryDate)
+        XCTAssertNil(record?.formattedDeliveryDate)
+        XCTAssertNil(record?.instructedQuantity)
+
+        // 66桁は澤井製作所の完全なレコードにも見えるが、デンソーとして判定する。
+        XCTAssertEqual(densoSawaiLengthPayload.count, 66)
+        XCTAssertTrue(KanbanQRRecord.isValidScanPayload(densoSawaiLengthPayload))
+        XCTAssertEqual(Destination.detect(qrPayload: densoSawaiLengthPayload), .denso)
+
+        // 61桁はモルテンの完全なレコードにも見えるが、やはりデンソーとして判定する。
+        XCTAssertEqual(densoMoltenLengthPayload.count, 61)
+        XCTAssertTrue(MoltenQRRecord.isValidScanPayload(densoMoltenLengthPayload))
+        XCTAssertEqual(Destination.detect(qrPayload: densoMoltenLengthPayload), .denso)
+        XCTAssertEqual(
+            DensoKanbanRecord.parse(densoMoltenLengthPayload)?.kanbanSerial,
+            "0140123456"
+        )
+        XCTAssertEqual(CodeMatcher.partNumber(fromQR: densoMoltenLengthPayload), "8601507722")
+    }
+
+    func testDensoKanbanRecordRejectsBrokenHeaderOrDataLength() {
+        XCTAssertNil(DensoKanbanRecord.parse(""))
+        XCTAssertNil(DensoKanbanRecord.parse("JAMA"))
+
+        func replacingHeader(_ value: String) -> String {
+            String(densoQRPayload.prefix(5)) + value + String(densoQRPayload.dropFirst(9))
+        }
+
+        // 様式が違う / 版とヘッダ長が数字でない。
+        XCTAssertNil(DensoKanbanRecord.parse("JAMB" + densoQRPayload.dropFirst(4)))
+        XCTAssertNil(DensoKanbanRecord.parse("JAMAX" + densoQRPayload.dropFirst(5)))
+        XCTAssertNil(DensoKanbanRecord.parse(replacingHeader("01X9")))
+        // ヘッダがペイロードより長い。
+        XCTAssertNil(DensoKanbanRecord.parse(replacingHeader("9999")))
+        // 119 - 14 = 105 は項目定義の整数個だが、118 - 14 = 104 は違う。
+        XCTAssertNil(DensoKanbanRecord.parse(replacingHeader("0118")))
+        // 整数個でも、桁数の合計がデータ部と合わなければ受理しない。
+        XCTAssertNil(DensoKanbanRecord.parse(replacingHeader("0114")))
+        // データ部の過不足。
+        XCTAssertNil(DensoKanbanRecord.parse(String(densoQRPayload.dropLast())))
+        XCTAssertNil(DensoKanbanRecord.parse(densoQRPayload + "0"))
+
+        // 項目番号の重複は解釈が定まらない。
+        let duplicateItemID = "JAMA5" + "0034" + "5000000004"
+            + "10410" + "10410" + "11207" + "15210"
+            + "8601507722" + "8601507722" + "0000024" + "0140123456"
+        XCTAssertNil(DensoKanbanRecord.parse(duplicateItemID))
+
+        // 必須項目: 104(部品番号)・112(収容数)・152(かんばん連番)。
+        let withoutPartNumber = "JAMA5" + "0024" + "5000000002"
+            + "11207" + "15210" + "0000024" + "0140123456"
+        XCTAssertNil(DensoKanbanRecord.parse(withoutPartNumber))
+        let withoutPackQuantity = "JAMA5" + "0024" + "5000000002"
+            + "10410" + "15210" + "8601507722" + "0140123456"
+        XCTAssertNil(DensoKanbanRecord.parse(withoutPackQuantity))
+        let nonNumericPackQuantity = "JAMA5" + "0029" + "5000000003"
+            + "15210" + "10410" + "11212"
+            + "0140      " + "8601507722" + "00000000002X"
+        XCTAssertNil(DensoKanbanRecord.parse(nonNumericPackQuantity))
+        let blankKanbanSerial = "JAMA5" + "0029" + "5000000003"
+            + "15210" + "10410" + "11212"
+            + "          " + "8601507722" + "000000000024"
+        XCTAssertNil(DensoKanbanRecord.parse(blankKanbanSerial))
+
+        // 壊れたかんばんを他の仕向地へ降格させない。
+        XCTAssertNil(Destination.detect(qrPayload: String(densoQRPayload.dropLast())))
+        XCTAssertNil(CodeMatcher.partNumber(fromQR: String(densoQRPayload.dropLast())))
+        XCTAssertNil(
+            BoxIdentity.make(
+                qrPayload: String(densoQRPayload.dropLast()),
+                barcodePayload: densoBarcodePayload
+            )
+        )
+    }
+
+    func testTagBarcodeRecordAcceptsSixFourOnlyForDenso() {
+        XCTAssertTrue(
+            TagBarcodeRecord.isValidScanPayload(densoBarcodePayload, destination: .denso)
+        )
+        XCTAssertTrue(
+            TagBarcodeRecord.isValidScanPayload("860150-7722@1dz50o", destination: .denso)
+        )
+        // 仕向地未判定のときは、どの仕向地の現品票も取りこぼさない。
+        XCTAssertTrue(TagBarcodeRecord.isValidScanPayload(densoBarcodePayload, destination: nil))
+        XCTAssertTrue(TagBarcodeRecord.isValidScanPayload(barcodePayload, destination: nil))
+        XCTAssertTrue(
+            TagBarcodeRecord.isValidScanPayload(moltenShortPartBarcodePayload, destination: nil)
+        )
+
+        // 6-4は澤井製作所・モルテンのセッションでは拒否し、
+        // 4-2-4 / 4-2-3はデンソーのセッションでは拒否する。
+        XCTAssertFalse(
+            TagBarcodeRecord.isValidScanPayload(densoBarcodePayload, destination: .sawai)
+        )
+        XCTAssertFalse(
+            TagBarcodeRecord.isValidScanPayload(densoBarcodePayload, destination: .molten)
+        )
+        XCTAssertFalse(TagBarcodeRecord.isValidScanPayload(barcodePayload, destination: .denso))
+        XCTAssertFalse(
+            TagBarcodeRecord.isValidScanPayload(moltenShortPartBarcodePayload, destination: .denso)
+        )
+
+        let destinations: [Destination?] = [.sawai, .molten, .denso, nil]
+        for destination in destinations {
+            XCTAssertFalse(
+                TagBarcodeRecord.isValidScanPayload("860150-772@1DZ50O", destination: destination)
+            )
+            XCTAssertFalse(
+                TagBarcodeRecord.isValidScanPayload("86015-7722@1DZ50O", destination: destination)
+            )
+            XCTAssertFalse(
+                TagBarcodeRecord.isValidScanPayload("8601507722@1DZ50O", destination: destination)
+            )
+            XCTAssertFalse(
+                TagBarcodeRecord.isValidScanPayload("860150-7722", destination: destination)
+            )
+            XCTAssertFalse(
+                TagBarcodeRecord.isValidScanPayload(densoQRPayload, destination: destination)
+            )
+        }
+    }
+
+    func testFormatPartNumberIsDestinationAware() {
+        // 6-4になるのはデンソーだけ。他の仕向地は従来の4-2-4 / 4-2-3のまま。
+        XCTAssertEqual(
+            CodeMatcher.format(partNumber: "8601507722", destination: .denso),
+            "860150-7722"
+        )
+        XCTAssertEqual(
+            CodeMatcher.format(partNumber: "8601507722", destination: .sawai),
+            "8601-50-7722"
+        )
+        XCTAssertEqual(
+            CodeMatcher.format(partNumber: "8601507722", destination: .molten),
+            "8601-50-7722"
+        )
+        XCTAssertEqual(
+            CodeMatcher.format(partNumber: "8601507722", destination: nil),
+            "8601-50-7722"
+        )
+        XCTAssertEqual(CodeMatcher.format(partNumber: "8601507722"), "8601-50-7722")
+        XCTAssertEqual(
+            CodeMatcher.format(partNumber: "BCJH5281GG", destination: .sawai),
+            "BCJH-52-81GG"
+        )
+        XCTAssertEqual(
+            CodeMatcher.format(partNumber: "PAF115422", destination: .molten),
+            "PAF1-15-422"
+        )
+        // デンソーは10桁以外を整形しない。
+        XCTAssertEqual(
+            CodeMatcher.format(partNumber: "PAF115422", destination: .denso),
+            "PAF115422"
+        )
+        XCTAssertEqual(CodeMatcher.format(partNumber: "ABC", destination: .denso), "ABC")
+        XCTAssertEqual(
+            CodeMatcher.format(partNumber: "ABCDEFGHIJK", destination: .denso),
+            "ABCDEFGHIJK"
         )
     }
 

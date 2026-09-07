@@ -43,6 +43,7 @@ data class HistoryExportLabels(
     val destination: String,
     val destinationSawai: String,
     val destinationMolten: String,
+    val destinationDenso: String,
     val deliveryNumberCount: String,
     val ordererCode: String,
     val moltenPartNumber: String,
@@ -62,6 +63,7 @@ data class HistoryExportLabels(
     fun destinationName(destination: Destination): String = when (destination) {
         Destination.SAWAI -> destinationSawai
         Destination.MOLTEN -> destinationMolten
+        Destination.DENSO -> destinationDenso
     }
 }
 
@@ -118,6 +120,7 @@ object HistoryExportTextFormatter {
             destination = "仕向地",
             destinationSawai = "澤井製作所",
             destinationMolten = "モルテン",
+            destinationDenso = "デンソー",
             deliveryNumberCount = "納品番号数",
             ordererCode = "受注者",
             moltenPartNumber = "部品番号",
@@ -166,6 +169,7 @@ object HistoryExportTextFormatter {
             destination = "Ship-to",
             destinationSawai = "Sawai Seisakusho",
             destinationMolten = "Molten",
+            destinationDenso = "Denso",
             deliveryNumberCount = "Delivery numbers",
             ordererCode = "Orderer",
             moltenPartNumber = "Part number",

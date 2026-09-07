@@ -28,6 +28,22 @@ class CodeMatcherTest {
         "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
     private val moltenShortPartBarcodePayload = "PAF1-15-422@0NKD3C"
 
+    // Destination Denso, the real 221-character kanban of box 0140 (part
+    // 860150-7722). The runs of spaces are item values (144, 402, 515, 516),
+    // so never let an editor collapse them.
+    private val densoQrPayload =
+        "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
+    private val densoBarcodePayload = "860150-7722@1DZ50O"
+
+    // Synthetic kanbans with a different item layout (three items, another
+    // header length). Both would be claimed by another destination if Denso
+    // were not probed first: 66 characters parse as a Sawai record and 61
+    // characters parse as a complete Molten record.
+    private val densoSawaiLengthPayload =
+        "JAMA5002950000000031521010410112120140      8601507722000000000024"
+    private val densoMoltenLengthPayload =
+        "JAMA500295000000003104101120715210860150772200000240140123456"
+
     @Test
     fun normalizeUppercasesAndKeepsOnlyAsciiLettersAndDigits() {
         assertEquals("ABC123", CodeMatcher.normalize(" a-B_c 123!"))
@@ -180,7 +196,7 @@ class CodeMatcherTest {
         val fixture = SharedFixtureJson.decode(json)
 
         assertEquals(2, fixture.schemaVersion)
-        assertEquals(35, fixture.cases.size)
+        assertEquals(47, fixture.cases.size)
         assertEquals(
             "Shared fixture IDs must be unique",
             fixture.cases.size,
@@ -365,6 +381,18 @@ class CodeMatcherTest {
 
         assertEquals(66, CodeMatcher.expectedQrLength(Destination.SAWAI))
         assertEquals(61, CodeMatcher.expectedQrLength(Destination.MOLTEN))
+
+        // A JAMA self-describing record is Denso whatever its length is, and a
+        // Denso kanban has no fixed length to compare an incomplete read with.
+        assertEquals(Destination.DENSO, CodeMatcher.detectDestination(densoQrPayload))
+        assertEquals(Destination.DENSO, CodeMatcher.detectDestination("$densoQrPayload\r\n"))
+        assertEquals(
+            Destination.DENSO,
+            CodeMatcher.detectDestination(densoQrPayload.lowercase()),
+        )
+        // A truncated kanban no longer adds up, so it is no destination at all.
+        assertNull(CodeMatcher.detectDestination(densoQrPayload.dropLast(1)))
+        assertNull(CodeMatcher.expectedQrLength(Destination.DENSO))
     }
 
     @Test
@@ -382,7 +410,9 @@ class CodeMatcherTest {
             )
         )
 
-        Destination.entries.forEach { destination ->
+        // Denso is deliberately absent: its tags are 6-4, so the 4-2-4 and
+        // 4-2-3 payloads below are invalid in a Denso session.
+        listOf(Destination.SAWAI, Destination.MOLTEN).forEach { destination ->
             assertTrue(TagBarcodeRecord.isValidScanPayload(barcodePayload, destination))
             assertTrue(TagBarcodeRecord.isValidScanPayload(moltenBarcodePayload, destination))
             assertFalse(TagBarcodeRecord.isValidScanPayload("PAF1-15-42@0NKD3C", destination))
@@ -415,6 +445,16 @@ class CodeMatcherTest {
 
         assertNull(CodeMatcher.boxIdentity("PART:BCJH-52-81GG;QTY:12", barcodePayload))
         assertNull(CodeMatcher.boxIdentity("", barcodePayload))
+
+        // A Denso kanban carries a per-box serial (item 152), so like Sawai its
+        // QR alone identifies the box and the tag never enters the key.
+        val densoIdentity = CodeMatcher.boxIdentity(densoQrPayload, densoBarcodePayload)
+        assertEquals(densoQrPayload, densoIdentity)
+        assertEquals(densoIdentity, CodeMatcher.boxIdentity(densoQrPayload, null))
+        assertEquals(
+            densoIdentity,
+            CodeMatcher.boxIdentity(densoQrPayload, "860150-7722@1DZB0O"),
+        )
     }
 
     @Test
@@ -430,6 +470,18 @@ class CodeMatcherTest {
         assertEquals(
             MatchResult.MATCH,
             CodeMatcher.compare(" ${qrPayload.lowercase()}\n", barcodePayload)
+        )
+
+        // Denso reads item 104 of the JAMA record, not a fixed position.
+        assertEquals("8601507722", CodeMatcher.partNumberFromQr(densoQrPayload))
+        assertEquals("8601507722", CodeMatcher.partNumberFromQr(densoMoltenLengthPayload))
+        assertEquals(
+            MatchResult.MATCH,
+            CodeMatcher.compare(densoQrPayload, densoBarcodePayload)
+        )
+        assertEquals(
+            MatchResult.MISMATCH,
+            CodeMatcher.compare(densoQrPayload, "860150-7791@01335C")
         )
     }
 
@@ -464,6 +516,256 @@ class CodeMatcherTest {
             val expectedLength = if (pair.id.contains("PAF1")) 9 else 10
             assertEquals(pair.id, expectedLength, record?.partNumber?.length)
         }
+    }
+
+    /**
+     * The seven Denso pairs (denso-NN) must pass the scan boundaries shared by
+     * camera and Bluetooth (a parseable JAMA kanban record, a 6-4@code tag),
+     * and the QR item number must equal the tag part number. Every kanban is a
+     * separate box because item 152 differs.
+     */
+    @Test
+    fun sharedDensoFixturesPassBothScanBoundaries() {
+        val resource = javaClass.getResourceAsStream("/matching-cases.json")
+        assertNotNull("matching-cases.json must be on the test runtime classpath", resource)
+        val fixture = SharedFixtureJson.decode(resource!!.bufferedReader().use { it.readText() })
+        val densoPairs =
+            fixture.cases.filter { it.id.startsWith("denso-") && it.expected == "match" }
+        assertEquals(7, densoPairs.size)
+
+        densoPairs.forEach { pair ->
+            assertEquals(pair.id, 221, pair.qrPayload.length)
+            assertTrue(pair.id, DensoKanbanQrRecord.isValidScanPayload(pair.qrPayload))
+            assertTrue(
+                pair.id,
+                TagBarcodeRecord.isValidScanPayload(pair.barcodePayload, Destination.DENSO)
+            )
+            // The same tag is refused in a session locked to another destination.
+            assertFalse(
+                pair.id,
+                TagBarcodeRecord.isValidScanPayload(pair.barcodePayload, Destination.SAWAI)
+            )
+            assertFalse(
+                pair.id,
+                TagBarcodeRecord.isValidScanPayload(pair.barcodePayload, Destination.MOLTEN)
+            )
+            assertEquals(pair.id, Destination.DENSO, CodeMatcher.detectDestination(pair.qrPayload))
+            val record = DensoKanbanQrRecord.parse(pair.qrPayload)
+            assertEquals(
+                pair.id,
+                CodeMatcher.partNumberFromBarcode(pair.barcodePayload),
+                record?.partNumber
+            )
+            assertEquals(pair.id, 10, record?.partNumber?.length)
+            // The tag prints the part number 6-4.
+            assertEquals(
+                pair.id,
+                TagBarcodeRecord.parse(pair.barcodePayload)?.partNumber,
+                CodeMatcher.formatPartNumber(record?.partNumber.orEmpty(), Destination.DENSO)
+            )
+        }
+
+        // Seven kanban serials, therefore seven distinct boxes over two parts.
+        assertEquals(
+            7,
+            densoPairs.mapNotNull { DensoKanbanQrRecord.parse(it.qrPayload)?.kanbanSerial }
+                .toSet()
+                .size
+        )
+        assertEquals(
+            7,
+            densoPairs.mapNotNull { CodeMatcher.boxIdentity(it.qrPayload, it.barcodePayload) }
+                .toSet()
+                .size
+        )
+        assertEquals(
+            2,
+            densoPairs.mapNotNull { CodeMatcher.partNumberFromQr(it.qrPayload) }.toSet().size
+        )
+    }
+
+    @Test
+    fun densoRecordParsesAllItemsFromRealPayload() {
+        assertEquals(221, densoQrPayload.length)
+        val record = DensoKanbanQrRecord.parse(densoQrPayload)
+
+        assertNotNull(record)
+        assertEquals("5", record?.version)
+        assertEquals("5000001021", record?.preamble)
+        assertEquals(21, record?.orderedItems?.size)
+        assertEquals(
+            listOf(
+                "100", "104", "111", "112", "121", "124", "127", "141", "142", "144", "152",
+                "402", "515", "516", "519", "520", "521", "526", "523", "522", "401",
+            ),
+            record?.orderedItems?.map { it.id }
+        )
+        assertEquals("20", record?.formType)
+        assertEquals("8601507722", record?.partNumber)
+        assertEquals("00", record?.packagingCode)
+        assertEquals(24, record?.packQuantity)
+        assertEquals("D850", record?.nextProcess)
+        assertEquals("C01008-45", record?.instructionCode)
+        assertEquals("0140", record?.kanbanSerial)
+        assertEquals("SWS", record?.managementNumber)
+        assertEquals("20260908", record?.deliveryDate)
+        assertEquals("2026/09/08", record?.formattedDeliveryDate)
+        assertEquals("S001", record?.deliveryRun)
+        assertEquals(72, record?.instructedQuantity)
+        assertEquals("9924543330", record?.itemNumber)
+        assertEquals("M6", record?.receivingCode)
+        // Blank item values keep their width in the raw item map.
+        assertEquals("      ", record?.items?.get("144"))
+        assertEquals("M", record?.items?.get("142"))
+        assertEquals(densoQrPayload, record?.canonicalPayload)
+
+        // A lowercase callback is uppercased rather than rejected.
+        assertEquals(
+            densoQrPayload,
+            DensoKanbanQrRecord.parse(densoQrPayload.lowercase())?.canonicalPayload
+        )
+        assertTrue(DensoKanbanQrRecord.isValidScanPayload(densoQrPayload))
+        assertEquals(densoQrPayload, DensoKanbanQrRecord.canonicalPayload(densoQrPayload))
+        assertFalse(DensoKanbanQrRecord.isValidScanPayload(qrPayload))
+        assertFalse(DensoKanbanQrRecord.isValidScanPayload(moltenQrPayload))
+        assertFalse(DensoKanbanQrRecord.isValidScanPayload(densoBarcodePayload))
+    }
+
+    @Test
+    fun densoRecordParsesADifferentItemLayout() {
+        // Three items in another order, a different header length, and a kanban
+        // serial padded with spaces.
+        val record = DensoKanbanQrRecord.parse(densoSawaiLengthPayload)
+        assertNotNull(record)
+        assertEquals(listOf("152", "104", "112"), record?.orderedItems?.map { it.id })
+        assertEquals("8601507722", record?.partNumber)
+        assertEquals(24, record?.packQuantity)
+        assertEquals("0140", record?.kanbanSerial)
+        // Items the layout does not declare are simply absent.
+        assertNull(record?.formType)
+        assertNull(record?.deliveryDate)
+        assertNull(record?.formattedDeliveryDate)
+        assertNull(record?.instructedQuantity)
+
+        // Both synthetic payloads are complete records of another destination,
+        // so they pin the detection order rather than the lengths.
+        assertEquals(66, densoSawaiLengthPayload.length)
+        assertTrue(KanbanQrRecord.isValidScanPayload(densoSawaiLengthPayload))
+        assertEquals(Destination.DENSO, CodeMatcher.detectDestination(densoSawaiLengthPayload))
+
+        assertEquals(61, densoMoltenLengthPayload.length)
+        assertTrue(MoltenQrRecord.isValidScanPayload(densoMoltenLengthPayload))
+        assertEquals(Destination.DENSO, CodeMatcher.detectDestination(densoMoltenLengthPayload))
+        assertEquals("0140123456", DensoKanbanQrRecord.parse(densoMoltenLengthPayload)?.kanbanSerial)
+    }
+
+    @Test
+    fun densoRecordRejectsBrokenHeaderOrDataLength() {
+        assertNull(DensoKanbanQrRecord.parse(""))
+        assertNull(DensoKanbanQrRecord.parse("JAMA"))
+        // Another format prefix, a non-numeric version, a non-numeric length.
+        assertNull(DensoKanbanQrRecord.parse("JAMB" + densoQrPayload.substring(4)))
+        assertNull(DensoKanbanQrRecord.parse("JAMAX" + densoQrPayload.substring(5)))
+        assertNull(
+            DensoKanbanQrRecord.parse(
+                densoQrPayload.substring(0, 5) + "01X9" + densoQrPayload.substring(9)
+            )
+        )
+        // A header longer than the payload.
+        assertNull(
+            DensoKanbanQrRecord.parse(
+                densoQrPayload.substring(0, 5) + "9999" + densoQrPayload.substring(9)
+            )
+        )
+        // 119 - 14 = 105 is a whole number of item definitions, 118 - 14 = 104
+        // is not, and 114 - 14 = 100 is but then the lengths no longer add up.
+        assertNull(
+            DensoKanbanQrRecord.parse(
+                densoQrPayload.substring(0, 5) + "0118" + densoQrPayload.substring(9)
+            )
+        )
+        assertNull(
+            DensoKanbanQrRecord.parse(
+                densoQrPayload.substring(0, 5) + "0114" + densoQrPayload.substring(9)
+            )
+        )
+        // The declared lengths must equal the data section exactly.
+        assertNull(DensoKanbanQrRecord.parse(densoQrPayload.dropLast(1)))
+        assertNull(DensoKanbanQrRecord.parse(densoQrPayload + "0"))
+
+        // A repeated item id has no defined interpretation.
+        val duplicateItemId = "JAMA5" + "0034" + "5000000004" +
+            "10410" + "10410" + "11207" + "15210" +
+            "8601507722" + "8601507722" + "0000024" + "0140123456"
+        assertNull(DensoKanbanQrRecord.parse(duplicateItemId))
+
+        // Required items: 104 (part number), 112 (pack quantity), 152 (serial).
+        val withoutPartNumber = "JAMA5" + "0024" + "5000000002" +
+            "11207" + "15210" + "0000024" + "0140123456"
+        assertNull(DensoKanbanQrRecord.parse(withoutPartNumber))
+        val withoutPackQuantity = "JAMA5" + "0024" + "5000000002" +
+            "10410" + "15210" + "8601507722" + "0140123456"
+        assertNull(DensoKanbanQrRecord.parse(withoutPackQuantity))
+        val nonNumericPackQuantity = "JAMA5" + "0029" + "5000000003" +
+            "15210" + "10410" + "11212" +
+            "0140      " + "8601507722" + "00000000002X"
+        assertNull(DensoKanbanQrRecord.parse(nonNumericPackQuantity))
+        val blankKanbanSerial = "JAMA5" + "0029" + "5000000003" +
+            "15210" + "10410" + "11212" +
+            "          " + "8601507722" + "000000000024"
+        assertNull(DensoKanbanQrRecord.parse(blankKanbanSerial))
+
+        // A broken kanban is not silently downgraded to another destination.
+        assertNull(CodeMatcher.detectDestination(densoQrPayload.dropLast(1)))
+        assertNull(CodeMatcher.partNumberFromQr(densoQrPayload.dropLast(1)))
+        assertNull(CodeMatcher.boxIdentity(densoQrPayload.dropLast(1), densoBarcodePayload))
+    }
+
+    @Test
+    fun tagValidationAllowsSixFourOnlyForDenso() {
+        assertTrue(TagBarcodeRecord.isValidScanPayload(densoBarcodePayload, Destination.DENSO))
+        assertTrue(TagBarcodeRecord.isValidScanPayload("860150-7722@1dz50o", Destination.DENSO))
+        // An unlocked session accepts every destination's tag format.
+        assertTrue(TagBarcodeRecord.isValidScanPayload(densoBarcodePayload, null))
+        assertTrue(TagBarcodeRecord.isValidScanPayload(barcodePayload, null))
+        assertTrue(TagBarcodeRecord.isValidScanPayload(moltenShortPartBarcodePayload, null))
+
+        // 6-4 is refused in a Sawai or Molten session, and 4-2-4 / 4-2-3 are
+        // refused in a Denso session.
+        assertFalse(TagBarcodeRecord.isValidScanPayload(densoBarcodePayload, Destination.SAWAI))
+        assertFalse(TagBarcodeRecord.isValidScanPayload(densoBarcodePayload, Destination.MOLTEN))
+        assertFalse(TagBarcodeRecord.isValidScanPayload(barcodePayload, Destination.DENSO))
+        assertFalse(
+            TagBarcodeRecord.isValidScanPayload(moltenShortPartBarcodePayload, Destination.DENSO)
+        )
+
+        val destinations = listOf(Destination.SAWAI, Destination.MOLTEN, Destination.DENSO, null)
+        destinations.forEach { destination ->
+            assertFalse(TagBarcodeRecord.isValidScanPayload("860150-772@1DZ50O", destination))
+            assertFalse(TagBarcodeRecord.isValidScanPayload("86015-7722@1DZ50O", destination))
+            assertFalse(TagBarcodeRecord.isValidScanPayload("8601507722@1DZ50O", destination))
+            assertFalse(TagBarcodeRecord.isValidScanPayload("860150-7722", destination))
+            assertFalse(TagBarcodeRecord.isValidScanPayload(densoQrPayload, destination))
+        }
+    }
+
+    @Test
+    fun formatPartNumberIsDestinationAware() {
+        // Only Denso prints 6-4; every other destination keeps 4-2-4 / 4-2-3.
+        assertEquals("860150-7722", CodeMatcher.formatPartNumber("8601507722", Destination.DENSO))
+        assertEquals("8601-50-7722", CodeMatcher.formatPartNumber("8601507722", Destination.SAWAI))
+        assertEquals("8601-50-7722", CodeMatcher.formatPartNumber("8601507722", Destination.MOLTEN))
+        assertEquals("8601-50-7722", CodeMatcher.formatPartNumber("8601507722", null))
+        assertEquals("8601-50-7722", CodeMatcher.formatPartNumber("8601507722"))
+        assertEquals("BCJH-52-81GG", CodeMatcher.formatPartNumber("BCJH5281GG", Destination.SAWAI))
+        assertEquals("PAF1-15-422", CodeMatcher.formatPartNumber("PAF115422", Destination.MOLTEN))
+        // A Denso part number of any other length is printed unchanged.
+        assertEquals("PAF115422", CodeMatcher.formatPartNumber("PAF115422", Destination.DENSO))
+        assertEquals("ABC", CodeMatcher.formatPartNumber("ABC", Destination.DENSO))
+        assertEquals(
+            "ABCDEFGHIJK",
+            CodeMatcher.formatPartNumber("ABCDEFGHIJK", Destination.DENSO)
+        )
     }
 
     private fun replaceCharAt(payload: String, index: Int, character: Char): String =

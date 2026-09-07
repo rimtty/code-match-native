@@ -11,6 +11,7 @@
     <string name="scan_count_format">%1$d件照合済み</string>
     <string name="scan_destination_sawai">澤井製作所</string>
     <string name="scan_destination_molten">モルテン</string>
+    <string name="scan_destination_denso">デンソー</string>
     <string name="scan_session_destination_format">仕向地：%1$s</string>
     <string name="scan_session_default_name">照合セッション</string>
     <string name="scan_name_support">名前は空欄のままでも開始できます</string>

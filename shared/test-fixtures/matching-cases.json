@@ -4,7 +4,8 @@
     "label-NN cases are the 12 field label pairs documented in the customer spec (docs/qr-barcode-spec-analysis.html, git-ignored). Both payloads are the real values decoded from the label photos (Vision, 2026-09-06); the QR is the complete 66-character record.",
     "label-AA-qr-vs-label-BB-tag cases pair a QR with the tag of the neighbouring label of the same series (e.g. 52 vs 55) to pin the most likely field mix-up as a mismatch.",
     "box-a / box-b are two boxes of the same part (BCJH-55-81GG) photographed with the same tag barcode and different card numbers (DAAL134140 / DAAL134150): the basis for the duplicate rule keying on the QR record, not the part number.",
-    "molten-NN cases are the Vision-decoded slip/label pairs of destination モルテン (spec §6.5, docs/qr-barcode-spec-analysis.html, git-ignored). QR payloads keep their trailing spaces and are exactly 61 characters; `destination` is the value the destination detector must return for the QR."
+    "molten-NN cases are the Vision-decoded slip/label pairs of destination モルテン (spec §6.5, docs/qr-barcode-spec-analysis.html, git-ignored). QR payloads keep their trailing spaces and are exactly 61 characters; `destination` is the value the destination detector must return for the QR.",
+    "denso-NN cases are the Vision-decoded kanban/tag pairs of destination デンソー (2026-09-07, spec §7). Each QR is the complete 221-character JAMA self-describing record whose header declares the item list; the box is identified by the QR alone because item 152 (kanban serial) differs per box. The tag part number prints 6-4."
   ],
   "cases": [
     {
@@ -247,6 +248,90 @@
       "id": "sawai-qr-vs-molten-tag",
       "qrPayload": "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
       "barcodePayload": "D10E-50-N10B@0UBL00",
+      "expected": "mismatch",
+      "destination": "sawai"
+    },
+    {
+      "id": "denso-01-860150-7722",
+      "qrPayload": "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0139SWS    20260908S0010000720000009924543330454333M6",
+      "barcodePayload": "860150-7722@1DYZ0O",
+      "expected": "match",
+      "destination": "denso"
+    },
+    {
+      "id": "denso-02-860150-7722",
+      "qrPayload": "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6",
+      "barcodePayload": "860150-7722@1DZ50O",
+      "expected": "match",
+      "destination": "denso"
+    },
+    {
+      "id": "denso-03-860150-7722",
+      "qrPayload": "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0141SWS    20260908S0010000720000009924543330454333M6",
+      "barcodePayload": "860150-7722@1DZB0O",
+      "expected": "match",
+      "destination": "denso"
+    },
+    {
+      "id": "denso-04-860150-7791",
+      "qrPayload": "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507791000000192D860C01008D86045M      0538SWS    20260908S0010007680000009924543420454342R6",
+      "barcodePayload": "860150-7791@01335C",
+      "expected": "match",
+      "destination": "denso"
+    },
+    {
+      "id": "denso-05-860150-7791",
+      "qrPayload": "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507791000000192D860C01008D86045M      0539SWS    20260908S0010007680000009924543420454342R6",
+      "barcodePayload": "860150-7791@013Z5C",
+      "expected": "match",
+      "destination": "denso"
+    },
+    {
+      "id": "denso-06-860150-7791",
+      "qrPayload": "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507791000000192D860C01008D86045M      0540SWS    20260908S0010007680000009924543420454342R6",
+      "barcodePayload": "860150-7791@01455C",
+      "expected": "match",
+      "destination": "denso"
+    },
+    {
+      "id": "denso-07-860150-7791",
+      "qrPayload": "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507791000000192D860C01008D86045M      0541SWS    20260908S0010007680000009924543420454342R6",
+      "barcodePayload": "860150-7791@014B5C",
+      "expected": "match",
+      "destination": "denso"
+    },
+    {
+      "id": "denso-01-qr-vs-860150-7791-tag",
+      "qrPayload": "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0139SWS    20260908S0010000720000009924543330454333M6",
+      "barcodePayload": "860150-7791@01335C",
+      "expected": "mismatch",
+      "destination": "denso"
+    },
+    {
+      "id": "denso-04-qr-vs-860132-7981-tag",
+      "qrPayload": "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507791000000192D860C01008D86045M      0538SWS    20260908S0010007680000009924543420454342R6",
+      "barcodePayload": "860132-7981@000000",
+      "expected": "mismatch",
+      "destination": "denso"
+    },
+    {
+      "id": "denso-qr-vs-sawai-tag",
+      "qrPayload": "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0139SWS    20260908S0010000720000009924543330454333M6",
+      "barcodePayload": "BCJH-52-81GG@1N5X0C",
+      "expected": "mismatch",
+      "destination": "denso"
+    },
+    {
+      "id": "denso-qr-vs-molten-tag",
+      "qrPayload": "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0139SWS    20260908S0010000720000009924543330454333M6",
+      "barcodePayload": "D10E-50-N10B@0UBL00",
+      "expected": "mismatch",
+      "destination": "denso"
+    },
+    {
+      "id": "sawai-qr-vs-denso-tag",
+      "qrPayload": "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
+      "barcodePayload": "860150-7722@1DZ50O",
       "expected": "mismatch",
       "destination": "sawai"
     }

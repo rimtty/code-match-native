@@ -73,6 +73,7 @@ object HistoryUiResources {
         destination = stringResource(R.string.history_destination),
         destinationSawai = stringResource(R.string.history_destination_sawai),
         destinationMolten = stringResource(R.string.history_destination_molten),
+        destinationDenso = stringResource(R.string.history_destination_denso),
         deliveryNumberCount = stringResource(R.string.history_delivery_number_count),
         ordererCode = stringResource(R.string.history_orderer_code),
         moltenPartNumber = stringResource(R.string.history_molten_part_number),
@@ -92,6 +93,7 @@ object HistoryUiResources {
         return when (destination) {
             Destination.SAWAI -> labels.destinationSawai
             Destination.MOLTEN -> labels.destinationMolten
+            Destination.DENSO -> labels.destinationDenso
         }
     }
 

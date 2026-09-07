@@ -2284,6 +2284,22 @@
         }
       }
     },
+    "デンソー" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Denso"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デンソー"
+          }
+        }
+      }
+    },
     "トリガーを1回押して読み取る" : {
       "localizations" : {
         "en" : {
