@@ -140,10 +140,19 @@ enum SessionPDFExporter {
             }
 
             /// 1箱分の読み取り記録。箱番号は呼び出し側の並び（品番ごと／納品番号ごと）に従う。
-            func drawBoxEntry(_ entry: MatchHistoryEntry, number: Int) {
+            /// デンソーは箱ごとにかんばん連番が変わるので、`kanbanSerial` を渡すと1行添える。
+            /// 澤井製作所・モルテンは従来どおり `nil` で、出力は変わらない。
+            func drawBoxEntry(_ entry: MatchHistoryEntry, number: Int, kanbanSerial: String? = nil) {
                 // 箱ごとの見出し＋全文2行はまとめて改ページ判定する
-                ensureSpace(48)
+                ensureSpace(kanbanSerial == nil ? 48 : 62)
                 let managementCode = entry.barcodePayload.flatMap(TagBarcodeRecord.parse)?.managementCode
+                if let kanbanSerial {
+                    draw(
+                        AppLocalization.string("かんばん連番: \(kanbanSerial)"),
+                        font: bodyFont,
+                        spacing: 2
+                    )
+                }
                 draw(
                     AppLocalization.string(
                         "\(number)箱目　照合時刻: \(appLanguage.formatDateTime(entry.matchedAt))　管理コード: \(managementCode ?? "-")"
@@ -218,7 +227,7 @@ enum SessionPDFExporter {
                         )
                         draw(
                             AppLocalization.string(
-                                "受注者: \(record.ordererCode)　部品番号: \(CodeMatcher.format(partNumber: record.partNumber))　納品番号: \(record.deliveryNumber)"
+                                "受注者: \(record.ordererCode)　部品番号: \(CodeMatcher.format(partNumber: record.partNumber, destination: .molten))　納品番号: \(record.deliveryNumber)"
                             ),
                             font: bodyFont,
                             spacing: 2
@@ -247,12 +256,53 @@ enum SessionPDFExporter {
                     continue
                 }
 
-                if let qr = group.entries.compactMap({ $0.qrPayload.flatMap(KanbanQRRecord.parse) }).first {
+                // デンソーのかんばん。共通欄を3行にまとめ、箱ごとの記録にかんばん連番を添える。
+                // 澤井製作所の解析は寛容でデンソーのQRも受理してしまうため、必ず先に判定する。
+                if let denso = group.entries.compactMap({ $0.densoRecord }).first {
+                    // かんばん情報3行はまとめて改ページ判定する
+                    ensureSpace(70)
+                    let instructedQuantity = denso.instructedQuantity
+                        .map { appLanguage.formatInteger($0) } ?? "-"
+                    draw(
+                        AppLocalization.string(
+                            "部品番号: \(CodeMatcher.format(partNumber: denso.partNumber, destination: .denso))　収容数: \(denso.packQuantity)　指示数: \(instructedQuantity)"
+                        ),
+                        font: bodyFont,
+                        spacing: 2
+                    )
+                    draw(
+                        AppLocalization.string(
+                            "次区: \(denso.nextProcess ?? "-")　指示: \(denso.instructionCode ?? "-")　納入日: \(denso.formattedDeliveryDate ?? "-")　便: \(denso.deliveryRun ?? "-")"
+                        ),
+                        font: bodyFont,
+                        spacing: 2
+                    )
+                    draw(
+                        AppLocalization.string(
+                            "管理番号: \(denso.managementNumber ?? "-")　アイテムNo: \(denso.itemNumber ?? "-")　受入: \(denso.receivingCode ?? "-")"
+                        ),
+                        font: bodyFont,
+                        spacing: 4
+                    )
+
+                    draw(AppLocalization.string("各箱の読み取り記録"), font: headFont, spacing: 2)
+                    for (boxIndex, entry) in group.entries.enumerated() {
+                        drawBoxEntry(
+                            entry,
+                            number: boxIndex + 1,
+                            kanbanSerial: entry.densoRecord?.kanbanSerial
+                        )
+                    }
+                    drawDivider()
+                    continue
+                }
+
+                if let qr = group.entries.compactMap({ $0.kanbanRecord }).first {
                     let suffix = qr.partSuffix.map { AppLocalization.string("（枝番 \($0)）") } ?? ""
                     draw(AppLocalization.string("納品書情報"), font: headFont, spacing: 2)
                     draw(
                         AppLocalization.string(
-                            "品目番号: \(CodeMatcher.format(partNumber: qr.partNumber))\(suffix)　カード番号: \(qr.cardNumber)"
+                            "品目番号: \(CodeMatcher.format(partNumber: qr.partNumber, destination: .sawai))\(suffix)　カード番号: \(qr.cardNumber)"
                         ),
                         font: bodyFont,
                         spacing: 2

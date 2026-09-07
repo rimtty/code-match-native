@@ -236,6 +236,41 @@ final class CodeMatchUITests: XCTestCase {
         )
         XCTAssertEqual(scannerTitle.label, "QRコードを読み取る")
         XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
+
+        // セッションを終了すると、履歴にも仕向地とデンソーのかんばん項目が残る。
+        app.buttons["endSessionButton"].tap()
+        app.alerts.buttons["終了する"].tap()
+        XCTAssertTrue(app.buttons["startSessionButton"].waitForExistence(timeout: 5))
+
+        app.tabBars.buttons["履歴"].tap()
+        XCTAssertTrue(app.navigationBars["照合履歴"].waitForExistence(timeout: 3))
+        let sessionRow = app.buttons["historySessionRow"]
+        XCTAssertTrue(sessionRow.waitForExistence(timeout: 3))
+        sessionRow.tap()
+
+        // LabeledContentは見出しと値を1つの読み上げ要素にまとめる。
+        let sessionDestination = app.staticTexts["historySessionDestination"]
+        XCTAssertTrue(sessionDestination.waitForExistence(timeout: 3))
+        XCTAssertEqual(sessionDestination.label, "仕向地、デンソー")
+
+        let matchEntryRow = app.buttons["matchEntryRow"]
+        XCTAssertTrue(matchEntryRow.waitForExistence(timeout: 3))
+        matchEntryRow.tap()
+
+        let boxEntryRow = app.buttons["boxEntryRow"]
+        XCTAssertTrue(boxEntryRow.waitForExistence(timeout: 3))
+        boxEntryRow.tap()
+
+        // デンソーのかんばん項目（QR解析）にかんばん連番が並ぶ。
+        let kanbanSerial = app.staticTexts["かんばん連番"]
+        var detailScrollAttempts = 0
+        while !kanbanSerial.exists, detailScrollAttempts < 5 {
+            app.swipeUp()
+            detailScrollAttempts += 1
+        }
+        XCTAssertTrue(kanbanSerial.waitForExistence(timeout: 3))
+        // 澤井製作所として解析した欄は出さない。
+        XCTAssertFalse(app.staticTexts["カード番号"].exists)
     }
 
     func testSettingsDiscoversAndConnectsMockScanner() {

@@ -16,6 +16,10 @@ final class HistoryExporterTests: XCTestCase {
     private let moltenQRD10E = "AK6805D10E50N10B         U543820000MB    S600700000020908    "
     private let moltenTagD10E = "D10E-50-N10B@0UBL00"
 
+    // デンソーのかんばんQR(JAMA自己記述形式)。項目間の空白もレコードの一部。
+    private let densoQRKanban0140 = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
+    private let densoTag0140 = "860150-7722@1DZ50O"
+
     private let exportedAt = Date(timeIntervalSince1970: 1_757_207_025) // 2025-09-07T01:03:45Z
     private let moltenStartedAt = Date(timeIntervalSince1970: 1_700_000_000)
     private let sawaiStartedAt = Date(timeIntervalSince1970: 1_600_000_000)
@@ -83,6 +87,39 @@ final class HistoryExporterTests: XCTestCase {
         let root = try exportRoot(sessions: [sawaiLegacySession()])
         let sessions = try XCTUnwrap(root["sessions"] as? [[String: Any]])
         XCTAssertEqual(sessions[0]["destination"] as? String, "sawai")
+    }
+
+    /// デンソーのセッションも永続化idの `denso` で出し、かんばんQRは1文字も変えずに往復する。
+    func testDensoSessionExportsDestinationId() throws {
+        XCTAssertEqual(densoQRKanban0140.count, 221)
+
+        let session = MatchSession(
+            id: UUID(uuidString: "88888888-8888-8888-8888-888888888888")!,
+            startedAt: sawaiStartedAt,
+            endedAt: sawaiStartedAt.addingTimeInterval(600),
+            entries: [
+                MatchHistoryEntry(
+                    id: UUID(uuidString: "99999999-9999-9999-9999-999999999999")!,
+                    code: "860150-7722",
+                    matchedAt: sawaiStartedAt.addingTimeInterval(60),
+                    qrPayload: densoQRKanban0140,
+                    barcodePayload: densoTag0140
+                )
+            ],
+            destination: .denso
+        )
+
+        let root = try exportRoot(sessions: [session])
+        let sessions = try XCTUnwrap(root["sessions"] as? [[String: Any]])
+        XCTAssertEqual(sessions[0]["destination"] as? String, "denso")
+
+        let entries = try XCTUnwrap(sessions[0]["entries"] as? [[String: Any]])
+        let qrPayload = try XCTUnwrap(entries[0]["qrPayload"] as? String)
+        XCTAssertEqual(qrPayload.count, 221)
+        XCTAssertEqual(qrPayload, densoQRKanban0140)
+        XCTAssertEqual(Array(qrPayload.unicodeScalars), Array(densoQRKanban0140.unicodeScalars))
+        XCTAssertEqual(entries[0]["barcodePayload"] as? String, densoTag0140)
+        XCTAssertEqual(entries[0]["code"] as? String, "860150-7722")
     }
 
     func testSessionWithoutAnyDestinationEmitsNull() throws {

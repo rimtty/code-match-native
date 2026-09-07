@@ -342,6 +342,39 @@ final class HistoryStoreTests: XCTestCase {
         )
     }
 
+    /// 履歴の記録からデンソーのかんばん項目を解析できる（履歴詳細とPDFが使う経路）。
+    /// `KanbanQRRecord.parse` は寛容でデンソーのQRも受理してしまうため、
+    /// 仕向地ガード付きの `kanbanRecord` / `densoRecord` の出方まで確かめる。
+    func testDensoRecordParsesFromEntry() throws {
+        let entry = MatchHistoryEntry(
+            code: "860150-7722",
+            qrPayload: densoQRKanban0140,
+            barcodePayload: densoTag0140
+        )
+
+        let record = try XCTUnwrap(entry.densoRecord)
+        XCTAssertEqual(record.formType, "20")
+        XCTAssertEqual(record.partNumber, "8601507722")
+        XCTAssertEqual(record.packagingCode, "00")
+        XCTAssertEqual(record.packQuantity, 24)
+        XCTAssertEqual(record.nextProcess, "D850")
+        XCTAssertEqual(record.instructionCode, "C01008-45")
+        XCTAssertEqual(record.kanbanSerial, "0140")
+        XCTAssertEqual(record.managementNumber, "SWS")
+        XCTAssertEqual(record.formattedDeliveryDate, "2026/09/08")
+        XCTAssertEqual(record.deliveryRun, "S001")
+        XCTAssertEqual(record.instructedQuantity, 72)
+        XCTAssertEqual(record.itemNumber, "9924543330")
+        XCTAssertEqual(record.receivingCode, "M6")
+
+        // 澤井製作所・モルテンとしては解析しない
+        XCTAssertNil(entry.kanbanRecord)
+        XCTAssertNil(entry.moltenRecord)
+        // QR全文を持たない旧履歴はどの仕向地としても解析しない
+        let legacy = MatchHistoryEntry(code: "860150-7722")
+        XCTAssertNil(legacy.densoRecord)
+    }
+
     /// デンソーは納品番号ではなく品番ごとに箱を数える（澤井製作所と同じ規則）。
     func testDensoMatchCountPerPartNumber() {
         let storageURL = temporaryStorageURL()
