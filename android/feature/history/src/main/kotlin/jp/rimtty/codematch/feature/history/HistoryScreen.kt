@@ -66,6 +66,7 @@ import jp.rimtty.codematch.core.export.formatMoltenTime
 import jp.rimtty.codematch.core.export.moltenDeliveryGroups
 import jp.rimtty.codematch.core.export.resolvedDestination
 import jp.rimtty.codematch.core.matching.CodeMatcher
+import jp.rimtty.codematch.core.matching.DensoKanbanQrRecord
 import jp.rimtty.codematch.core.matching.KanbanQrRecord
 import jp.rimtty.codematch.core.matching.MoltenQrRecord
 import jp.rimtty.codematch.core.matching.TagBarcodeRecord
@@ -767,18 +768,22 @@ fun HistoryEntryDetail(
 ) {
     HistoryLocalized(language) {
         val labels = HistoryUiResources.labels()
-        // The two destinations put different fields at different positions, so
-        // the detected destination decides which record is read and shown.
+        // Each destination puts different fields at different positions, so the
+        // detected destination - never the parse result - decides which record
+        // is read and shown. KanbanQrRecord.parse is lenient enough to accept a
+        // Denso payload, so only this branch keeps them apart.
         val destination = entry.qrPayload?.let(CodeMatcher::detectDestination)
-        val moltenQr = if (destination == Destination.MOLTEN) {
-            entry.qrPayload?.let(MoltenQrRecord::parse)
-        } else {
-            null
+        val moltenQr = when (destination) {
+            Destination.MOLTEN -> entry.qrPayload?.let(MoltenQrRecord::parse)
+            else -> null
         }
-        val qr = if (destination == Destination.MOLTEN) {
-            null
-        } else {
-            entry.qrPayload?.let(KanbanQrRecord::parse)
+        val densoQr = when (destination) {
+            Destination.DENSO -> entry.qrPayload?.let(DensoKanbanQrRecord::parse)
+            else -> null
+        }
+        val qr = when (destination) {
+            Destination.MOLTEN, Destination.DENSO -> null
+            else -> entry.qrPayload?.let(KanbanQrRecord::parse)
         }
         val barcode = entry.barcodePayload?.let(TagBarcodeRecord::parse)
         LazyColumn(
@@ -809,7 +814,7 @@ fun HistoryEntryDetail(
                         SummaryRow(labels.ordererCode, moltenQr.ordererCode)
                         SummaryRow(
                             labels.moltenPartNumber,
-                            CodeMatcher.formatPartNumber(moltenQr.partNumber),
+                            CodeMatcher.formatPartNumber(moltenQr.partNumber, Destination.MOLTEN),
                         )
                         SummaryRow(labels.deliveryNumber, moltenQr.deliveryNumber)
                         SummaryRow(labels.deliveryDestination, moltenQr.deliveryDestination)
@@ -834,6 +839,63 @@ fun HistoryEntryDetail(
                     }
                 }
             }
+            if (densoQr != null) {
+                item {
+                    SectionCard(title = labels.qrParsed) {
+                        SummaryRow(
+                            labels.formType,
+                            densoQr.formType ?: HistoryUiResources.notAvailable(),
+                        )
+                        SummaryRow(
+                            labels.moltenPartNumber,
+                            CodeMatcher.formatPartNumber(densoQr.partNumber, Destination.DENSO),
+                        )
+                        SummaryRow(
+                            labels.packagingCode,
+                            densoQr.packagingCode ?: HistoryUiResources.notAvailable(),
+                        )
+                        SummaryRow(
+                            labels.packQuantity,
+                            HistoryExportTextFormatter.integer(densoQr.packQuantity, language),
+                        )
+                        SummaryRow(
+                            labels.nextProcess,
+                            densoQr.nextProcess ?: HistoryUiResources.notAvailable(),
+                        )
+                        SummaryRow(
+                            labels.instructionCode,
+                            densoQr.instructionCode ?: HistoryUiResources.notAvailable(),
+                        )
+                        SummaryRow(labels.kanbanSerial, densoQr.kanbanSerial)
+                        SummaryRow(
+                            labels.managementNumber,
+                            densoQr.managementNumber ?: HistoryUiResources.notAvailable(),
+                        )
+                        SummaryRow(
+                            labels.deliveryDate,
+                            densoQr.formattedDeliveryDate ?: HistoryUiResources.notAvailable(),
+                        )
+                        SummaryRow(
+                            labels.deliveryRun,
+                            densoQr.deliveryRun ?: HistoryUiResources.notAvailable(),
+                        )
+                        SummaryRow(
+                            labels.instructedQuantity,
+                            densoQr.instructedQuantity
+                                ?.let { HistoryExportTextFormatter.integer(it, language) }
+                                ?: HistoryUiResources.notAvailable(),
+                        )
+                        SummaryRow(
+                            labels.densoItemNumber,
+                            densoQr.itemNumber ?: HistoryUiResources.notAvailable(),
+                        )
+                        SummaryRow(
+                            labels.receivingCode,
+                            densoQr.receivingCode ?: HistoryUiResources.notAvailable(),
+                        )
+                    }
+                }
+            }
             if (qr != null) {
                 item {
                     SectionCard(title = labels.qrParsed) {
@@ -842,10 +904,10 @@ fun HistoryEntryDetail(
                             labels.itemNumber,
                             qr.partSuffix?.let {
                                 HistoryUiResources.partWithSuffix(
-                                    CodeMatcher.formatPartNumber(qr.partNumber),
+                                    CodeMatcher.formatPartNumber(qr.partNumber, Destination.SAWAI),
                                     it,
                                 )
-                            } ?: CodeMatcher.formatPartNumber(qr.partNumber),
+                            } ?: CodeMatcher.formatPartNumber(qr.partNumber, Destination.SAWAI),
                         )
                         SummaryRow(labels.deliveryQuantity, HistoryUiText.quantity(qr.deliveryQuantity, language))
                         SummaryRow(labels.instructedQuantity, HistoryUiText.quantity(qr.instructedQuantity, language))

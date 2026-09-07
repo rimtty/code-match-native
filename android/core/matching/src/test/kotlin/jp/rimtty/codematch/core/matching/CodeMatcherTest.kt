@@ -113,12 +113,12 @@ class CodeMatcherTest {
 
     @Test
     fun formatPartNumberUsesTheFourTwoFourDisplayShape() {
-        assertEquals("BCJH-52-81GG", CodeMatcher.formatPartNumber("BCJH5281GG"))
+        assertEquals("BCJH-52-81GG", CodeMatcher.formatPartNumber("BCJH5281GG", null))
         // A nine-character Molten part number prints as 4-2-3.
-        assertEquals("PAF1-15-422", CodeMatcher.formatPartNumber("PAF115422"))
-        assertEquals("ABC", CodeMatcher.formatPartNumber("ABC"))
-        assertEquals("ABCDEFGHIJK", CodeMatcher.formatPartNumber("ABCDEFGHIJK"))
-        assertEquals("abcd-ef-ghij", CodeMatcher.formatPartNumber("abcdefghij"))
+        assertEquals("PAF1-15-422", CodeMatcher.formatPartNumber("PAF115422", null))
+        assertEquals("ABC", CodeMatcher.formatPartNumber("ABC", null))
+        assertEquals("ABCDEFGHIJK", CodeMatcher.formatPartNumber("ABCDEFGHIJK", null))
+        assertEquals("abcd-ef-ghij", CodeMatcher.formatPartNumber("abcdefghij", null))
     }
 
     @Test
@@ -756,7 +756,6 @@ class CodeMatcherTest {
         assertEquals("8601-50-7722", CodeMatcher.formatPartNumber("8601507722", Destination.SAWAI))
         assertEquals("8601-50-7722", CodeMatcher.formatPartNumber("8601507722", Destination.MOLTEN))
         assertEquals("8601-50-7722", CodeMatcher.formatPartNumber("8601507722", null))
-        assertEquals("8601-50-7722", CodeMatcher.formatPartNumber("8601507722"))
         assertEquals("BCJH-52-81GG", CodeMatcher.formatPartNumber("BCJH5281GG", Destination.SAWAI))
         assertEquals("PAF1-15-422", CodeMatcher.formatPartNumber("PAF115422", Destination.MOLTEN))
         // A Denso part number of any other length is printed unchanged.

@@ -1,6 +1,7 @@
 package jp.rimtty.codematch.core.export
 
 import jp.rimtty.codematch.core.matching.CodeMatcher
+import jp.rimtty.codematch.core.matching.DensoKanbanQrRecord
 import jp.rimtty.codematch.core.matching.MoltenQrRecord
 import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchEntry
@@ -100,6 +101,18 @@ internal fun MatchEntry.moltenRecord(): MoltenQrRecord? {
     val payload = qrPayload ?: return null
     if (CodeMatcher.detectDestination(payload) != Destination.MOLTEN) return null
     return MoltenQrRecord.parse(payload)
+}
+
+/**
+ * Parses an entry's QR payload as a Denso kanban.
+ * The destination is detected first because [jp.rimtty.codematch.core.matching.KanbanQrRecord]
+ * parses leniently: a `JAMA...` payload satisfies its card-number rule, so a
+ * Denso kanban would otherwise be rendered as a Sawai slip.
+ */
+internal fun MatchEntry.densoRecord(): DensoKanbanQrRecord? {
+    val payload = qrPayload ?: return null
+    if (CodeMatcher.detectDestination(payload) != Destination.DENSO) return null
+    return DensoKanbanQrRecord.parse(payload)
 }
 
 private val FOUR_DIGITS = Regex("[0-9]{4}")

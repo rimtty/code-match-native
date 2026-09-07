@@ -17,6 +17,8 @@ class HistoryDeliveryGroupsTest {
         "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
     private val sawaiQr =
         "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
+    // A real デンソー kanban; the runs of spaces are blank fields, not padding.
+    private val densoQr = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
 
     @Test
     fun deliveryGroupsKeepFirstSeenOrderAndSumPackQuantities() {
@@ -48,6 +50,29 @@ class HistoryDeliveryGroupsTest {
         )
 
         assertTrue(entries.moltenDeliveryGroups().isEmpty())
+    }
+
+    @Test
+    fun densoEntriesProduceNoDeliveryGroups() {
+        assertEquals(221, densoQr.length)
+        val denso = moltenEntry("denso", densoQr, "860150-7722@1DZ50O")
+        val sawai = moltenEntry("sawai", sawaiQr, "BCJH-52-81GG@1N5X0C")
+        val molten = moltenEntry("molten", moltenQr2, "PAF1-15-422@0NKD3C")
+
+        // Delivery numbers are a Molten concept only.
+        assertTrue(listOf(denso).moltenDeliveryGroups().isEmpty())
+        assertEquals(Destination.DENSO, MatchSession(entries = listOf(denso)).resolvedDestination())
+
+        val record = denso.densoRecord()
+        assertEquals("8601507722", record?.partNumber)
+        assertEquals("0140", record?.kanbanSerial)
+        assertEquals(24, record?.packQuantity)
+        assertEquals(72, record?.instructedQuantity)
+        assertEquals("2026/09/08", record?.formattedDeliveryDate)
+        // A Sawai or Molten entry is never read at Denso field positions.
+        assertNull(sawai.densoRecord())
+        assertNull(molten.densoRecord())
+        assertNull(MatchEntry(id = "legacy", code = "860150-7722").densoRecord())
     }
 
     @Test
