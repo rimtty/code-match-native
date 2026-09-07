@@ -51,6 +51,7 @@ enum BluetoothScannerSetupCode: String, CaseIterable, Identifiable {
 
 struct SettingsScreen: View {
     @ObservedObject var bluetoothScanner: BluetoothScannerService
+    @ObservedObject var scanLog: ScanLogStore
     @AppStorage(FeedbackSettings.volumeKey) private var volume = FeedbackSettings.defaultVolume
     @AppStorage(FeedbackSettings.successSoundKey) private var successSound = SuccessSound.posBeep.rawValue
     @AppStorage(FeedbackSettings.failureSoundKey) private var failureSound = FailureSound.buzzer.rawValue
@@ -59,6 +60,14 @@ struct SettingsScreen: View {
     @AppStorage(AutoAdvanceSettings.delaySecondsKey) private var autoAdvanceDelaySeconds = AutoAdvanceSettings.defaultDelay.rawValue
     private let player = FeedbackPlayer.shared
     @State private var showsScannerSetupGuide = false
+    @State private var scanLogShareItem: ScanLogShareItem?
+    @State private var showsScanLogExportError = false
+    @State private var showsScanLogClearConfirmation = false
+
+    private struct ScanLogShareItem: Identifiable {
+        let id = UUID()
+        let url: URL
+    }
 
     var body: some View {
         ZStack {
@@ -126,6 +135,7 @@ struct SettingsScreen: View {
                     .padding(.horizontal, 6)
 
                     languageSelectionCard
+                    scanLogCard
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 20)
@@ -139,6 +149,101 @@ struct SettingsScreen: View {
                 showsScannerSetupGuide = false
                 bluetoothScanner.startDiscovery()
             }
+        }
+        .sheet(item: $scanLogShareItem) { item in
+            ActivityShareSheet(items: [item.url])
+                .presentationDetents([.medium, .large])
+        }
+        .alert(
+            AppLocalization.string("照合ログの書き出しに失敗しました。"),
+            isPresented: $showsScanLogExportError
+        ) {
+            Button(AppLocalization.string("閉じる"), role: .cancel) {}
+        }
+        .confirmationDialog(
+            AppLocalization.string("照合ログを消去しますか？"),
+            isPresented: $showsScanLogClearConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(AppLocalization.string("消去する"), role: .destructive) {
+                scanLog.clear()
+            }
+            Button(AppLocalization.string("キャンセル"), role: .cancel) {}
+        }
+    }
+
+    /// 照合ログ（カメラ・Bluetoothの判定と不受理）の件数表示と、共有・消去。
+    /// 読み取った生ペイロードを含むため、共有は利用者の操作でだけ行う。
+    private var scanLogCard: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(spacing: 8) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .foregroundStyle(AppTheme.green)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(AppLocalization.string("照合ログ"))
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.ink)
+                    Text(
+                        AppLocalization.string(
+                            "カメラ・Bluetooth の照合結果と不受理を直近5,000件まで端末内に保持します。読み取った値を含むので共有先に注意してください。"
+                        )
+                    )
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.muted)
+                        .lineSpacing(3)
+                }
+            }
+
+            Text(AppLocalization.string("記録: \(scanLog.eventCount)件"))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+                .accessibilityIdentifier("scanLogCount")
+
+            HStack(spacing: 10) {
+                Button {
+                    shareScanLog()
+                } label: {
+                    Label(
+                        AppLocalization.string("照合ログをすべて共有"),
+                        systemImage: "square.and.arrow.up"
+                    )
+                    .font(.caption.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                }
+                .buttonStyle(.bordered)
+                .tint(AppTheme.green)
+                .disabled(scanLog.eventCount == 0)
+                .accessibilityIdentifier("shareScanLogButton")
+
+                Button(role: .destructive) {
+                    showsScanLogClearConfirmation = true
+                } label: {
+                    Label(
+                        AppLocalization.string("照合ログを消去"),
+                        systemImage: "trash"
+                    )
+                    .font(.caption.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                }
+                .buttonStyle(.bordered)
+                .disabled(scanLog.eventCount == 0)
+                .accessibilityIdentifier("clearScanLogButton")
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .scannerCard()
+    }
+
+    /// ヘッダ行つきのJSONLを一時ファイルへ書き出して共有シートに渡す。
+    private func shareScanLog() {
+        guard scanLog.eventCount > 0 else { return }
+        do {
+            scanLogShareItem = ScanLogShareItem(url: try scanLog.writeTemporaryExport())
+        } catch {
+            showsScanLogExportError = true
         }
     }
 
@@ -1035,5 +1140,5 @@ private struct SoundOptionRow: View {
 }
 
 #Preview {
-    SettingsScreen(bluetoothScanner: BluetoothScannerService())
+    SettingsScreen(bluetoothScanner: BluetoothScannerService(), scanLog: ScanLogStore())
 }

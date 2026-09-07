@@ -28,6 +28,7 @@ Web版 `/Users/rimd2r/rimtty/code-match/app/page.tsx` を基準にしました�
 | Camera | `CameraScanner.swift` | 権限、AVCaptureSession、メタデータ、フォーカス |
 | Domain | `ScanModels.swift` | ステップ、結果、仕向地判定（`Destination`）、レコード解析（`KanbanQRRecord` / `MoltenQRRecord` / `DensoKanbanRecord`）、箱固有キー（`BoxIdentity`）、仕向地ごとの品番表記（`CodeMatcher.format(partNumber:destination:)`）、正規化と完全一致 |
 | History | `HistoryModels.swift`, `HistoryStore.swift` | セッションモデルと仕向地の固定、JSON永続化、件数更新、納品番号ごとの箱数・累計収容数（`DeliveryBoxSummary` / `DeliveryGroup`）、デンソーは澤井製作所と同じ品番ごとの箱数経路 |
+| Scan log | `ScanLogStore.swift` | 照合ログ（判定・不受理・セッション開始終了）のJSONL追記、直近5,000件の保持、共有用の書き出し |
 | Feedback | `FeedbackPlayer.swift` | 成功・失敗の音と触覚 |
 
 カメラセッションは専用Serial Queueで開始・停止し、UI状態の更新だけMainActorへ戻します。一致した読み取り値だけをApplication Support内のJSONへ保存し、完全ファイル保護を設定します。カメラ映像と不一致の値は保存しません。
@@ -115,6 +116,9 @@ Console.appで端末を選び、検索欄に `subsystem:jp.rimtty.CodeMatch` を
 - [ ] バーコード待機中に「QRを読み取りなおす」を押すと、照合件数を変えずにQR工程へ戻り、別のQRを読み取れる
 - [ ] カウントダウン中にOFFへ切り替えると自動遷移が中止され、手動の「次の照合」は引き続き使える
 - [ ] 一致後に「次のコードを照合」を押すとカメラ入力ではカメラが再開し、次のQRを読める（自動照合と同じ）
+- [ ] 一致・不一致・重複と、カメラ/Bluetoothの不受理、セッションの開始・終了が照合ログに残る
+- [ ] 設定画面の最下部に照合ログの件数が出て、「照合ログをすべて共有」でヘッダ行つきの`.jsonl`を共有でき、「照合ログを消去」（確認あり）で0件になる
+- [ ] 照合ログを消去してもBluetoothの接続診断ログ（読取値を含まない）は別物として残る
 - [ ] セッション終了後、履歴タブで開始・終了時刻、件数、コードを確認できる
 - [ ] アプリ再起動後も過去のセッション履歴が残る
 - [ ] 権限拒否時にクラッシュせず案内を表示する

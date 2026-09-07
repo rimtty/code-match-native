@@ -490,6 +490,7 @@ final class BluetoothScannerFlowTests: XCTestCase {
             service: BluetoothScannerService,
             viewModel: ScannerViewModel,
             store: HistoryStore,
+            scanLog: ScanLogStore,
             cleanup: () -> Void
         )? = makeContext(camera: camera!)
         let stopDrained = expectation(description: "deinit camera stop drained")
@@ -1000,6 +1001,7 @@ final class BluetoothScannerFlowTests: XCTestCase {
         let restored = ScannerViewModel(
             historyStore: context.store,
             bluetoothScanner: context.service,
+            scanLog: context.scanLog,
             camera: CameraScanner()
         )
 
@@ -1298,6 +1300,7 @@ final class BluetoothScannerFlowTests: XCTestCase {
         let restored = ScannerViewModel(
             historyStore: context.store,
             bluetoothScanner: context.service,
+            scanLog: context.scanLog,
             camera: CameraScanner()
         )
 
@@ -1322,6 +1325,260 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertTrue(context.viewModel.message.contains("品目番号 860150-7722"))
     }
 
+    // MARK: - 照合ログ
+
+    func testBluetoothMatchIsLoggedWithCodeAndBoxNumber() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleBarcodePayload)
+
+        let events = loggedEvents(context.scanLog)
+        XCTAssertEqual(events.map(\.event), ["qr_accepted", "barcode_accepted", "match"])
+        XCTAssertEqual(events.map(\.source), ["bluetooth", "bluetooth", "bluetooth"])
+        XCTAssertEqual(events.map(\.step), ["qr", "barcode", "result"])
+        XCTAssertEqual(events.map(\.destination), ["sawai", "sawai", "sawai"])
+        XCTAssertEqual(events[0].qr, ScannerViewModel.sampleQRPayload)
+        XCTAssertNil(events[0].barcode)
+        XCTAssertEqual(events[1].barcode, ScannerViewModel.sampleBarcodePayload)
+        XCTAssertNil(events[1].qr)
+        XCTAssertEqual(events[2].qr, ScannerViewModel.sampleQRPayload)
+        XCTAssertEqual(events[2].barcode, ScannerViewModel.sampleBarcodePayload)
+        XCTAssertEqual(events[2].code, "BCJH-52-81GG")
+        XCTAssertEqual(events[2].boxNumber, 1)
+        XCTAssertEqual(events[2].message, context.viewModel.message)
+        XCTAssertEqual(events[2].session, context.store.activeSession?.id)
+        XCTAssertNil(events[2].reason)
+        XCTAssertEqual(context.scanLog.eventCount, 3)
+    }
+
+    func testBluetoothMismatchIsLogged() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleMismatchBarcodePayload)
+
+        let events = loggedEvents(context.scanLog)
+        XCTAssertEqual(events.map(\.event), ["qr_accepted", "barcode_accepted", "mismatch"])
+        let mismatch = events[2]
+        XCTAssertEqual(mismatch.qr, ScannerViewModel.sampleQRPayload)
+        XCTAssertEqual(mismatch.barcode, ScannerViewModel.sampleMismatchBarcodePayload)
+        XCTAssertEqual(mismatch.code, "BCJH-55-81GG")
+        XCTAssertNil(mismatch.boxNumber)
+        XCTAssertTrue(mismatch.message?.contains("一致しません") ?? false)
+    }
+
+    func testBluetoothDuplicateIsLogged() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleBarcodePayload)
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+
+        context.viewModel.reset(automaticallyStartScanning: false)
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleBarcodePayload)
+
+        let events = loggedEvents(context.scanLog)
+        XCTAssertEqual(
+            events.map(\.event),
+            ["qr_accepted", "barcode_accepted", "match", "qr_accepted", "barcode_accepted", "duplicate"]
+        )
+        let duplicate = events[5]
+        XCTAssertEqual(duplicate.qr, ScannerViewModel.sampleQRPayload)
+        XCTAssertEqual(duplicate.barcode, ScannerViewModel.sampleBarcodePayload)
+        XCTAssertEqual(duplicate.code, "BCJH-52-81GG")
+        XCTAssertNil(duplicate.boxNumber)
+        XCTAssertTrue(duplicate.message?.contains("すでに照合済み") ?? false)
+    }
+
+    func testBluetoothTriggerDuringNonMatchResultIsLoggedAsResultPending() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleMismatchBarcodePayload)
+        XCTAssertEqual(context.viewModel.step, .result(.mismatch))
+
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleBarcodePayload)
+
+        let rejected = loggedEvents(context.scanLog).last
+        XCTAssertEqual(rejected?.event, "rejected")
+        XCTAssertEqual(rejected?.reason, "result_pending")
+        XCTAssertEqual(rejected?.step, "result")
+        // 結果表示中は待っている工程が無いので、読み取った値はCode 128側へ入れる。
+        XCTAssertEqual(rejected?.barcode, ScannerViewModel.sampleBarcodePayload)
+        XCTAssertNil(rejected?.qr)
+    }
+
+    func testBluetoothWrongOrderIsLogged() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleBarcodePayload)
+
+        let events = loggedEvents(context.scanLog)
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events[0].event, "rejected")
+        XCTAssertEqual(events[0].reason, "wrong_order")
+        XCTAssertEqual(events[0].step, "qr")
+        XCTAssertEqual(events[0].qr, ScannerViewModel.sampleBarcodePayload)
+        XCTAssertNil(events[0].barcode)
+        XCTAssertNil(events[0].destination)
+    }
+
+    func testBluetoothInvalidFormatIsLogged() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan("HELLO-WORLD")
+
+        let events = loggedEvents(context.scanLog)
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events[0].event, "rejected")
+        XCTAssertEqual(events[0].reason, "invalid_format")
+        XCTAssertEqual(events[0].qr, "HELLO-WORLD")
+    }
+
+    func testBluetoothWrongDestinationIsLogged() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        try? await Task.sleep(for: .milliseconds(300))
+        context.service.simulateScan(ScannerViewModel.sampleBarcodePayload)
+        context.viewModel.reset(automaticallyStartScanning: false)
+        try? await Task.sleep(for: .milliseconds(800))
+
+        context.service.simulateScan(ScannerViewModel.sampleMoltenQRPayload)
+
+        let rejected = loggedEvents(context.scanLog).last
+        XCTAssertEqual(rejected?.event, "rejected")
+        XCTAssertEqual(rejected?.reason, "wrong_destination")
+        XCTAssertEqual(rejected?.step, "qr")
+        XCTAssertEqual(rejected?.qr, ScannerViewModel.sampleMoltenQRPayload)
+        XCTAssertEqual(rejected?.destination, "sawai")
+    }
+
+    func testCameraRejectionIsLoggedOnlyOnceWithinSuppressionWindow() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        let camera = context.viewModel.camera
+
+        context.viewModel.cameraScanner(camera, didRead: "NOT-A-KANBAN", type: .qr)
+        context.viewModel.cameraScanner(camera, didRead: "NOT-A-KANBAN", type: .qr)
+        context.viewModel.cameraScanner(camera, didRead: "NOT-A-KANBAN", type: .qr)
+
+        let events = loggedEvents(context.scanLog)
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events[0].event, "rejected")
+        XCTAssertEqual(events[0].reason, "invalid_format")
+        XCTAssertEqual(events[0].source, "camera")
+        XCTAssertEqual(events[0].qr, "NOT-A-KANBAN")
+    }
+
+    func testCameraBarcodeCandidateIsLoggedBeforeAcceptance() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        let camera = context.viewModel.camera
+
+        context.viewModel.cameraScanner(camera, didRead: ScannerViewModel.sampleQRPayload, type: .qr)
+        try? await Task.sleep(for: .milliseconds(300))
+        context.viewModel.cameraScanner(
+            camera,
+            didRead: ScannerViewModel.sampleBarcodePayload,
+            type: .code128
+        )
+        context.viewModel.cameraScanner(
+            camera,
+            didRead: ScannerViewModel.sampleBarcodePayload,
+            type: .code128
+        )
+
+        let events = loggedEvents(context.scanLog)
+        XCTAssertEqual(
+            events.map(\.event),
+            ["qr_accepted", "barcode_candidate", "barcode_accepted", "match"]
+        )
+        XCTAssertEqual(events[1].barcode, ScannerViewModel.sampleBarcodePayload)
+        XCTAssertEqual(events[1].step, "barcode")
+        XCTAssertEqual(events.map(\.source), ["camera", "camera", "camera", "camera"])
+    }
+
+    func testCameraSymbologyMismatchIsLoggedOncePerWindowWithoutChangingMessage() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        let camera = context.viewModel.camera
+
+        context.viewModel.cameraScanner(
+            camera,
+            didRead: ScannerViewModel.sampleBarcodePayload,
+            type: .code128
+        )
+        context.viewModel.cameraScanner(
+            camera,
+            didRead: ScannerViewModel.sampleBarcodePayload,
+            type: .code128
+        )
+
+        let events = loggedEvents(context.scanLog)
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events[0].event, "rejected")
+        XCTAssertEqual(events[0].reason, "wrong_symbology")
+        XCTAssertEqual(events[0].step, "qr")
+        XCTAssertEqual(events[0].qr, ScannerViewModel.sampleBarcodePayload)
+        // 文言はQR待機の案内のままで、不受理音は鳴らさない。
+        XCTAssertEqual(
+            context.viewModel.message,
+            "正方形のQRコードを枠に合わせてください。"
+        )
+    }
+
+    func testSessionEndIsLoggedWhileTheSessionIsStillActive() {
+        let context = makeContext()
+        defer { context.cleanup() }
+        let sessionID = context.store.activeSession?.id
+
+        context.viewModel.prepareForSessionEnd()
+
+        let events = loggedEvents(context.scanLog)
+        XCTAssertEqual(events.map(\.event), ["session_end"])
+        XCTAssertEqual(events[0].session, sessionID)
+        XCTAssertEqual(events[0].step, "qr")
+        XCTAssertEqual(events[0].source, "camera")
+    }
+
     private func makeContext(
         camera: CameraScanner = CameraScanner(),
         autoAdvanceEnabled: Bool = false,
@@ -1331,6 +1588,7 @@ final class BluetoothScannerFlowTests: XCTestCase {
         service: BluetoothScannerService,
         viewModel: ScannerViewModel,
         store: HistoryStore,
+        scanLog: ScanLogStore,
         cleanup: () -> Void
     ) {
         let directory = FileManager.default.temporaryDirectory
@@ -1340,18 +1598,37 @@ final class BluetoothScannerFlowTests: XCTestCase {
         let defaults = UserDefaults(suiteName: defaultsName)!
         let service = BluetoothScannerService(defaults: defaults)
         let store = HistoryStore(storageURL: storageURL)
+        let scanLog = ScanLogStore(
+            storageURL: directory.appendingPathComponent("scan-log.jsonl"),
+            arguments: []
+        )
         store.beginSession()
         let viewModel = ScannerViewModel(
             historyStore: store,
             bluetoothScanner: service,
+            scanLog: scanLog,
             camera: camera,
             isAutoAdvanceEnabled: autoAdvanceEnabled,
             autoAdvanceDelay: autoAdvanceDelay,
             autoAdvanceTickDuration: autoAdvanceTickDuration
         )
-        return (service, viewModel, store, {
+        return (service, viewModel, store, scanLog, {
             try? FileManager.default.removeItem(at: directory)
             defaults.removePersistentDomain(forName: defaultsName)
         })
+    }
+
+    /// 照合ログに記録されたイベントを読み出す。復号できない行があればテストを失敗させる。
+    private func loggedEvents(
+        _ scanLog: ScanLogStore,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> [ScanLogEvent] {
+        do {
+            return try scanLog.events()
+        } catch {
+            XCTFail("照合ログを復号できませんでした: \(error)", file: file, line: line)
+            return []
+        }
     }
 }
