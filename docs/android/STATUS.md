@@ -15,9 +15,9 @@
 
 | 領域 | 確認済み（自動test・artifact検査・Pixel 7実機） |
 |---|---|
-| Domain / matching | 純Kotlin matcher/parser、仕向地判定（澤井製作所66桁 / モルテン61桁）と仕向地ごとのCode 128形式・箱固有キー、shared fixture（`matching-cases.json`、schemaVersion 2・35ケース・`destination`つき）、JVM test、Swiftの単体/UIテストとの意図対応表（[`TEST_PARITY.md`](TEST_PARITY.md)） |
+| Domain / matching | 純Kotlin matcher/parser、仕向地判定（澤井製作所66桁 / モルテン61桁 / デンソーはJAMA自己記述形式の可変長かんばん）と仕向地ごとのCode 128形式・品番表記・箱固有キー、shared fixture（`matching-cases.json`、schemaVersion 2・47ケース・`destination`は`sawai`/`molten`/`denso`）、JVM test、Swiftの単体/UIテストとの意図対応表（[`TEST_PARITY.md`](TEST_PARITY.md)） |
 | UI / navigation | Composeの照合・履歴・設定、3 destination、system/predictive backの完了・無効・cancel境界、履歴選択のActivity再生成・destination往復・compact back stack、320dp/840dp・font scale 1.3/2.0の主要操作到達、動的案内・結果のpolite live region、emulatorでのQR待機・Code 128待機・一致結果のOS force-stop後UI復元。Pixel 7ではfont scale 1.3/2.0の主要表示・操作をユーザーが承認 |
-| History / settings / PDF | Room（schema v3、セッションとcheckpointの仕向地列と`MIGRATION_2_3`を含む）/DataStore、日英リソースとper-app locale双方向同期、0件破棄・名称変更・詳細・削除のapp E2E、履歴詳細とPDFのモルテン項目（納品番号ごとの箱数・累計収容数と解析全項目）、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test。Pixel 7では日英切替、1ページ/複数ページPDFのDownloads保存と共有先での表示、音量0/通常音量の音・触覚をユーザーが承認 |
+| History / settings / PDF | Room（schema v3、セッションとcheckpointの仕向地列と`MIGRATION_2_3`を含む）/DataStore、日英リソースとper-app locale双方向同期、0件破棄・名称変更・詳細・削除のapp E2E、履歴詳細とPDFのモルテン項目（納品番号ごとの箱数・累計収容数と解析全項目）とデンソー項目（履歴詳細のかんばん解析13項目、PDFのかんばん要約と箱ごとのかんばん連番）、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test。Pixel 7では日英切替、1ページ/複数ページPDFのDownloads保存と共有先での表示、音量0/通常音量の音・触覚をユーザーが承認 |
 | Camera | CameraX/ML Kit adapter、工程別ROI、権限・lifecycle・focus・format切替の非同期境界test。Pixel 7縦画面で実ラベルのQR→Code 128一致、復帰後のCode 128、タップfocus、権限の拒否・恒久拒否・再許可、ガイド枠内外の読取境界、無関係QR拒否、不一致の表示・音・振動・非加算をユーザーが承認 |
 | BLE | SDK非依存の安全コア（command直列化、全設定snapshot、復元前Ready禁止、known-device store、再接続予算）、公式SDK adapter、公式native通知parser、工程別symbology制限（QR待機はQRのみ、Code 128待機はCode 128のみ）、照明の接続時OFF適用、読取チューニング（差分時のみ書込・readback確認）、診断ログの共有・保存、R8 vendor-log除去。Pixel 7 / BCST-36では検索・接続・fresh readback、QR→Code 128一致、背景復元、QR待機中のapp force-stop後の自動再接続、手動切断後の工程保持と再接続、電源OFF→ONの自動再接続、通常終了・手動切断・電源再起動後の開始前設定との一致（独立probe）、照明の初期OFFと手動ON/OFFをユーザーが承認。2026-09-05に`release` APKでBCST-36と接続し、QR→Code 128の照合完了をユーザーが確認（#56）。2026-09-06にPixel 7で読取チューニング「適用済み」と赤光約4秒、診断ログの共有・保存をユーザーが確認 |
 | Privacy / release | Manifest、backup/D2D除外規則、専用FileProvider、`verify-release-hardening.sh`によるAPK/依存グラフ/source検査（Fake・analytics・INTERNET・legacy Bluetooth・位置情報の不在、`:scanner:inateck`とarm64 native libraryの同梱、vendor raw-log除去、ML Kit registrar保持）。Pixel 7のnetstatsで当該UIDの通信量エントリなし |
@@ -59,6 +59,18 @@ bash scripts/verify-release-hardening.sh --dependency-report /tmp/codematch-rele
 JDK/SDKがない環境ではGradle結果を推測せず、実行不能として記録します。エミュレーター・CIのinstrumentation成功は、カメラの実読取やBLE通信の実機成功を意味しません。
 
 ## 履歴
+
+### 2026-09-07 仕向地デンソー対応
+
+3つ目の仕向地デンソーを照合の前提に加えた（Issue #106、子issue #107〜#112）。
+
+- 共通fixture `matching-cases.json` を47ケースへ拡張した（澤井製作所23・モルテン11・デンソー11・仕向地なし2）。デンソーのQRは実測221桁のJAMA自己記述レコードで、印刷用画像も `denso-` の3点を追加した。`schemaVersion` は2のまま（PR #113）。
+- `core:model`の`Destination`へ`DENSO`を、`core:matching`へ`DensoKanbanQrRecord`を追加した。JAMAヘッダ（`JAMA`＋版1桁＋ヘッダ長4桁＋前置き10桁＋「項目番号3桁＋桁数2桁」の並び）を解析し、項目定義の桁数の合計がデータ部の長さと一致すること、項目104（部品番号）・112（収容数）・152（かんばん連番）があることを受理条件とする。`detectDestination`はデンソーを最初に判定する（`KanbanQrRecord`の解析が寛容で`JAMA5011…`をカード番号として通すため）。`expectedQrLength`は`DENSO`でnullを返し、`TagBarcodeRecord`は`6-4`のパターンを持つ。`formatPartNumber`は仕向地引数を必須にし、デンソーの10桁を`6-4`で表記する（PR #113）。
+- 照合工程ではデンソーも既存の仕向地ロックに乗る。重複判定キーはQR全文（かんばん連番が箱ごとに違う）、箱数は品番ごとの「N箱目」で、いずれも澤井製作所と同じ経路を通る。解析できないQRの案内は、デンソーで固定済みのセッションと、未固定でも`JAMA`で始まる読取値では長さ案内をせず`INVALID_PAYLOAD`とする。予定箱数の表示と完了判定はしない（PR #114）。
+- 履歴詳細へデンソーのかんばん13項目（帳票区分・部品番号・包装・収容数・次区・指示・かんばん連番・管理番号・納入日・便・指示数・アイテムNo・受入）を出し、PDFには品番ごとのかんばん要約3行（部品番号・収容数・指示数／次区・指示・納入日・便／管理番号・アイテムNo・受入）と箱ごとのかんばん連番・管理コードを出す。仕向地名の`scan_destination_denso`・`history_destination_denso`と項目ラベル10キー（`history_form_type`・`history_packaging_code`・`history_next_process`・`history_instruction_code`・`history_kanban_serial`・`history_management_number`・`history_delivery_date`・`history_delivery_run`・`history_denso_item_number`・`history_receiving_code`）を日英へ追加した（`history_instructed_quantity`はモルテンから流用）。納品番号ごとの集計はモルテンだけのまま、澤井製作所の出力は変えていない（PR #116）。
+- Room schema は v3 のまま。仕向地は文字列で保存するため、`denso` の追加でmigrationもcheckpointの契約versionも変えていない。
+
+証跡: PR #113 / #114 / #116 の実行結果。JVM test 446件、instrumentation は CI emulator（API 36）で実行。iOS側は PR #113 / #115 と履歴・PDFの #117 が対応。実かんばん・実スキャナーによるデンソー照合の実機確認は未実施であり、この記述は自動testと成果物検査の範囲を示す。
 
 ### 2026-09-07 仕向地モルテン対応
 

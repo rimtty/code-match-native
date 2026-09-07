@@ -2,9 +2,9 @@
 
 監査日: 2026-09-04。対象は [`ios/CodeMatchTests/`](../../ios/CodeMatchTests) 配下の XCTest（監査時点で71本。2026-09-06にテストクラスごとのファイルへ分割し、以下の行番号はその分割後のもの）と [`CodeMatchUITests.swift`](../../ios/CodeMatchUITests/CodeMatchUITests.swift) の UI テスト5本。件数やテスト名の一致ではなく、各テストが保証する意図を Android 側の証拠へ対応付ける。Android の `D` は同じ契約を同等の層で検査、`P` は近接する状態・部品の検査（元テスト全体の代替ではない）、`—` は Android に適用されるが証拠がない行、`N/A` は Android の現行共通仕様に含まれず対応不要と根拠リンクで確認した行を表す。
 
-行番号は記載時点のものであり、その後の変更（#82 / #83 / #93 / #95 / #97）で前後している。行の同定はテスト名で行うこと。2026-09-07時点のSwiftソースは単体123本・UI 6本で、監査後に追加された仕向地関連のテストは末尾の「仕向地モルテンの追加テスト（2026-09-07）」で対応付ける。
+行番号は記載時点のものであり、その後の変更（#82 / #83 / #93 / #95 / #97 / #113 / #115）で前後している。行の同定はテスト名で行うこと。2026-09-07時点のSwiftソースは単体が約155本・UI 7本で、監査後に追加された仕向地関連のテストは末尾の「仕向地モルテンの追加テスト（2026-09-07）」と「仕向地デンソーの追加テスト（2026-09-07）」で対応付ける。
 
-共通照合データは [`matching-cases.json`](../../shared/test-fixtures/matching-cases.json)（schemaVersion 2、35ケース、各ケースにQRの`destination`）であり、Swift はファイルを直接読み、Kotlin は test runtime classpath から読む。`src/test` は JVM テスト、`src/androidTest` は端末・エミュレーター依存の証拠である。D/P は「実カメラ読取」や「対象 BLE scanner 通信」の成功を意味しない。
+共通照合データは [`matching-cases.json`](../../shared/test-fixtures/matching-cases.json)（schemaVersion 2、47ケース、各ケースにQRの`destination`）であり、Swift はファイルを直接読み、Kotlin は test runtime classpath から読む。`src/test` は JVM テスト、`src/androidTest` は端末・エミュレーター依存の証拠である。D/P は「実カメラ読取」や「対象 BLE scanner 通信」の成功を意味しない。
 
 ### Android 証拠ファイル（略記の正本）
 
@@ -26,6 +26,7 @@
 | `HistoryExportTextTest` | `android/core/export/src/test/kotlin/jp/rimtty/codematch/core/export/HistoryExportTextTest.kt` |
 | `HistoryPdfContentTest` | `android/core/export/src/test/kotlin/jp/rimtty/codematch/core/export/HistoryPdfContentTest.kt` |
 | `HistoryDeliveryGroupsTest` | `android/core/export/src/test/kotlin/jp/rimtty/codematch/core/export/HistoryDeliveryGroupsTest.kt` |
+| `HistoryJsonExporterTest` | `android/core/export/src/test/kotlin/jp/rimtty/codematch/core/export/HistoryJsonExporterTest.kt` |
 | `HistoryPdfBridgeTest` | `android/app/src/test/java/jp/rimtty/codematch/history/HistoryPdfBridgeTest.kt` |
 | `HistoryPdfExporterInstrumentationTest` | `android/core/export/src/androidTest/kotlin/jp/rimtty/codematch/core/export/HistoryPdfExporterInstrumentationTest.kt` |
 | `ScanModelsTest` | `android/core/model/src/test/kotlin/jp/rimtty/codematch/core/model/ScanModelsTest.kt` |
@@ -179,6 +180,31 @@ Issue #84（PR #93 / #95 / #96 / #97 / #98 / #99）で追加した Swift テス�
 | UI 6 | Fake Bluetooth のモルテン流れで仕向地が固定され、納品番号ごとに箱が数えられる（`CodeMatchUITests::testMockBluetoothScannerMoltenFlowLocksDestination`） | `AppFlowInstrumentationTest.kt::fakeScannerMoltenFlowCountsBoxesPerDeliveryNumberAndLocksDestination` は同じ debug Fake、app navigation、ViewModel、Room を通す | D（debug Fake） |
 | PDF | 履歴詳細と PDF のモルテン項目（仕向地、納品番号数、納品番号ごとの箱数・累計、解析全項目）（`SessionPDFExporterTests::testFixturePayloadsAreFullRecords` + `SessionPDFExporterTests::testMoltenInstructionDateAndTimeAreFormattedForDisplay` + `SessionPDFExporterTests::testMoltenSessionListsDeliveryNoteBlockPerDeliveryNumber` + `SessionPDFExporterTests::testSawaiSessionKeepsPartNumberBlocksAndShowsDestination` + `SessionPDFExporterTests::testSessionWithoutParsableQRHasNoDestinationLine`、`CodeMatchUITests::testMockBluetoothScannerMoltenFlowLocksDestination` の履歴詳細部分） | `HistoryPdfContentTest.kt::moltenReportGroupsBoxesPerDeliveryNumberWithCumulativeQuantityAndAllFields` + `::englishMoltenReportUsesEnglishLabels` + `::legacySawaiReportIsUnchangedWhenDestinationIsNull` + `HistoryDeliveryGroupsTest.kt::instructionDateAndTimeAreFormattedAndUnexpectedValuesArePreserved` + `HistoryScreenTest.kt::moltenEntryDetailDisplaysAllParsedFields` + `::moltenGroupDetailShowsPerDeliveryNumberSummary` + `::sessionDetailAndRowShowDestination` | D |
 
+## 仕向地デンソーの追加テスト（2026-09-07）
+
+Issue #106（PR #113 / #114 / #115 / #116、iOS の履歴・PDF は #117）で追加した Swift テストと、その Android 証拠。番号は上の表の続きで、Swift のファイル内位置は変わるためテスト名で同定する。
+
+| # | Swift の意図（テスト） | Android の証拠 | 判定 |
+|---:|---|---|:---:|
+| 95 | デンソーの共通 fixture がカメラ・Bluetooth 双方の受理境界を通る（`CodeMatcherTests::testSharedDensoPairsPassBothScanBoundaries`） | `CodeMatcherTest.kt::sharedDensoFixturesPassBothScanBoundaries` + `ScanReducerTest.kt::moltenAndDensoFixturesKeepTheirPadding` | D |
+| 96 | 実物のかんばんから JAMA 自己記述形式の全項目を解析する（`CodeMatcherTests::testDensoKanbanRecordParsesAllItemsFromRealPayload`） | `CodeMatcherTest.kt::densoRecordParsesAllItemsFromRealPayload` | D |
+| 97 | 項目構成・ヘッダ長が違うかんばんも同じ規則で解析でき、仕向地判定がデンソーを返す（`CodeMatcherTests::testDensoKanbanRecordParsesDifferentItemLayout`） | `CodeMatcherTest.kt::densoRecordParsesADifferentItemLayout` | D |
+| 98 | ヘッダ長・データ部の桁合計・必須項目・項目番号重複が崩れた読取値は受理しない（`CodeMatcherTests::testDensoKanbanRecordRejectsBrokenHeaderOrDataLength`） | `CodeMatcherTest.kt::densoRecordRejectsBrokenHeaderOrDataLength` | D |
+| 99 | `6-4` の Code 128 はデンソーだけで受理する（`CodeMatcherTests::testTagBarcodeRecordAcceptsSixFourOnlyForDenso`） | `CodeMatcherTest.kt::tagValidationAllowsSixFourOnlyForDenso` | D |
+| 100 | 品番の表記は仕向地依存で、デンソーの10桁は `6-4`（`CodeMatcherTests::testFormatPartNumberIsDestinationAware`） | `CodeMatcherTest.kt::formatPartNumberIsDestinationAware` | D |
+| 101 | デンソーの QR→`6-4` バーコードが一致し、品番ごとの箱番号を報告する（`BluetoothScannerFlowTests::testDensoQRThenSixFourBarcodeMatches`、`::testDensoQRViaCameraShowsSixFourPartNumber`） | `ScanReducerTest.kt::densoQrThenSixFourTagMatchesAndCountsPerPartNumber` + `ScanScreenTest.kt::densoMatchResultShowsDestinationBadgeAndPlainCard` | D |
+| 102 | 同じ品番の別かんばんは2箱目として計上する（`BluetoothScannerFlowTests::testDensoSecondKanbanSamePartIsCountedAsSecondBox`） | `ScanReducerTest.kt::densoSecondKanbanSamePartIsSecondBox` | D |
+| 103 | 同じかんばんの読み直しは、ラベルが違っても重複（`BluetoothScannerFlowTests::testDensoRescanOfSameKanbanIsDuplicate`、`HistoryStoreTests::testDensoDuplicateRuleKeysOnQROnly`） | `ScanReducerTest.kt::densoSameKanbanIsDuplicateEvenWithAnotherTag` + `CodeMatcherTest.kt::boxIdentityIncludesTagOnlyForMolten` | D |
+| 104 | デンソーの箱数は品番ごとに数える（`HistoryStoreTests::testDensoMatchCountPerPartNumber`） | `ScanReducerTest.kt::restoredDensoBoxesSeedDuplicateAndPartCounts` | D |
+| 105 | デンソーで固定したセッションは澤井製作所・モルテンの QR を拒否し、その逆も拒否する（`BluetoothScannerFlowTests::testSessionLockedToDensoRejectsSawaiAndMoltenQR`、`::testSawaiSessionRejectsDensoQR`） | `ScanReducerTest.kt::densoSessionRejectsSawaiAndMoltenQrWithWrongDestination` | D |
+| 106 | 澤井製作所・モルテンのセッションでは `6-4` の Code 128 を受理しない（`BluetoothScannerFlowTests::testSixFourBarcodeIsRejectedInSawaiAndMoltenSessions`） | `ScanReducerTest.kt::sawaiAndMoltenSessionsRejectSixFourTag` + `ScanSessionCoordinatorTest.kt::cameraSixFourTagGoesThroughStabilizerOnlyInDensoSession` | D |
+| 107 | Code 128 待機中のデンソー QR は順序違いとして拒否（`BluetoothScannerFlowTests::testDensoQRAtBarcodeStepIsWrongOrder`） | `ScanReducerTest.kt::reverseOrderAndInvalidPayloadAreRejectedWithoutChangingState` | D |
+| 108 | デンソーの不一致は計上しない（`BluetoothScannerFlowTests::testDensoMismatchIsNotCounted`） | `CodeMatcherTest.kt::sharedMatchingFixturesHaveTheSameResultsAsSwift`（デンソーの不一致 fixture 4件）+ `ScanReducerTest.kt::mismatchRemainsVisibleAndNeverProducesRecordEffect` | D |
+| 109 | ViewModel 再生成時に active session からデンソーの固定を復元（`BluetoothScannerFlowTests::testDestinationIsRestoredFromActiveSessionForDenso`） | `ScanCheckpointMappingTest.kt::checkpointWithoutDestinationDerivesDensoFromAcceptedQr` + `ScanViewModelCheckpointInstrumentationTest.kt::densoDestinationLockSurvivesIsolatedDatabaseReopen` | D |
+| 110 | 解析できない QR の案内は、デンソーで固定済みでも未固定の `JAMA` 接頭辞でも長さを示さない（Swift は長さ案内自体を持たないため N/A） | `ScanReducerTest.kt::densoLockedInvalidQrIsInvalidWithoutLengthHint` + `::unlockedJamaPrefixedInvalidQrIsInvalidNotIncomplete` | N/A（Android のみ） |
+| UI 7 | Fake Bluetooth のデンソー流れで仕向地が固定され、品番ごとに箱が数えられる（`CodeMatchUITests::testMockBluetoothScannerDensoFlowLocksDestination`） | `AppFlowInstrumentationTest.kt::fakeScannerDensoFlowCountsBoxesPerPartNumberAndLocksDestination` は同じ debug Fake、app navigation、ViewModel、Room を通す | D（debug Fake） |
+| PDF 2 | 履歴詳細のデンソー13項目（帳票区分・部品番号・包装・収容数・次区・指示・かんばん連番・管理番号・納入日・便・指示数・アイテムNo・受入）、PDF のかんばん要約3行と箱ごとのかんばん連番・管理コード、カード番号と納品番号数が出ないこと、履歴 JSON の `"destination": "denso"`。Swift 側は #117 で追加する | `HistoryPdfContentTest.kt::densoReportPrintsKanbanBlockAndBoxesPerPartNumber` + `::englishDensoReportUsesEnglishLabels` + `HistoryDeliveryGroupsTest.kt::densoEntriesProduceNoDeliveryGroups` + `HistoryJsonExporterTest.kt::densoSessionExportsItsDestinationIdAndKanbanPayloadByteForByte` + `HistoryScreenTest.kt::densoEntryDetailDisplaysAllParsedFields` + `::densoSessionDetailAndRowShowDestination` | D |
+
 ## 残る物理・手動・未対応の証拠
 
 2026-09-05のIssue #57で、この節に挙がる実機・手動ゲートのうち未実施のものは打ち切りとし、これ以上確認しません。打ち切りは検証成功を意味せず、`P`/`—`の分類は変更しません。一覧は[`STATUS.md`](STATUS.md)の「打ち切った確認項目」を参照してください。
@@ -203,7 +229,7 @@ Issue #84（PR #93 / #95 / #96 / #97 / #98 / #99）で追加した Swift テス�
 
 ## 検証
 
-- 監査時点の Swift source の `func test` 数: unit 71、UI 5。2026-09-07時点では unit 118、UI 6（仕向地モルテンの追加分を含む）。fixture は JSON として schemaVersion 2、35 case、ID 重複なし、`destination` は `sawai` 22 件・`molten` 11 件・どちらでもない 2 件。
+- 監査時点の Swift source の `func test` 数: unit 71、UI 5。2026-09-07時点では unit が約155、UI 7（仕向地モルテン・デンソーの追加分を含む）。fixture は JSON として schemaVersion 2、47 case、ID 重複なし、`destination` は `sawai` 23 件・`molten` 11 件・`denso` 11 件・どれでもない 2 件。Android の JVM test は 446 件。
 - Android の focused Gradle test は Android Studio の JDK と SDK を明示して実行し、次の2系統がともに `BUILD SUCCESSFUL` になった。`./gradlew :core:model:testDebugUnitTest :core:matching:testDebugUnitTest :feature:scan:testDebugUnitTest :scanner:ble:testDebugUnitTest :scanner:fake:testDebugUnitTest`、および `./gradlew :core:export:testDebugUnitTest :feature:history:testDebugUnitTest :feature:settings:testDebugUnitTest :app:testDebugUnitTest`。
 - `:scanner:camera:testDebugUnitTest` は非同期境界20テストを含め `BUILD SUCCESSFUL`、`:scanner:camera:lintDebug` も `BUILD SUCCESSFUL` になった。`BundledMlKitImageDecodeTest` 3件は共有QR/Code 128画像の実decodeと誤形式拒否に成功したが、実機 camera readを意味しない。
 - 2026-09-03の追加hardening後、Android JVM testは全249件が成功した。Pixel 7/API 36では通常のdebugアプリ保存領域を消去せず、`core:data` 21件、`feature:scan` 15件、`scanner:camera` 3件の計39件を実行し、失敗・skip 0だった。以前の全module instrumentation 80件、BLE変更時のfocused 36件、Android 17/API 37.1・16KB emulator 63件は別時点の記録であり、この差分全体はPRのAPI 31/36 CIで再確認する。
