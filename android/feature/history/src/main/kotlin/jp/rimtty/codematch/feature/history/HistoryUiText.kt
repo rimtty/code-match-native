@@ -66,6 +66,17 @@ data class HistoryUiLabels(
     val instructionDate: String,
     val instructionTime: String,
     val deliveryGroups: String,
+    val formType: String,
+    val packagingCode: String,
+    val nextProcess: String,
+    val instructionCode: String,
+    val kanbanSerial: String,
+    val managementNumber: String,
+    val deliveryDate: String,
+    val deliveryRun: String,
+    /** Denso item number; [itemNumber] is the Sawai slip's 品目番号. */
+    val densoItemNumber: String,
+    val receivingCode: String,
 )
 
 object HistoryUiText {

@@ -84,6 +84,16 @@ object HistoryUiResources {
         instructionDate = stringResource(R.string.history_instruction_date),
         instructionTime = stringResource(R.string.history_instruction_time),
         deliveryGroups = stringResource(R.string.history_delivery_groups),
+        formType = stringResource(R.string.history_form_type),
+        packagingCode = stringResource(R.string.history_packaging_code),
+        nextProcess = stringResource(R.string.history_next_process),
+        instructionCode = stringResource(R.string.history_instruction_code),
+        kanbanSerial = stringResource(R.string.history_kanban_serial),
+        managementNumber = stringResource(R.string.history_management_number),
+        deliveryDate = stringResource(R.string.history_delivery_date),
+        deliveryRun = stringResource(R.string.history_delivery_run),
+        densoItemNumber = stringResource(R.string.history_denso_item_number),
+        receivingCode = stringResource(R.string.history_receiving_code),
     )
 
     /** The display name of the delivery destination a session was locked to. */

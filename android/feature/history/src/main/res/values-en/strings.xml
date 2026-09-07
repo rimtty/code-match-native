@@ -58,6 +58,16 @@
     <string name="history_instruction_date">Instruction date (JUMP)</string>
     <string name="history_instruction_time">Time</string>
     <string name="history_delivery_groups">Boxes per delivery number</string>
+    <string name="history_form_type">Form type</string>
+    <string name="history_packaging_code">Packaging</string>
+    <string name="history_next_process">Next process</string>
+    <string name="history_instruction_code">Instruction</string>
+    <string name="history_kanban_serial">Kanban serial</string>
+    <string name="history_management_number">Management number</string>
+    <string name="history_delivery_date">Delivery date</string>
+    <string name="history_delivery_run">Delivery run</string>
+    <string name="history_denso_item_number">Item No.</string>
+    <string name="history_receiving_code">Receiving</string>
     <string name="history_not_available">-</string>
 
     <string name="history_accessibility_separator">, </string>

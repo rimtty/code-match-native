@@ -155,7 +155,7 @@ object CodeMatcher {
      * ten-character number and 4-2-3 for the nine-character Molten form.
      * Values of any other length are returned unchanged.
      */
-    fun formatPartNumber(partNumber: String, destination: Destination? = null): String {
+    fun formatPartNumber(partNumber: String, destination: Destination?): String {
         if (destination == Destination.DENSO) {
             if (partNumber.length != STANDARD_PART_NUMBER_LENGTH) return partNumber
             return partNumber.substring(0, 6) + "-" + partNumber.substring(6)

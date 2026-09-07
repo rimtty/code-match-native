@@ -58,6 +58,16 @@
     <string name="history_instruction_date">納入指示日(JUMP)</string>
     <string name="history_instruction_time">時刻</string>
     <string name="history_delivery_groups">納品番号ごとの箱</string>
+    <string name="history_form_type">帳票区分</string>
+    <string name="history_packaging_code">包装</string>
+    <string name="history_next_process">次区</string>
+    <string name="history_instruction_code">指示</string>
+    <string name="history_kanban_serial">かんばん連番</string>
+    <string name="history_management_number">管理番号</string>
+    <string name="history_delivery_date">納入日</string>
+    <string name="history_delivery_run">便</string>
+    <string name="history_denso_item_number">アイテムNo</string>
+    <string name="history_receiving_code">受入</string>
     <string name="history_not_available">-</string>
 
     <string name="history_accessibility_separator">、</string>

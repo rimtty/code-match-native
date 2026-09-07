@@ -60,9 +60,11 @@ class HistoryExportTextTest {
         assertEquals("仕向地", japanese.destination)
         assertEquals("澤井製作所", japanese.destinationName(Destination.SAWAI))
         assertEquals("モルテン", japanese.destinationName(Destination.MOLTEN))
+        assertEquals("デンソー", japanese.destinationName(Destination.DENSO))
         assertEquals("Ship-to", english.destination)
         assertEquals("Sawai Seisakusho", english.destinationName(Destination.SAWAI))
         assertEquals("Molten", english.destinationName(Destination.MOLTEN))
+        assertEquals("Denso", english.destinationName(Destination.DENSO))
     }
 
     @Test

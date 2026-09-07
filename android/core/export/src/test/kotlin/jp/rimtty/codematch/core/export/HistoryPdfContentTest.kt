@@ -21,6 +21,12 @@ class HistoryPdfContentTest {
     private val moltenQr2 =
         "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
 
+    // Real デンソー kanbans; see shared/test-fixtures/matching-cases.json. The
+    // runs of spaces inside are blank fixed-width fields and are data.
+    private val densoQr0140 = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
+    private val densoQr0141 = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0141SWS    20260908S0010000720000009924543330454333M6"
+    private val densoQr0538 = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507791000000192D860C01008D86045M      0538SWS    20260908S0010007680000009924543420454342R6"
+
     @Test
     fun contentPreservesFirstSeenGroupsParsedFieldsManagementAndRawPayloads() {
         val session = MatchSession(
@@ -194,6 +200,62 @@ class HistoryPdfContentTest {
     }
 
     @Test
+    fun densoReportPrintsKanbanBlockAndBoxesPerPartNumber() {
+        assertEquals(221, densoQr0140.length)
+        assertEquals(221, densoQr0141.length)
+        assertEquals(221, densoQr0538.length)
+
+        val text = HistoryPdfContent.build(densoSession(), AppLanguage.JAPANESE)
+            .joinToString("\n") { it.text }
+
+        assertTrue(text.contains("仕向地: デンソー"))
+        assertTrue(text.contains("検査箱数: 3箱（品番数: 2）"))
+        assertTrue(text.contains("#1 860150-7722 (2箱)"))
+        assertTrue(text.contains("部品番号: 860150-7722; 収容数: 24; 指示数: 72"))
+        assertTrue(text.contains("次区: D850; 指示: C01008-45; 納入日: 2026/09/08; 便: S001"))
+        assertTrue(text.contains("管理番号: SWS; アイテムNo: 9924543330; 受入: M6"))
+        // The kanban serial is what separates two boxes of the same part.
+        assertTrue(text.contains("かんばん連番: 0140; 管理コード: 1DZ50O"))
+        assertTrue(text.contains("かんばん連番: 0141; 管理コード: 1DZB0O"))
+        assertTrue(text.contains("#2 860150-7791 (1箱)"))
+        assertTrue(text.contains("部品番号: 860150-7791; 収容数: 192; 指示数: 768"))
+        assertTrue(text.contains("次区: D860; 指示: C01008-45; 納入日: 2026/09/08; 便: S001"))
+        assertTrue(text.contains("管理番号: SWS; アイテムNo: 9924543420; 受入: R6"))
+        assertTrue(text.contains("かんばん連番: 0538; 管理コード: 01335C"))
+        assertTrue(text.contains("QR全文: $densoQr0140"))
+        assertTrue(text.contains("QR全文: $densoQr0141"))
+        assertTrue(text.contains("QR全文: $densoQr0538"))
+        // KanbanQrRecord.parse accepts a Denso payload, so a missing
+        // destination guard would silently print Sawai fields here.
+        assertFalse(text.contains("カード番号"))
+        // Delivery numbers are a Molten concept; Denso counts boxes per part.
+        assertFalse(text.contains("納品番号数"))
+    }
+
+    @Test
+    fun englishDensoReportUsesEnglishLabels() {
+        val text = HistoryPdfContent.build(densoSession(), AppLanguage.ENGLISH)
+            .joinToString("\n") { it.text }
+
+        assertTrue(text.contains("Ship-to: Denso"))
+        assertTrue(text.contains("#1 860150-7722 (2 boxes)"))
+        assertTrue(
+            text.contains("Part number: 860150-7722; Pack quantity: 24; Instructed quantity: 72"),
+        )
+        assertTrue(
+            text.contains(
+                "Next process: D850; Instruction: C01008-45; " +
+                    "Delivery date: 2026/09/08; Delivery run: S001",
+            ),
+        )
+        assertTrue(text.contains("Management number: SWS; Item No.: 9924543330; Receiving: M6"))
+        assertTrue(text.contains("Kanban serial: 0140; Management code: 1DZ50O"))
+        assertTrue(text.contains("Kanban serial: 0141; Management code: 1DZB0O"))
+        assertFalse(text.contains("Card number"))
+        assertFalse(text.contains("Delivery numbers"))
+    }
+
+    @Test
     fun oneBlockIsEmittedPerPayloadSoLongRawValuesCannotBeDropped() {
         val rawQr = "Q".repeat(2_000)
         val rawBarcode = "B".repeat(2_000)
@@ -208,6 +270,39 @@ class HistoryPdfContentTest {
         assertTrue(text.contains(rawQr))
         assertTrue(text.contains(rawBarcode))
     }
+
+    /** Two boxes of one Denso part plus a single box of a second part. */
+    private fun densoSession() = MatchSession(
+        startedAt = 1_700_000_000_000L,
+        endedAt = 1_700_000_120_000L,
+        destination = Destination.DENSO,
+        entries = listOf(
+            MatchEntry(
+                id = "denso-1",
+                code = "860150-7722",
+                matchedAt = 1_700_000_001_000L,
+                qrPayload = densoQr0140,
+                barcodePayload = "860150-7722@1DZ50O",
+                sequence = 0,
+            ),
+            MatchEntry(
+                id = "denso-2",
+                code = "860150-7722",
+                matchedAt = 1_700_000_002_000L,
+                qrPayload = densoQr0141,
+                barcodePayload = "860150-7722@1DZB0O",
+                sequence = 1,
+            ),
+            MatchEntry(
+                id = "denso-3",
+                code = "860150-7791",
+                matchedAt = 1_700_000_003_000L,
+                qrPayload = densoQr0538,
+                barcodePayload = "860150-7791@01335C",
+                sequence = 2,
+            ),
+        ),
+    )
 
     /** Two boxes of one delivery number plus a second part on another slip. */
     private fun moltenSession() = MatchSession(

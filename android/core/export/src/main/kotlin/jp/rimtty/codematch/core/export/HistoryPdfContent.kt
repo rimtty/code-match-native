@@ -148,16 +148,94 @@ object HistoryPdfContent {
             .mapNotNull { it.qrPayload }
             .firstOrNull()
             ?.let(CodeMatcher::detectDestination)
-        if (destination == Destination.MOLTEN) {
-            appendMoltenDeliveries(blocks, group, language, zoneId, labels)
-        } else {
-            appendSawaiDelivery(blocks, group, language, labels)
-            blocks += HistoryPdfBlock(labels.boxRecords, PdfTextStyle.SECTION, spacingAfter = 2f)
-            group.entries.forEachIndexed { boxIndex, entry ->
-                appendBoxRecord(blocks, entry, boxIndex + 1, null, language, zoneId, labels)
+        when (destination) {
+            Destination.MOLTEN -> appendMoltenDeliveries(blocks, group, language, zoneId, labels)
+            // KanbanQrRecord.parse is lenient enough to accept a Denso payload,
+            // so the destination - not the parse result - picks the branch.
+            Destination.DENSO -> appendDensoKanban(blocks, group, language, zoneId, labels)
+            else -> {
+                appendSawaiDelivery(blocks, group, language, labels)
+                blocks += HistoryPdfBlock(labels.boxRecords, PdfTextStyle.SECTION, spacingAfter = 2f)
+                group.entries.forEachIndexed { boxIndex, entry ->
+                    appendBoxRecord(blocks, entry, boxIndex + 1, null, null, language, zoneId, labels)
+                }
             }
         }
     }
+
+    /**
+     * The kanban block of one Denso part number, then every box of it.
+     *
+     * A Denso kanban repeats the same part fields on every box and differs only
+     * in the kanban serial, so the shared fields are printed once from the first
+     * box and the serial travels with each box record. Boxes are counted per
+     * part number, exactly like Sawai.
+     */
+    private fun appendDensoKanban(
+        blocks: MutableList<HistoryPdfBlock>,
+        group: GroupedMatchEntry,
+        language: AppLanguage,
+        zoneId: ZoneId,
+        labels: HistoryExportLabels,
+    ) {
+        val record = group.entries.asSequence()
+            .mapNotNull { it.densoRecord() }
+            .firstOrNull()
+        if (record != null) {
+            blocks += HistoryPdfBlock(labels.deliveryInformation, PdfTextStyle.SECTION, spacingAfter = 2f)
+            blocks += HistoryPdfBlock(
+                text = segments(
+                    "${labels.moltenPartNumber}: " +
+                        CodeMatcher.formatPartNumber(record.partNumber, Destination.DENSO),
+                    "${labels.packQuantity}: " +
+                        HistoryExportTextFormatter.integer(record.packQuantity, language),
+                    record.instructedQuantity?.let {
+                        "${labels.instructedQuantity}: " +
+                            HistoryExportTextFormatter.integer(it, language)
+                    },
+                ),
+                style = PdfTextStyle.BODY,
+                spacingAfter = 2f,
+            )
+            blocks += HistoryPdfBlock(
+                text = segments(
+                    record.nextProcess?.let { "${labels.nextProcess}: $it" },
+                    record.instructionCode?.let { "${labels.instructionCode}: $it" },
+                    record.formattedDeliveryDate?.let { "${labels.deliveryDate}: $it" },
+                    record.deliveryRun?.let { "${labels.deliveryRun}: $it" },
+                ),
+                style = PdfTextStyle.BODY,
+                spacingAfter = 2f,
+            )
+            blocks += HistoryPdfBlock(
+                text = segments(
+                    record.managementNumber?.let { "${labels.managementNumber}: $it" },
+                    record.itemNumber?.let { "${labels.densoItemNumber}: $it" },
+                    record.receivingCode?.let { "${labels.receivingCode}: $it" },
+                ),
+                style = PdfTextStyle.BODY,
+                spacingAfter = 4f,
+            )
+        }
+
+        blocks += HistoryPdfBlock(labels.boxRecords, PdfTextStyle.SECTION, spacingAfter = 2f)
+        group.entries.forEachIndexed { boxIndex, entry ->
+            appendBoxRecord(
+                blocks,
+                entry,
+                boxIndex + 1,
+                null,
+                entry.densoRecord()?.kanbanSerial,
+                language,
+                zoneId,
+                labels,
+            )
+        }
+    }
+
+    /** Joins the present segments with the report's `; ` convention. */
+    private fun segments(vararg values: String?): String =
+        values.filterNotNull().joinToString("; ")
 
     private fun appendSawaiDelivery(
         blocks: MutableList<HistoryPdfBlock>,
@@ -173,7 +251,8 @@ object HistoryPdfContent {
         blocks += HistoryPdfBlock(labels.deliveryInformation, PdfTextStyle.SECTION, spacingAfter = 2f)
         val suffix = qr.partSuffix?.let { " (${labels.suffix} $it)" }.orEmpty()
         blocks += HistoryPdfBlock(
-            text = "${labels.itemNumber}: ${CodeMatcher.formatPartNumber(qr.partNumber)}$suffix; " +
+            text = "${labels.itemNumber}: " +
+                "${CodeMatcher.formatPartNumber(qr.partNumber, Destination.SAWAI)}$suffix; " +
                 "${labels.cardNumber}: ${qr.cardNumber}",
             style = PdfTextStyle.BODY,
             spacingAfter = 2f,
@@ -218,7 +297,8 @@ object HistoryPdfContent {
                 spacingAfter = 2f,
             )
             blocks += HistoryPdfBlock(
-                text = "${labels.moltenPartNumber}: ${CodeMatcher.formatPartNumber(record.partNumber)}; " +
+                text = "${labels.moltenPartNumber}: " +
+                    "${CodeMatcher.formatPartNumber(record.partNumber, Destination.MOLTEN)}; " +
                     "${labels.ordererCode}: ${record.ordererCode}",
                 style = PdfTextStyle.BODY,
                 spacingAfter = 2f,
@@ -242,6 +322,7 @@ object HistoryPdfContent {
                     entry,
                     boxIndex + 1,
                     entry.moltenRecord()?.packQuantity,
+                    null,
                     language,
                     zoneId,
                     labels,
@@ -258,21 +339,23 @@ object HistoryPdfContent {
         if (remaining.isNotEmpty()) {
             blocks += HistoryPdfBlock(labels.boxRecords, PdfTextStyle.SECTION, spacingAfter = 2f)
             remaining.forEachIndexed { boxIndex, entry ->
-                appendBoxRecord(blocks, entry, boxIndex + 1, null, language, zoneId, labels)
+                appendBoxRecord(blocks, entry, boxIndex + 1, null, null, language, zoneId, labels)
             }
         }
     }
 
     /**
-     * One box: its match time, optional pack quantity, management code, and
-     * both raw payloads. [packQuantity] is null for a Sawai box, whose slip
-     * carries the quantity in the delivery block instead.
+     * One box: its match time, optional pack quantity, optional kanban serial,
+     * management code, and both raw payloads. [packQuantity] is null for a
+     * Sawai box, whose slip carries the quantity in the delivery block instead,
+     * and [kanbanSerial] is set only for Denso, where it identifies the box.
      */
     private fun appendBoxRecord(
         blocks: MutableList<HistoryPdfBlock>,
         entry: MatchEntry,
         boxIndex: Int,
         packQuantity: Int?,
+        kanbanSerial: String?,
         language: AppLanguage,
         zoneId: ZoneId,
         labels: HistoryExportLabels,
@@ -285,10 +368,12 @@ object HistoryPdfContent {
         val quantity = packQuantity
             ?.let { "${labels.packQuantity}: ${HistoryExportTextFormatter.integer(it, language)}; " }
             .orEmpty()
+        val serial = kanbanSerial?.let { "${labels.kanbanSerial}: $it; " }.orEmpty()
         blocks += HistoryPdfBlock(
             text = "${boxLabel(boxNumber, language, labels)}  ${labels.matchTime}: " +
                 "${HistoryExportTextFormatter.dateTime(entry.matchedAt, language, zoneId)}; " +
                 quantity +
+                serial +
                 "${labels.managementCode}: $managementCode",
             style = PdfTextStyle.BODY,
             spacingAfter = 2f,

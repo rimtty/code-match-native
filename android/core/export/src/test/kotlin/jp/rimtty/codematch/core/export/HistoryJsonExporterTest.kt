@@ -75,6 +75,38 @@ class HistoryJsonExporterTest {
         ),
     )
 
+    private val densoSession = MatchSession(
+        id = "session-denso",
+        startedAt = Instant.parse("2026-09-07T02:00:00Z").toEpochMilli(),
+        endedAt = Instant.parse("2026-09-07T02:30:00Z").toEpochMilli(),
+        name = "デンソー 午後",
+        destination = Destination.DENSO,
+        entries = listOf(
+            MatchEntry(
+                id = "entry-denso-1",
+                code = "860150-7722",
+                matchedAt = Instant.parse("2026-09-07T02:05:00Z").toEpochMilli(),
+                qrPayload = DENSO_KANBAN_QR,
+                barcodePayload = "860150-7722@1DZ50O",
+                sequence = 0L,
+            ),
+        ),
+    )
+
+    @Test
+    fun densoSessionExportsItsDestinationIdAndKanbanPayloadByteForByte() {
+        val session = export(listOf(densoSession))["sessions"].asJsonArray[0].asJsonObject
+
+        assertEquals("session-denso", session["id"].asString)
+        assertEquals("denso", session["destination"].asString)
+        val entry = session["entries"].asJsonArray[0].asJsonObject
+        assertEquals("860150-7722", entry["code"].asString)
+        assertEquals("860150-7722@1DZ50O", entry["barcodePayload"].asString)
+        // The blank fixed-width fields inside the kanban are data.
+        assertEquals(DENSO_KANBAN_QR, entry["qrPayload"].asString)
+        assertEquals(221, entry["qrPayload"].asString.length)
+    }
+
     @Test
     fun documentCarriesSchemaPlatformVersionAndUtcExportTimestamp() {
         val root = export(listOf(moltenSession, sawaiLegacySession))
@@ -233,6 +265,9 @@ class HistoryJsonExporterTest {
         /** Real モルテン labels; see shared/test-fixtures/matching-cases.json. */
         const val MOLTEN_PAF_QR =
             "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+        /** A real デンソー kanban; see the same fixture. */
+        const val DENSO_KANBAN_QR =
+            "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
         const val MOLTEN_TRAILING_SPACE_QR =
             "AK6805D10E50N10B         U543820000MB    S600700000020908    "
     }
