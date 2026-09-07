@@ -521,12 +521,13 @@ class ScanSessionCoordinator(
             barcodePayload: String? = null,
             code: String? = null,
             boxNumber: Int? = null,
+            stepOverride: String? = null,
         ) = recorder.record(
             ScanLogEvent(
                 atEpochMillis = System.currentTimeMillis(),
                 sessionId = null,
                 source = source,
-                step = step,
+                step = stepOverride ?: step,
                 event = event,
                 reason = reason,
                 destination = destination,
@@ -578,6 +579,8 @@ class ScanSessionCoordinator(
                     // verdicts still deserve the part number they were about.
                     code = match?.code ?: recordedCode(scan.qrPayload, scan.barcodePayload),
                     boxNumber = match?.boxNumber,
+                    // The verdict belongs to the result step, as on iOS.
+                    stepOverride = ScanLogStep.RESULT,
                 )
             } else if (previous.scan is ScanState.Result && reduction.effects.isEmpty()) {
                 // The reducer deliberately swallows callbacks while a result is

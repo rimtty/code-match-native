@@ -681,7 +681,7 @@ class ScanSessionCoordinatorTest {
         assertNull(barcodeAccepted.qrPayload)
 
         val match = log.events[2]
-        assertEquals(ScanLogStep.BARCODE, match.step)
+        assertEquals(ScanLogStep.RESULT, match.step)
         assertEquals(qrPayload, match.qrPayload)
         assertEquals(barcodePayload, match.barcodePayload)
         assertEquals("BCJH-52-81GG", match.code)
