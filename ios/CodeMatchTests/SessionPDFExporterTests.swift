@@ -19,6 +19,11 @@ final class SessionPDFExporterTests: XCTestCase {
     // 澤井製作所の納品書兼現品票QR(66桁)。
     private let sawaiQR = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private let sawaiTag = "BCJH-52-81GG@1N5X0C"
+    // デンソーのかんばんQR(JAMA自己記述形式)。同じ品番の2箱はかんばん連番だけが違う。
+    private let densoQRKanban0140 = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
+    private let densoQRKanban0141 = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0141SWS    20260908S0010000720000009924543330454333M6"
+    private let densoTag0140 = "860150-7722@1DZ50O"
+    private let densoTag0141 = "860150-7722@1DZB0O"
 
     private let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
 
@@ -26,6 +31,8 @@ final class SessionPDFExporterTests: XCTestCase {
         XCTAssertEqual(moltenQRD10E.count, 61)
         XCTAssertEqual(moltenQRPAF1.count, 61)
         XCTAssertEqual(sawaiQR.count, 66)
+        XCTAssertEqual(densoQRKanban0140.count, 221)
+        XCTAssertEqual(densoQRKanban0141.count, 221)
     }
 
     func testMoltenInstructionDateAndTimeAreFormattedForDisplay() throws {
@@ -83,6 +90,33 @@ final class SessionPDFExporterTests: XCTestCase {
         // モルテン向けの見出しと集計は出さない
         XCTAssertFalse(text.contains("納品番号"))
         XCTAssertFalse(text.contains("TYロケーション"))
+        // デンソー向けのかんばん項目も出さない
+        XCTAssertFalse(text.contains("かんばん連番"))
+    }
+
+    /// デンソーはかんばんの共通欄を3行にまとめ、箱ごとの記録にかんばん連番を添える。
+    /// 澤井製作所の解析は寛容でデンソーのQRも受理できてしまうため、
+    /// カード番号などの澤井向けの欄が出ないことまで確認する。
+    func testDensoSessionPrintsKanbanBlockAndBoxes() throws {
+        let text = pdfText(for: densoSession())
+
+        assertContains("仕向地: デンソー", in: text)
+        assertContains("検査箱数: 2箱（品番数: 1）", in: text)
+
+        // かんばんの共通欄3行（PDFKitは全角スペースを半角へ畳む）
+        assertContains("部品番号: 860150-7722 収容数: 24 指示数: 72", in: text)
+        assertContains("次区: D850 指示: C01008-45 納入日: 2026/09/08 便: S001", in: text)
+        assertContains("管理番号: SWS アイテムNo: 9924543330 受入: M6", in: text)
+
+        // 箱ごとの記録はかんばん連番で見分ける
+        assertContains("かんばん連番: 0140", in: text)
+        assertContains("かんばん連番: 0141", in: text)
+        XCTAssertTrue(try boxLine(managementCode: "1DZ50O", in: text).hasPrefix("1箱目 "))
+        XCTAssertTrue(try boxLine(managementCode: "1DZB0O", in: text).hasPrefix("2箱目 "))
+
+        // モルテン向けの集計と、澤井製作所向けの納品書欄は出さない
+        XCTAssertFalse(text.contains("納品番号数"))
+        XCTAssertFalse(text.contains("カード番号"))
     }
 
     func testSessionWithoutParsableQRHasNoDestinationLine() {
@@ -145,6 +179,29 @@ final class SessionPDFExporterTests: XCTestCase {
                 )
             ],
             destination: .sawai
+        )
+    }
+
+    /// 同じ品番(860150-7722)の2箱を持つデンソーのセッション。かんばん連番は0140と0141。
+    private func densoSession() -> MatchSession {
+        MatchSession(
+            startedAt: startedAt,
+            endedAt: startedAt.addingTimeInterval(600),
+            entries: [
+                MatchHistoryEntry(
+                    code: "860150-7722",
+                    matchedAt: startedAt.addingTimeInterval(30),
+                    qrPayload: densoQRKanban0140,
+                    barcodePayload: densoTag0140
+                ),
+                MatchHistoryEntry(
+                    code: "860150-7722",
+                    matchedAt: startedAt.addingTimeInterval(90),
+                    qrPayload: densoQRKanban0141,
+                    barcodePayload: densoTag0141
+                )
+            ],
+            destination: .denso
         )
     }
 

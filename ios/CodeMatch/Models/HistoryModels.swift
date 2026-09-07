@@ -39,6 +39,15 @@ extension MatchHistoryEntry {
         return MoltenQRRecord.parse(qrPayload)
     }
 
+    /// デンソーのかんばんQR(JAMA自己記述形式)として解析した結果。
+    /// 別の仕向地やQR全文を持たない旧履歴ではnil。
+    /// `KanbanQRRecord.parse` は寛容なのでデンソーのQRも澤井製作所として解析できてしまう。
+    /// 表示側は必ずこの仕向地ガード付きのプロパティを通す。
+    var densoRecord: DensoKanbanRecord? {
+        guard let qrPayload, Destination.detect(qrPayload: qrPayload) == .denso else { return nil }
+        return DensoKanbanRecord.parse(qrPayload)
+    }
+
     /// この記録がどの箱を検査したかを表す箱固有キー。仕向地ごとの作り方は `BoxIdentity` に従う。
     /// QR全文を持たない旧履歴や、モルテンでCode 128全文を持たない記録ではnil。
     var boxIdentity: String? {

@@ -5704,6 +5704,230 @@
           }
         }
       }
+    },
+    "帳票区分" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Form type"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帳票区分"
+          }
+        }
+      }
+    },
+    "包装" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Packaging"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包装"
+          }
+        }
+      }
+    },
+    "次区" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Next process"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次区"
+          }
+        }
+      }
+    },
+    "指示" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instruction"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指示"
+          }
+        }
+      }
+    },
+    "かんばん連番" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kanban serial"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "かんばん連番"
+          }
+        }
+      }
+    },
+    "管理番号" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Management number"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理番号"
+          }
+        }
+      }
+    },
+    "納入日" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delivery date"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "納入日"
+          }
+        }
+      }
+    },
+    "便" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delivery run"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "便"
+          }
+        }
+      }
+    },
+    "アイテムNo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Item No."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アイテムNo"
+          }
+        }
+      }
+    },
+    "受入" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receiving"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受入"
+          }
+        }
+      }
+    },
+    "かんばん連番: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kanban serial: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "かんばん連番: %@"
+          }
+        }
+      }
+    },
+    "部品番号: %@　収容数: %lld　指示数: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Part number: %1$@, pack quantity: %2$lld, instructed quantity: %3$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部品番号: %1$@　収容数: %2$lld　指示数: %3$@"
+          }
+        }
+      }
+    },
+    "次区: %@　指示: %@　納入日: %@　便: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Next process: %1$@, instruction: %2$@, delivery date: %3$@, delivery run: %4$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次区: %1$@　指示: %2$@　納入日: %3$@　便: %4$@"
+          }
+        }
+      }
+    },
+    "管理番号: %@　アイテムNo: %@　受入: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Management number: %1$@, item No.: %2$@, receiving: %3$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理番号: %1$@　アイテムNo: %2$@　受入: %3$@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

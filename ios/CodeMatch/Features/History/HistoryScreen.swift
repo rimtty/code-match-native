@@ -374,6 +374,8 @@ private struct GroupedMatchDetail: View {
         // 納品番号を持たない記録が1件でも混ざるグループは、記録を落とさないよう従来どおり1節にまとめる
         let showsDeliveryGroups = !deliveryGroups.isEmpty
             && deliveryGroups.reduce(0) { $0 + $1.entries.count } == group.entries.count
+        // デンソーは同じ品番の箱がかんばん連番でしか区別できないので、管理コードを添えて見分けやすくする
+        let showsManagementCodePerBox = group.entries.contains { $0.densoRecord != nil }
 
         List {
             Section {
@@ -416,7 +418,11 @@ private struct GroupedMatchDetail: View {
             } else {
                 Section(AppLocalization.string("各箱の照合記録")) {
                     ForEach(Array(group.entries.enumerated()), id: \.element.id) { index, entry in
-                        boxEntryRow(entry: entry, number: index + 1)
+                        boxEntryRow(
+                            entry: entry,
+                            number: index + 1,
+                            showsManagementCode: showsManagementCodePerBox
+                        )
                     }
                 }
             }
@@ -425,7 +431,7 @@ private struct GroupedMatchDetail: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    /// 1箱分の行。モルテンは同じ納品番号の箱をQRでは区別できないため、管理コードを添える。
+    /// 1箱分の行。モルテンとデンソーは箱の見分けが付きにくいため、管理コードを添える。
     private func boxEntryRow(
         entry: MatchHistoryEntry,
         number: Int,
@@ -485,7 +491,9 @@ private struct MatchEntryDetail: View {
                     .textSelection(.enabled)
             }
 
-            if let qr = entry.qrPayload.flatMap(KanbanQRRecord.parse) {
+            // 澤井製作所の解析は寛容でデンソーのQRも受理してしまうため、
+            // 仕向地ガード付きの `kanbanRecord` から順に分岐する。
+            if let qr = entry.kanbanRecord {
                 Section(AppLocalization.string("納品書情報（QR解析）")) {
                     LabeledContent(
                         AppLocalization.string("カード番号"),
@@ -493,7 +501,7 @@ private struct MatchEntryDetail: View {
                     )
                     LabeledContent(
                         AppLocalization.string("品目番号"),
-                        value: CodeMatcher.format(partNumber: qr.partNumber)
+                        value: CodeMatcher.format(partNumber: qr.partNumber, destination: .sawai)
                             + (qr.partSuffix.map { "（\(AppLocalization.string("枝番")) \($0)）" } ?? "")
                     )
                     LabeledContent(AppLocalization.string("納入数量"), value: quantityText(qr.deliveryQuantity))
@@ -507,7 +515,7 @@ private struct MatchEntryDetail: View {
                     LabeledContent(AppLocalization.string("受注者"), value: qr.ordererCode)
                     LabeledContent(
                         AppLocalization.string("部品番号"),
-                        value: CodeMatcher.format(partNumber: qr.partNumber)
+                        value: CodeMatcher.format(partNumber: qr.partNumber, destination: .molten)
                     )
                     LabeledContent(AppLocalization.string("納品番号"), value: qr.deliveryNumber)
                     LabeledContent(AppLocalization.string("納入先"), value: qr.deliveryDestination)
@@ -525,6 +533,55 @@ private struct MatchEntryDetail: View {
                         AppLocalization.string("時刻"),
                         value: qr.formattedInstructionTime ?? "-"
                     )
+                }
+            } else if let qr = entry.densoRecord {
+                // デンソーのかんばんは項目構成が変わりうるので、無い項目は行ごと出さない。
+                Section(AppLocalization.string("納品書情報（QR解析）")) {
+                    if let formType = qr.formType {
+                        LabeledContent(AppLocalization.string("帳票区分"), value: formType)
+                    }
+                    LabeledContent(
+                        AppLocalization.string("部品番号"),
+                        value: CodeMatcher.format(partNumber: qr.partNumber, destination: .denso)
+                    )
+                    if let packagingCode = qr.packagingCode {
+                        LabeledContent(AppLocalization.string("包装"), value: packagingCode)
+                    }
+                    LabeledContent(
+                        AppLocalization.string("収容数"),
+                        value: appLanguage.formatInteger(qr.packQuantity)
+                    )
+                    if let nextProcess = qr.nextProcess {
+                        LabeledContent(AppLocalization.string("次区"), value: nextProcess)
+                    }
+                    if let instructionCode = qr.instructionCode {
+                        LabeledContent(AppLocalization.string("指示"), value: instructionCode)
+                    }
+                    LabeledContent(
+                        AppLocalization.string("かんばん連番"),
+                        value: qr.kanbanSerial
+                    )
+                    if let managementNumber = qr.managementNumber {
+                        LabeledContent(AppLocalization.string("管理番号"), value: managementNumber)
+                    }
+                    if let deliveryDate = qr.formattedDeliveryDate {
+                        LabeledContent(AppLocalization.string("納入日"), value: deliveryDate)
+                    }
+                    if let deliveryRun = qr.deliveryRun {
+                        LabeledContent(AppLocalization.string("便"), value: deliveryRun)
+                    }
+                    if let instructedQuantity = qr.instructedQuantity {
+                        LabeledContent(
+                            AppLocalization.string("指示数"),
+                            value: appLanguage.formatInteger(instructedQuantity)
+                        )
+                    }
+                    if let itemNumber = qr.itemNumber {
+                        LabeledContent(AppLocalization.string("アイテムNo"), value: itemNumber)
+                    }
+                    if let receivingCode = qr.receivingCode {
+                        LabeledContent(AppLocalization.string("受入"), value: receivingCode)
+                    }
                 }
             }
 

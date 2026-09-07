@@ -186,13 +186,6 @@ enum CodeMatcher {
         return qrPart == barcodePart ? .match : .mismatch
     }
 
-    /// 品番を現品票の表記へ整形する（仕向地不明の従来規則）。
-    /// 10桁は4-2-4 (`BCJH5281GG` → `BCJH-52-81GG`)、9桁は4-2-3 (`PAF115422` → `PAF1-15-422`)。
-    /// それ以外の桁数はそのまま返す。
-    static func format(partNumber: String) -> String {
-        format(partNumber: partNumber, destination: nil)
-    }
-
     /// 品番を仕向地の現品票の表記へ整形する。
     /// デンソーの10桁は6-4 (`8601507722` → `860150-7722`)。
     /// 澤井製作所・モルテン・仕向地未確定は従来の長さ規則(10→4-2-4 / 9→4-2-3)。

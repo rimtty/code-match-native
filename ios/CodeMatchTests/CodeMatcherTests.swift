@@ -202,11 +202,20 @@ final class CodeMatcherTests: XCTestCase {
     }
 
     func testFormatPartNumber() {
-        XCTAssertEqual(CodeMatcher.format(partNumber: "BCJH5281GG"), "BCJH-52-81GG")
+        XCTAssertEqual(
+            CodeMatcher.format(partNumber: "BCJH5281GG", destination: nil),
+            "BCJH-52-81GG"
+        )
         // モルテンの9桁品番は4-2-3で表記する
-        XCTAssertEqual(CodeMatcher.format(partNumber: "PAF115422"), "PAF1-15-422")
-        XCTAssertEqual(CodeMatcher.format(partNumber: "ABC"), "ABC")
-        XCTAssertEqual(CodeMatcher.format(partNumber: "ABCDEFGHIJK"), "ABCDEFGHIJK")
+        XCTAssertEqual(
+            CodeMatcher.format(partNumber: "PAF115422", destination: nil),
+            "PAF1-15-422"
+        )
+        XCTAssertEqual(CodeMatcher.format(partNumber: "ABC", destination: nil), "ABC")
+        XCTAssertEqual(
+            CodeMatcher.format(partNumber: "ABCDEFGHIJK", destination: nil),
+            "ABCDEFGHIJK"
+        )
     }
 
     func testKanbanQRRecordParsesAllFields() {
@@ -736,7 +745,6 @@ final class CodeMatcherTests: XCTestCase {
             CodeMatcher.format(partNumber: "8601507722", destination: nil),
             "8601-50-7722"
         )
-        XCTAssertEqual(CodeMatcher.format(partNumber: "8601507722"), "8601-50-7722")
         XCTAssertEqual(
             CodeMatcher.format(partNumber: "BCJH5281GG", destination: .sawai),
             "BCJH-52-81GG"
