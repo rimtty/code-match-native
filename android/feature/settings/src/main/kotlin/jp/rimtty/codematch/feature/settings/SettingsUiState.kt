@@ -78,6 +78,12 @@ object SettingsTestTags {
     const val FAILURE_PREVIEW = "settings_failure_preview"
     const val LANGUAGE = "settings_language"
     const val LANGUAGE_CHOICE = "settings_language_choice"
+    const val SCAN_LOG = "settings_scan_log"
+    const val SCAN_LOG_COUNT = "settings_scan_log_count"
+    const val SCAN_LOG_SHARE = "settings_scan_log_share"
+    const val SCAN_LOG_SAVE = "settings_scan_log_save"
+    const val SCAN_LOG_CLEAR = "settings_scan_log_clear"
+    const val SCAN_LOG_CLEAR_CONFIRM = "settings_scan_log_clear_confirm"
 
     fun setupBarcode(code: BluetoothScannerSetupCode): String =
         "${SETUP_BARCODE}_${code.accessibilityId}"
@@ -112,6 +118,8 @@ data class SettingsUiState(
         jp.rimtty.codematch.scanner.api.IlluminationState.UNSUPPORTED,
     val tuningState: jp.rimtty.codematch.scanner.api.TuningState =
         jp.rimtty.codematch.scanner.api.TuningState.UNSUPPORTED,
+    /** Retained scan-log events; share and clear are disabled while it is 0. */
+    val scanLogCount: Int = 0,
 ) {
     /** Compatibility/readability aliases for hosts that name these values explicitly. */
     val appSettings: AppSettings get() = settings
@@ -162,6 +170,13 @@ sealed interface SettingsUiAction {
     /** Host-owned: hand the diagnostic log to the share sheet / a SAF document. */
     data object ShareDiagnostics : SettingsUiAction
     data object SaveDiagnostics : SettingsUiAction
+
+    /** Host-owned: the scan log is serialized and shared/saved by the app layer. */
+    data object ShareScanLog : SettingsUiAction
+    data object SaveScanLog : SettingsUiAction
+
+    /** Emitted only after the confirmation dialog is accepted. */
+    data object ClearScanLog : SettingsUiAction
 
     data class SetAutoAdvanceEnabled(val enabled: Boolean) : SettingsUiAction
     data class SetAutoAdvanceDelay(val delay: AutoAdvanceDelay) : SettingsUiAction

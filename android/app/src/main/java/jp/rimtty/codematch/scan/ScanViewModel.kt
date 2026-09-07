@@ -4,16 +4,22 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import jp.rimtty.codematch.core.data.HistoryRepository
+import jp.rimtty.codematch.core.data.ScanLogRepository
 import jp.rimtty.codematch.core.data.SettingsRepository
 import jp.rimtty.codematch.core.model.AppSettings
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
 import jp.rimtty.codematch.core.model.MatchSession
 import jp.rimtty.codematch.core.model.MatchResult
+import jp.rimtty.codematch.core.model.ScanLogEvent
+import jp.rimtty.codematch.core.model.ScanLogEventKind
+import jp.rimtty.codematch.core.model.ScanLogSource
+import jp.rimtty.codematch.core.model.ScanLogStep
 import jp.rimtty.codematch.core.model.ScanSessionCheckpoint
 import jp.rimtty.codematch.feedback.FeedbackPlayer
 import jp.rimtty.codematch.feature.scan.RecordedBox
 import jp.rimtty.codematch.feature.scan.ScanEffect
 import jp.rimtty.codematch.feature.scan.CameraPermissionState
+import jp.rimtty.codematch.feature.scan.ScanLogRecorder
 import jp.rimtty.codematch.feature.scan.ScanPhase
 import jp.rimtty.codematch.feature.scan.ScanSessionCoordinator
 import jp.rimtty.codematch.feature.scan.ScanSessionState
@@ -81,7 +87,10 @@ internal object ScanFeedbackEventMapper {
  * The feature module remains stateless: this class translates [ScanUiAction]
  * into [ScanSessionCoordinator] calls, observes the repositories, and turns
  * only [ScanEffect.RecordMatch] into a history write. Scan payloads are never
- * sent to logs or scanner diagnostics.
+ * sent to Android logs or scanner diagnostics; the single exception is the
+ * on-device scan log, which deliberately keeps the raw values in Room so a
+ * field problem can be reproduced, and leaves the device only when the
+ * operator shares or saves it from Settings.
  *
  * [ScanUiAction.EndSession] is the final action. The destination should show
  * its confirmation dialog outside this class and dispatch the action only
@@ -94,6 +103,7 @@ class ScanViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val scanner: ExternalScanner,
     private val feedbackPlayer: FeedbackPlayer,
+    private val scanLogRepository: ScanLogRepository,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ScanUiState())
 
@@ -367,6 +377,13 @@ class ScanViewModel @Inject constructor(
                 .orEmpty(),
             sessionDestination = active?.destination,
         )
+        // The coordinator is built before a session id exists, so it records
+        // events without one and this lambda stamps the active session on.
+        created.scanLogRecorder = ScanLogRecorder { event ->
+            viewModelScope.launch {
+                scanLogRepository.record(event.copy(sessionId = activeSessionId))
+            }
+        }
         created.onStateChanged = { publishCoordinatorState() }
         created.onEffects = ::handleEffects
         created.onInputSourceChanged = { source ->
@@ -446,6 +463,23 @@ class ScanViewModel @Inject constructor(
             val session = historyRepository.getSession(id)
             activeSessionId = id
             activeSessionName = session?.name ?: requestedName
+            // Recorded here rather than from ScanEffect.SessionStarted: a
+            // checkpoint restore re-fires that effect and would log a second
+            // start for a session that was already running.
+            scanLogRepository.record(
+                ScanLogEvent(
+                    atEpochMillis = System.currentTimeMillis(),
+                    sessionId = id,
+                    source = if (current.inputSource == InputSource.BLUETOOTH) {
+                        ScanLogSource.BLUETOOTH
+                    } else {
+                        ScanLogSource.CAMERA
+                    },
+                    step = ScanLogStep.NONE,
+                    event = ScanLogEventKind.SESSION_START,
+                    destination = current.state.destination,
+                ),
+            )
 
             // beginSession returns an existing active session when another
             // host won a race. Rebuild while the local coordinator is still

@@ -352,7 +352,7 @@ source_hits="$(grep -rn -i -E \
 # The only production code allowed to create files is the export layer: the
 # PDF report and the JSON history export, each writing into its own scoped
 # app-private cache subdirectory that the FileProvider exposes.
-file_hits="$(grep -rn -E '(^|[^[:alnum:]_])File[[:space:]]*\(' "${production_dirs[@]}" --include='*.kt' --include='*.java' | grep -v -E 'core/export/src/main/.*/History(Pdf|Json)Exporter\.kt:' || true)"
+file_hits="$(grep -rn -E '(^|[^[:alnum:]_])File[[:space:]]*\(' "${production_dirs[@]}" --include='*.kt' --include='*.java' | grep -v -E 'core/export/src/main/.*/(History(Pdf|Json)|ScanLogJson)Exporter\.kt:' || true)"
 [[ -z "$file_hits" ]] || die "production source creates files outside the dedicated exporters:"$'\n'"$file_hits"
 
 analytics_hits="$(grep -rn -i -E 'FirebaseAnalytics|FirebaseCrashlytics|Crashlytics|Sentry|Bugsnag|NewRelic|Datadog|Mixpanel|PostHog|Countly|AnalyticsTracker|CrashReporter' \

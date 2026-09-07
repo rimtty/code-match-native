@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -112,6 +113,7 @@ class SettingsScreenTest {
         composeRule.onAllNodesWithTag(SettingsTestTags.SUCCESS_SOUNDS).assertCountEquals(1)
         composeRule.onAllNodesWithTag(SettingsTestTags.FAILURE_SOUNDS).assertCountEquals(1)
         composeRule.onAllNodesWithTag(SettingsTestTags.LANGUAGE).assertCountEquals(1)
+        composeRule.onAllNodesWithTag(SettingsTestTags.SCAN_LOG).assertCountEquals(1)
         composeRule.onAllNodesWithTag(SettingsTestTags.SUCCESS_SOUND).assertCountEquals(5)
         composeRule.onAllNodesWithTag(SettingsTestTags.FAILURE_SOUND).assertCountEquals(4)
         composeRule.onAllNodesWithTag(SettingsTestTags.DELAY_CHOICE).assertCountEquals(3)
@@ -138,6 +140,75 @@ class SettingsScreenTest {
             .get(0)
             .performScrollTo()
             .assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithTag(SettingsTestTags.SCAN_LOG_SHARE)
+            .performScrollTo()
+            .assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithTag(SettingsTestTags.SCAN_LOG_SAVE)
+            .performScrollTo()
+            .assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithTag(SettingsTestTags.SCAN_LOG_CLEAR)
+            .performScrollTo()
+            .assertHeightIsAtLeast(48.dp)
+    }
+
+    /**
+     * The scan log carries the values that were actually read, so sharing and
+     * saving stay unavailable until there is something to share, and clearing
+     * always goes through a confirmation.
+     */
+    @Test
+    fun scanLogCardReportsItsCountAndGatesSharingSavingAndClearing() {
+        val actions = mutableListOf<SettingsUiAction>()
+        val state = mutableStateOf(SettingsUiState())
+        composeRule.setContent {
+            MaterialTheme { SettingsScreen(state.value, onAction = actions::add) }
+        }
+
+        composeRule.onNodeWithTag(SettingsTestTags.SCAN_LOG_COUNT)
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(SettingsTestTags.SCAN_LOG_SHARE)
+            .performScrollTo()
+            .assertIsNotEnabled()
+        composeRule.onNodeWithTag(SettingsTestTags.SCAN_LOG_SAVE)
+            .performScrollTo()
+            .assertIsNotEnabled()
+
+        composeRule.runOnIdle { state.value = state.value.copy(scanLogCount = 12) }
+
+        composeRule.onNodeWithTag(SettingsTestTags.SCAN_LOG_COUNT)
+            .performScrollTo()
+            .assertTextContains("12", substring = true)
+        composeRule.onNodeWithTag(SettingsTestTags.SCAN_LOG_SHARE)
+            .performScrollTo()
+            .assertIsEnabled()
+            .performClick()
+        composeRule.onNodeWithTag(SettingsTestTags.SCAN_LOG_SAVE)
+            .performScrollTo()
+            .assertIsEnabled()
+            .performClick()
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf(SettingsUiAction.ShareScanLog, SettingsUiAction.SaveScanLog),
+                actions.toList(),
+            )
+        }
+
+        // Tapping clear only opens the dialog; nothing is emitted yet.
+        composeRule.onNodeWithTag(SettingsTestTags.SCAN_LOG_CLEAR)
+            .performScrollTo()
+            .performClick()
+        composeRule.runOnIdle {
+            assertTrue(!actions.contains(SettingsUiAction.ClearScanLog))
+        }
+        composeRule.onNodeWithTag(SettingsTestTags.SCAN_LOG_CLEAR_CONFIRM)
+            .assertIsDisplayed()
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(SettingsUiAction.ClearScanLog, actions.last())
+        }
+        composeRule.onAllNodesWithTag(SettingsTestTags.SCAN_LOG_CLEAR_CONFIRM).assertCountEquals(0)
     }
 
     @Test

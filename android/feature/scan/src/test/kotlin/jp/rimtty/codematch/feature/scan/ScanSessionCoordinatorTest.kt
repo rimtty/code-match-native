@@ -2,6 +2,11 @@ package jp.rimtty.codematch.feature.scan
 
 import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchResult
+import jp.rimtty.codematch.core.model.ScanLogEvent
+import jp.rimtty.codematch.core.model.ScanLogEventKind
+import jp.rimtty.codematch.core.model.ScanLogReason
+import jp.rimtty.codematch.core.model.ScanLogSource
+import jp.rimtty.codematch.core.model.ScanLogStep
 import jp.rimtty.codematch.core.model.ScanCheckpointInputSource
 import jp.rimtty.codematch.core.model.ScanCheckpointPhase
 import jp.rimtty.codematch.core.model.ScanSessionCheckpoint
@@ -39,6 +44,10 @@ class ScanSessionCoordinatorTest {
     private val qrPayload =
         "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
     private val barcodePayload = "BCJH-52-81GG@1N5X0C"
+
+    // A different part number in the same series; a valid tag that must not
+    // match the slip above.
+    private val mismatchBarcodePayload = "BCJH-55-81GG@1KVQ0C"
 
     // Destination Molten, with a nine-character part number printed as a
     // 4-2-3 tag. The QR's trailing spaces are record data.
@@ -634,6 +643,205 @@ class ScanSessionCoordinatorTest {
         )
         assertTrue(rejected?.effects?.single() is ScanEffect.InvalidScan)
         assertEquals(ScanPhase.WAITING_CODE_128, sawai.state.phase)
+    }
+
+
+    @Test
+    fun scanLogRecordsAcceptedQrBarcodeMatchAndSessionEnd() {
+        val scanner = TestScanner().apply { markReady() }
+        val log = RecordingScanLog()
+        val coordinator = ScanSessionCoordinator(scanner, scanLogRecorder = log)
+
+        coordinator.startSession()
+        coordinator.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.BLUETOOTH, 1_000L))
+        coordinator.submitScanPayload(
+            ScanPayload.code128(barcodePayload, InputSource.BLUETOOTH, 2_000L),
+        )
+
+        assertEquals(
+            listOf(
+                ScanLogEventKind.QR_ACCEPTED,
+                ScanLogEventKind.BARCODE_ACCEPTED,
+                ScanLogEventKind.MATCH,
+            ),
+            log.events.map { it.event },
+        )
+        val qrAccepted = log.events[0]
+        assertEquals(ScanLogSource.BLUETOOTH, qrAccepted.source)
+        assertEquals(ScanLogStep.QR, qrAccepted.step)
+        assertEquals(qrPayload, qrAccepted.qrPayload)
+        assertNull(qrAccepted.barcodePayload)
+        assertEquals(Destination.SAWAI, qrAccepted.destination)
+        // The host owns the session id; the coordinator never invents one.
+        assertNull(qrAccepted.sessionId)
+
+        val barcodeAccepted = log.events[1]
+        assertEquals(ScanLogStep.BARCODE, barcodeAccepted.step)
+        assertEquals(barcodePayload, barcodeAccepted.barcodePayload)
+        assertNull(barcodeAccepted.qrPayload)
+
+        val match = log.events[2]
+        assertEquals(ScanLogStep.BARCODE, match.step)
+        assertEquals(qrPayload, match.qrPayload)
+        assertEquals(barcodePayload, match.barcodePayload)
+        assertEquals("BCJH-52-81GG", match.code)
+        assertEquals(1, match.boxNumber)
+        assertNull(match.reason)
+        assertNull(match.message)
+
+        coordinator.endSession()
+
+        val ended = log.events.last()
+        assertEquals(ScanLogEventKind.SESSION_END, ended.event)
+        assertEquals(ScanLogStep.NONE, ended.step)
+        // Ending resets the source and clears the lock, so both are read from
+        // the state the session had before the reduction.
+        assertEquals(ScanLogSource.BLUETOOTH, ended.source)
+        assertEquals(Destination.SAWAI, ended.destination)
+    }
+
+    @Test
+    fun scanLogRecordsMismatchAndDuplicateWithTheirPartNumberButNoBoxNumber() {
+        val scanner = TestScanner().apply { markReady() }
+        val log = RecordingScanLog()
+        val coordinator = ScanSessionCoordinator(scanner, scanLogRecorder = log)
+        coordinator.startSession()
+
+        coordinator.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.BLUETOOTH, 1_000L))
+        coordinator.submitScanPayload(
+            ScanPayload.code128(mismatchBarcodePayload, InputSource.BLUETOOTH, 2_000L),
+        )
+
+        val mismatch = log.events.last()
+        assertEquals(ScanLogEventKind.MISMATCH, mismatch.event)
+        assertEquals(mismatchBarcodePayload, mismatch.barcodePayload)
+        assertEquals("BCJH-55-81GG", mismatch.code)
+        assertNull(mismatch.boxNumber)
+
+        coordinator.manualNext()
+        coordinator.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.BLUETOOTH, 3_000L))
+        coordinator.submitScanPayload(
+            ScanPayload.code128(barcodePayload, InputSource.BLUETOOTH, 4_000L),
+        )
+        assertEquals(ScanLogEventKind.MATCH, log.events.last().event)
+
+        coordinator.manualNext()
+        coordinator.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.BLUETOOTH, 5_000L))
+        coordinator.submitScanPayload(
+            ScanPayload.code128(barcodePayload, InputSource.BLUETOOTH, 6_000L),
+        )
+
+        val duplicate = log.events.last()
+        assertEquals(ScanLogEventKind.DUPLICATE, duplicate.event)
+        assertEquals("BCJH-52-81GG", duplicate.code)
+        assertNull(duplicate.boxNumber)
+    }
+
+    @Test
+    fun scanLogRecordsEveryRejectionReasonWithTheValueThatCausedIt() {
+        val scanner = TestScanner().apply { markReady() }
+        val log = RecordingScanLog()
+        val coordinator = ScanSessionCoordinator(scanner, scanLogRecorder = log)
+
+        // A connected scanner is promoted only once a session starts, so this
+        // first callback is still a camera one.
+        coordinator.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.CAMERA, 1_000L))
+        coordinator.startSession()
+        coordinator.submitScanPayload(
+            ScanPayload.code128(barcodePayload, InputSource.BLUETOOTH, 2_000L),
+        )
+        coordinator.submitScanPayload(ScanPayload.qr("", InputSource.BLUETOOTH, 3_000L))
+        coordinator.submitScanPayload(ScanPayload.qr("SHORT", InputSource.BLUETOOTH, 4_000L))
+        coordinator.submitScanPayload(ScanPayload.qr("A".repeat(70), InputSource.BLUETOOTH, 5_000L))
+        coordinator.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.BLUETOOTH, 6_000L))
+        coordinator.submitScanPayload(
+            ScanPayload.code128("NOT-A-TAG", InputSource.BLUETOOTH, 7_000L),
+        )
+        // Re-reading the QR keeps the destination lock, so a slip of another
+        // destination is still refused.
+        coordinator.rereadQr()
+        coordinator.submitScanPayload(
+            ScanPayload.qr(moltenQrPayload, InputSource.BLUETOOTH, 8_000L),
+        )
+
+        val rejections = log.events.filter { it.event == ScanLogEventKind.REJECTED }
+        assertEquals(
+            listOf(
+                ScanLogReason.SESSION_NOT_STARTED,
+                ScanLogReason.WRONG_ORDER,
+                ScanLogReason.EMPTY,
+                ScanLogReason.INCOMPLETE,
+                ScanLogReason.OVERLONG,
+                ScanLogReason.INVALID,
+                ScanLogReason.WRONG_DESTINATION,
+            ),
+            rejections.map { it.reason },
+        )
+        assertEquals(ScanLogStep.NONE, rejections[0].step)
+        assertEquals(qrPayload, rejections[0].qrPayload)
+        // The value is filed under the step it was judged in: a Code 128 that
+        // arrives while a QR is expected is recorded as the QR that was read.
+        assertEquals(barcodePayload, rejections[1].qrPayload)
+        assertNull(rejections[1].barcodePayload)
+        assertEquals("", rejections[2].qrPayload)
+        assertEquals("SHORT", rejections[3].qrPayload)
+        assertEquals("A".repeat(70), rejections[4].qrPayload)
+        assertEquals(ScanLogStep.BARCODE, rejections[5].step)
+        assertEquals("NOT-A-TAG", rejections[5].barcodePayload)
+        assertNull(rejections[5].qrPayload)
+        assertEquals(moltenQrPayload, rejections[6].qrPayload)
+        assertEquals(Destination.SAWAI, rejections[6].destination)
+    }
+
+    @Test
+    fun scanLogRecordsDroppedSourceConfirmationCandidateAndResultCallbacks() {
+        val bluetoothScanner = TestScanner().apply { markReady() }
+        val bluetoothLog = RecordingScanLog()
+        val bluetooth = ScanSessionCoordinator(bluetoothScanner, scanLogRecorder = bluetoothLog)
+        bluetooth.startSession()
+
+        bluetooth.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.CAMERA, 1_000L))
+
+        val dropped = bluetoothLog.events.single()
+        assertEquals(ScanLogEventKind.REJECTED, dropped.event)
+        assertEquals(ScanLogReason.SOURCE_MISMATCH, dropped.reason)
+        assertEquals(ScanLogSource.CAMERA, dropped.source)
+        assertEquals(ScanLogStep.QR, dropped.step)
+        assertEquals(qrPayload, dropped.qrPayload)
+
+        val cameraLog = RecordingScanLog()
+        val camera = ScanSessionCoordinator(TestScanner(), scanLogRecorder = cameraLog)
+        camera.startSession()
+        camera.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.CAMERA, 1_000L))
+        camera.submitScanPayload(ScanPayload.code128(barcodePayload, InputSource.CAMERA, 2_000L))
+
+        assertEquals(
+            listOf(ScanLogEventKind.QR_ACCEPTED, ScanLogEventKind.BARCODE_CANDIDATE),
+            cameraLog.events.map { it.event },
+        )
+        val candidate = cameraLog.events.last()
+        assertEquals(ScanLogStep.BARCODE, candidate.step)
+        assertEquals(barcodePayload, candidate.barcodePayload)
+        assertNull(candidate.reason)
+
+        camera.submitScanPayload(ScanPayload.code128(barcodePayload, InputSource.CAMERA, 2_500L))
+        assertEquals(ScanLogEventKind.MATCH, cameraLog.events.last().event)
+
+        camera.submitScanPayload(ScanPayload.qr(qrPayload, InputSource.CAMERA, 5_000L))
+
+        val swallowed = cameraLog.events.last()
+        assertEquals(ScanLogEventKind.REJECTED, swallowed.event)
+        assertEquals(ScanLogReason.RESULT_PENDING, swallowed.reason)
+        assertEquals(ScanLogStep.RESULT, swallowed.step)
+        assertEquals(qrPayload, swallowed.qrPayload)
+    }
+
+    private class RecordingScanLog : ScanLogRecorder {
+        val events = mutableListOf<ScanLogEvent>()
+
+        override fun record(event: ScanLogEvent) {
+            events += event
+        }
     }
 
     private class TestScanner : ExternalScanner {

@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import jp.rimtty.codematch.core.data.ScanLogRepository
 import jp.rimtty.codematch.core.data.SettingsRepository
+import jp.rimtty.codematch.core.model.ScanLogEvent
 import jp.rimtty.codematch.feature.settings.SettingsPresentationState
 import jp.rimtty.codematch.feature.settings.SettingsUiAction
 import jp.rimtty.codematch.feature.settings.SettingsUiState
@@ -24,6 +26,7 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repository: SettingsRepository,
+    private val scanLogRepository: ScanLogRepository,
     private val scanner: ExternalScanner,
     private val feedbackPlayer: FeedbackPlayer,
     private val appLanguageSynchronizer: AppLanguageSynchronizer,
@@ -60,7 +63,20 @@ class SettingsViewModel @Inject constructor(
                 _state.update { scannerState(it.copy(settings = settings)) }
             }
         }
+        viewModelScope.launch {
+            scanLogRepository.count.collect { count ->
+                _state.update { it.copy(scanLogCount = count) }
+            }
+        }
     }
+
+    /**
+     * The whole scan log, oldest first.
+     *
+     * Serialization and every Intent/ContentResolver call stay in the route:
+     * this only hands over the rows so the host does not need the repository.
+     */
+    suspend fun exportScanLog(): List<ScanLogEvent> = scanLogRepository.export()
 
     override fun onCleared() {
         if (scannerListenerRegistered) {
@@ -120,6 +136,9 @@ class SettingsViewModel @Inject constructor(
             is SettingsUiAction.PreviewFailureSound ->
                 feedbackPlayer.playFailure(action.sound, state.value.feedbackVolume)
             SettingsUiAction.ShareDiagnostics, SettingsUiAction.SaveDiagnostics -> Unit // host-owned
+            SettingsUiAction.ShareScanLog, SettingsUiAction.SaveScanLog -> Unit // host-owned
+            SettingsUiAction.ClearScanLog ->
+                viewModelScope.launch { scanLogRepository.clear() }
             is SettingsUiAction.SetLanguage -> viewModelScope.launch {
                 appLanguageSynchronizer.setLanguage(action.language)
             }

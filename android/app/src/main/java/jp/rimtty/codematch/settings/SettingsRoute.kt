@@ -19,11 +19,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.Instant
+import jp.rimtty.codematch.core.export.ScanLogJsonExporter
+import jp.rimtty.codematch.history.HistoryJsonBridge
+import jp.rimtty.codematch.history.HistoryJsonResult
 import jp.rimtty.codematch.feature.settings.DiagnosticLogFormatter
 import jp.rimtty.codematch.feature.settings.R
 import jp.rimtty.codematch.feature.settings.SettingsScreen
 import jp.rimtty.codematch.feature.settings.SettingsUiAction
 import jp.rimtty.codematch.feature.settings.SettingsUiState
+import jp.rimtty.codematch.core.model.ScanLogEvent
 import jp.rimtty.codematch.navigation.CodeMatchBackHandler
 import jp.rimtty.codematch.scanner.api.ScannerIssue
 import kotlinx.coroutines.Dispatchers
@@ -78,10 +82,87 @@ fun SettingsRoute(
         }
     }
 
+    // The scan log is a separate document with its own toasts, so it gets its
+    // own SAF launcher rather than sharing the diagnostics one.
+    var pendingScanLog by remember { mutableStateOf<String?>(null) }
+    val scanLogSavedMessage = stringResource(R.string.settings_scan_log_saved)
+    val scanLogSaveFailedMessage = stringResource(R.string.settings_scan_log_save_failed)
+    val scanLogShareFailedMessage = stringResource(R.string.settings_scan_log_share_failed)
+    val createScanLogDocument = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain"),
+    ) { destination ->
+        val text = pendingScanLog
+        pendingScanLog = null
+        if (destination == null || text == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val written = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(destination, "wt")?.use { stream ->
+                        stream.write(text.toByteArray(Charsets.UTF_8))
+                    } ?: error("no output stream")
+                }.isSuccess
+            }
+            Toast.makeText(
+                context,
+                if (written) scanLogSavedMessage else scanLogSaveFailedMessage,
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
     SettingsScreen(
         state = state,
         onAction = { action ->
             when (action) {
+                SettingsUiAction.ShareScanLog -> scope.launch {
+                    val exportedAt = Instant.now()
+                    val file = withContext(Dispatchers.IO) {
+                        runCatching {
+                            ScanLogJsonExporter.writeToCache(
+                                context = context,
+                                text = scanLogText(context, viewModel.exportScanLog(), exportedAt),
+                                exportedAt = exportedAt,
+                            )
+                        }.getOrNull()
+                    }
+                    val chooser = file?.let {
+                        HistoryJsonBridge.createShareChooser(
+                            context = context,
+                            file = it,
+                            mimeType = ScanLogJsonExporter.MIME_TYPE,
+                        )
+                    }
+                    val launched = when (chooser) {
+                        is HistoryJsonResult.Success ->
+                            runCatching { context.startActivity(chooser.value) }.isSuccess
+                        else -> false
+                    }
+                    if (!launched) {
+                        Toast.makeText(
+                            context,
+                            scanLogShareFailedMessage,
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                }
+                SettingsUiAction.SaveScanLog -> scope.launch {
+                    val exportedAt = Instant.now()
+                    pendingScanLog = withContext(Dispatchers.IO) {
+                        scanLogText(context, viewModel.exportScanLog(), exportedAt)
+                    }
+                    runCatching {
+                        createScanLogDocument.launch(
+                            ScanLogJsonExporter.fileName(exportedAt),
+                        )
+                    }.onFailure {
+                        pendingScanLog = null
+                        Toast.makeText(
+                            context,
+                            scanLogSaveFailedMessage,
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                }
                 SettingsUiAction.ShareDiagnostics -> {
                     val intent = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
@@ -106,6 +187,19 @@ fun SettingsRoute(
         onOpenBluetoothSettings = { onOpenBluetoothSettings(state.resolvedScannerIssue) },
     )
 }
+
+/** Serialize the scan log with the app version the module cannot read itself. */
+private fun scanLogText(
+    context: Context,
+    events: List<ScanLogEvent>,
+    exportedAt: Instant,
+): String = ScanLogJsonExporter.buildJsonLines(
+    events = events,
+    header = ScanLogJsonExporter.ExportHeader(
+        appVersion = HistoryJsonBridge.appVersion(context),
+        exportedAt = exportedAt,
+    ),
+)
 
 private fun diagnosticLogText(context: Context, state: SettingsUiState): String {
     val packageInfo = runCatching {
