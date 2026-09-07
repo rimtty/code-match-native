@@ -32,6 +32,7 @@ import jp.rimtty.codematch.scanner.api.ScanPayload
 import jp.rimtty.codematch.scanner.api.ScannerIssue
 import jp.rimtty.codematch.scanner.api.scannerIssueFor
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -126,8 +127,28 @@ class ScanViewModel @Inject constructor(
     private var bluetoothFallbackActive = false
     private var bluetoothFallbackIssue = ScannerIssue.NONE
 
+    /**
+     * Scan-log writes queued in arrival order.
+     *
+     * One consumer drains the queue so the log keeps the exact order the
+     * coordinator produced (a match must follow its barcode, never precede
+     * it), and a failing write (for example a database already closed while
+     * the ViewModel is being torn down) is dropped instead of crashing the
+     * process: the log is a diagnostic, never a reason to lose a scan.
+     */
+    private val scanLogQueue = Channel<ScanLogEvent>(Channel.UNLIMITED)
+
     init {
+        viewModelScope.launch {
+            for (event in scanLogQueue) {
+                runCatching { scanLogRepository.record(event) }
+            }
+        }
         initialize()
+    }
+
+    private fun enqueueScanLog(event: ScanLogEvent) {
+        scanLogQueue.trySend(event)
     }
 
     /**
@@ -380,9 +401,7 @@ class ScanViewModel @Inject constructor(
         // The coordinator is built before a session id exists, so it records
         // events without one and this lambda stamps the active session on.
         created.scanLogRecorder = ScanLogRecorder { event ->
-            viewModelScope.launch {
-                scanLogRepository.record(event.copy(sessionId = activeSessionId))
-            }
+            enqueueScanLog(event.copy(sessionId = activeSessionId))
         }
         created.onStateChanged = { publishCoordinatorState() }
         created.onEffects = ::handleEffects
@@ -466,7 +485,7 @@ class ScanViewModel @Inject constructor(
             // Recorded here rather than from ScanEffect.SessionStarted: a
             // checkpoint restore re-fires that effect and would log a second
             // start for a session that was already running.
-            scanLogRepository.record(
+            enqueueScanLog(
                 ScanLogEvent(
                     atEpochMillis = System.currentTimeMillis(),
                     sessionId = id,
