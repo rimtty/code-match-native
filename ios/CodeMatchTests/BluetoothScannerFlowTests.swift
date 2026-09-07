@@ -119,7 +119,8 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertEqual(context.viewModel.step, .result(.match))
         XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
 
-        context.viewModel.reset()
+        // カメラ入力の経路なので、テストを決定的にするためカメラ再開は明示的に抑止する。
+        context.viewModel.reset(automaticallyStartScanning: false)
         context.viewModel.runDemo(shouldMatch: true)
 
         XCTAssertEqual(context.viewModel.step, .result(.duplicate))
@@ -128,6 +129,49 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertNil(context.viewModel.autoAdvanceSecondsRemaining)
         XCTAssertTrue(context.viewModel.message.contains("すでに照合済み"))
         XCTAssertTrue(context.viewModel.message.contains("照合件数に加えていません"))
+    }
+
+    func testManualNextRestartsCameraWhenInputIsCamera() {
+        let context = makeContext()
+        defer { context.cleanup() }
+
+        context.viewModel.runDemo(shouldMatch: true)
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+
+        // 手動の「次のコードを照合」。カメラ入力なので既定でカメラが再開する。
+        context.viewModel.reset()
+
+        XCTAssertEqual(context.viewModel.step, .qr)
+        XCTAssertTrue(context.viewModel.isCameraStarting)
+        XCTAssertEqual(context.viewModel.expectedCode, .qr)
+        XCTAssertEqual(context.viewModel.inputSource, .camera)
+        XCTAssertNil(context.viewModel.autoAdvanceSecondsRemaining)
+    }
+
+    func testManualNextKeepsBluetoothWaitingForQRWithoutCamera() async {
+        let context = makeContext()
+        defer { context.cleanup() }
+        context.service.startDiscovery()
+        context.service.connect(context.service.devices[0])
+        context.viewModel.handleBluetoothConnectionState(context.service.state)
+
+        context.service.simulateScan(ScannerViewModel.sampleQRPayload)
+        try? await Task.sleep(for: .milliseconds(800))
+        context.service.simulateScan(ScannerViewModel.sampleBarcodePayload)
+
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+
+        // BCST-47が接続されている間は、手動の「次のコードを照合」でもカメラは起動しない。
+        context.viewModel.reset()
+
+        XCTAssertEqual(context.viewModel.step, .qr)
+        XCTAssertFalse(context.viewModel.isCameraStarting)
+        XCTAssertFalse(context.viewModel.isCameraRunning)
+        XCTAssertEqual(context.service.expectedCode, .qr)
+        XCTAssertEqual(context.viewModel.inputSource, .bluetooth)
+        XCTAssertTrue(context.viewModel.message.contains("BCST-47"))
     }
 
     func testDifferentBoxQRsWithSameBarcodeAreBothCounted() async {

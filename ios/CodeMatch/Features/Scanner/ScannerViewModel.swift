@@ -188,7 +188,11 @@ final class ScannerViewModel: ObservableObject {
         }
     }
 
-    func reset(automaticallyStartScanning: Bool = false) {
+    /// 結果表示から次の照合へ戻す。手動の「次のコードを照合」も自動照合も同じ経路を通る。
+    /// カメラ入力のときは既定でカメラを再開するので、ボタンを押した直後から次のQRを読める。
+    /// BCST-47が接続されている場合は従来どおりカメラを起動せず、`setExpectedCode(.qr)`だけを行う。
+    /// テストなど、カメラ起動を避けたい場合だけ`automaticallyStartScanning: false`を渡す。
+    func reset(automaticallyStartScanning: Bool = true) {
         cancelAutoAdvanceCountdown()
         camera.stop()
         step = .qr
