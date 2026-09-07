@@ -133,4 +133,19 @@
     <string name="settings_diagnostics_subject">CodeMatch Bluetooth diagnostic log</string>
     <string name="settings_diagnostics_saved">Diagnostic log saved.</string>
     <string name="settings_diagnostics_save_failed">Could not save the diagnostic log.</string>
+
+    <string name="settings_scan_log_title">Scan log</string>
+    <string name="settings_scan_log_note">Keeps the latest 5,000 scan results and rejections on this device, camera and Bluetooth alike. The log contains the scanned values, so share it with care.</string>
+    <string name="settings_scan_log_count">%1$d events</string>
+    <string name="settings_scan_log_share">Share all scan logs</string>
+    <string name="settings_scan_log_save">Save scan log</string>
+    <string name="settings_scan_log_clear">Clear scan log</string>
+    <string name="settings_scan_log_clear_confirm_title">Clear the scan log?</string>
+    <string name="settings_scan_log_clear_confirm_message">Every scan log event kept on this device is deleted. This cannot be undone.</string>
+    <string name="settings_scan_log_clear_confirm">Clear</string>
+    <string name="settings_scan_log_clear_cancel">Cancel</string>
+    <string name="settings_scan_log_subject">CodeMatch scan log</string>
+    <string name="settings_scan_log_saved">Scan log saved.</string>
+    <string name="settings_scan_log_save_failed">Could not save the scan log.</string>
+    <string name="settings_scan_log_share_failed">Could not share the scan log.</string>
 </resources>

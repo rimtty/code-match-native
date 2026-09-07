@@ -23,6 +23,8 @@ import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.EntryPointAccessors
@@ -31,6 +33,7 @@ import jp.rimtty.codematch.feature.history.HistoryTestTags
 import jp.rimtty.codematch.feature.settings.SettingsTestTags
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.AppSettings
+import jp.rimtty.codematch.core.model.ScanLogEventKind
 import jp.rimtty.codematch.scanner.api.InputSource
 import jp.rimtty.codematch.scanner.api.ScanPayload
 import jp.rimtty.codematch.scanner.fake.FakeExternalScanner
@@ -886,6 +889,90 @@ class AppFlowInstrumentationTest {
         assertSessionCount(1)
     }
 
+
+    /**
+     * The scan log must survive the whole flow, not just a match: a repeated
+     * box is exactly the case an operator asks about afterwards. Session
+     * start, the accepted QR and Code 128, the match, and the duplicate all
+     * belong to it, and the count is visible at the bottom of Settings.
+     */
+    @Test
+    fun matchAndRepeatedBoxAreRecordedInTheScanLogAndCountedInSettings() {
+        connectFakeScannerThroughSettings()
+        openDestination(R.string.destination_scan)
+        onNodeWithTag("scan_start_session").performClick()
+        waitForTag("scan_waiting_card")
+
+        emitBluetooth(
+            ScanPayload.qr(
+                value = firstBoxQrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 1_000L,
+            ),
+        )
+        emitBluetooth(
+            ScanPayload.code128(
+                value = sharedBoxBarcodePayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 2_000L,
+            ),
+        )
+        waitForTag("scan_result_card")
+        onNodeWithText("一致").assertIsDisplayed()
+
+        // The same box again: shown as a duplicate, never recorded as a box.
+        onNodeWithTag("scan_manual_next").performClick()
+        emitBluetooth(
+            ScanPayload.qr(
+                value = firstBoxQrPayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 3_000L,
+            ),
+        )
+        emitBluetooth(
+            ScanPayload.code128(
+                value = sharedBoxBarcodePayload,
+                source = InputSource.BLUETOOTH,
+                timestampMillis = 4_000L,
+            ),
+        )
+        waitForTag("scan_result_card")
+        assertSessionCount(1)
+
+        awaitScanLogEvents(
+            listOf(
+                ScanLogEventKind.SESSION_START,
+                ScanLogEventKind.QR_ACCEPTED,
+                ScanLogEventKind.BARCODE_ACCEPTED,
+                ScanLogEventKind.MATCH,
+                ScanLogEventKind.QR_ACCEPTED,
+                ScanLogEventKind.BARCODE_ACCEPTED,
+                ScanLogEventKind.DUPLICATE,
+            ),
+        )
+        val recorded = runBlocking { dependencies.scanLogRepository().export() }
+        val sessionId = runBlocking {
+            dependencies.historyRepository().activeSession.first()?.id
+        }
+        assertEquals(sessionId, recorded.first().sessionId)
+        assertEquals(firstBoxQrPayload, recorded[1].qrPayload)
+        assertEquals(sharedBoxBarcodePayload, recorded[2].barcodePayload)
+        assertEquals(1, recorded[3].boxNumber)
+
+        openDestination(R.string.destination_settings)
+        composeRule.onNodeWithTag(SettingsTestTags.SCAN_LOG_COUNT)
+            .performScrollTo()
+            .assertIsDisplayed()
+        val shown = composeRule.onNodeWithTag(SettingsTestTags.SCAN_LOG_COUNT)
+            .fetchSemanticsNode()
+            .config
+            .getOrNull(SemanticsProperties.Text)
+            .orEmpty()
+            .joinToString("") { it.text }
+        val count = Regex("\\d+").find(shown)?.value?.toInt() ?: 0
+        assertTrue("scan log count was $shown", count >= 3)
+    }
+
     private fun openDestination(destinationRes: Int) {
         composeRule.onNodeWithContentDescription(
             composeRule.activity.getString(destinationRes),
@@ -978,6 +1065,14 @@ class AppFlowInstrumentationTest {
         }
     }
 
+    private fun awaitScanLogEvents(expected: List<String>) {
+        composeRule.waitUntil(5_000) {
+            runBlocking {
+                dependencies.scanLogRepository().export().map { it.event } == expected
+            }
+        }
+    }
+
     private fun assertSessionCount(expected: Int) {
         onNodeWithTag("scan_session_count")
             .assertTextEquals("${expected}件照合済み")
@@ -1035,10 +1130,14 @@ class AppFlowInstrumentationTest {
     private fun clearRepositories() {
         val history = dependencies.historyRepository()
         val settings = dependencies.settingsRepository()
+        val scanLog = dependencies.scanLogRepository()
         runBlocking {
             val ids = history.sessions.first().map { it.id }
             history.deleteSessions(ids)
             settings.update { AppSettings() }
+            // The scan log deliberately outlives its session, so deleting the
+            // sessions above leaves it behind.
+            scanLog.clear()
         }
     }
 

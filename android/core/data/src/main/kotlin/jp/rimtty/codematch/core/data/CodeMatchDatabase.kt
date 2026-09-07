@@ -12,13 +12,18 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *
  * Version 2 adds one durable logical scan checkpoint per session. Version 3
  * adds the nullable destination locked by a session's first accepted QR, both
- * on the session row and on its checkpoint. `exportSchema = true` is
- * intentional: the generated JSON is the contract used by migration tests and
- * future schema upgrades.
+ * on the session row and on its checkpoint. Version 4 adds the capped
+ * on-device scan log. `exportSchema = true` is intentional: the generated JSON
+ * is the contract used by migration tests and future schema upgrades.
  */
 @Database(
-    entities = [SessionEntity::class, EntryEntity::class, ScanCheckpointEntity::class],
-    version = 3,
+    entities = [
+        SessionEntity::class,
+        EntryEntity::class,
+        ScanCheckpointEntity::class,
+        ScanLogEntity::class,
+    ],
+    version = 4,
     exportSchema = true,
 )
 abstract class CodeMatchDatabase : RoomDatabase() {
@@ -27,6 +32,8 @@ abstract class CodeMatchDatabase : RoomDatabase() {
     abstract fun entryDao(): EntryDao
 
     abstract fun scanCheckpointDao(): ScanCheckpointDao
+
+    abstract fun scanLogDao(): ScanLogDao
 
     companion object {
         const val DATABASE_NAME: String = "codematch.db"
@@ -67,6 +74,42 @@ abstract class CodeMatchDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE `scan_checkpoints` ADD COLUMN `destination` TEXT")
             }
         }
+
+        /**
+         * Adds the capped on-device scan log.
+         *
+         * The table is deliberately independent of `sessions`: a rejection can
+         * be recorded before a session exists, and removing a session must not
+         * delete the log that explains it. Rows are trimmed by insertion order
+         * (see `ScanLogDao.trimToLatest`), while the `at` index keeps the
+         * time-ordered reads used by the export cheap.
+         */
+        val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `scan_log` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `at` INTEGER NOT NULL,
+                        `sessionId` TEXT,
+                        `source` TEXT NOT NULL,
+                        `step` TEXT NOT NULL,
+                        `event` TEXT NOT NULL,
+                        `reason` TEXT,
+                        `destination` TEXT,
+                        `qrPayload` TEXT,
+                        `barcodePayload` TEXT,
+                        `code` TEXT,
+                        `boxNumber` INTEGER,
+                        `message` TEXT
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_scan_log_at` ON `scan_log` (`at`)",
+                )
+            }
+        }
     }
 }
 
@@ -83,6 +126,7 @@ object CodeMatchDatabaseFactory {
         ).addMigrations(
             CodeMatchDatabase.MIGRATION_1_2,
             CodeMatchDatabase.MIGRATION_2_3,
+            CodeMatchDatabase.MIGRATION_3_4,
         ).build()
 
     /** Factory used by Android tests; data is discarded when the DB is closed. */

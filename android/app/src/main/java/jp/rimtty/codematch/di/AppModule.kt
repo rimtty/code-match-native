@@ -9,6 +9,7 @@ import dagger.hilt.components.SingletonComponent
 import jp.rimtty.codematch.core.data.CodeMatchDatabase
 import jp.rimtty.codematch.core.data.CodeMatchDatabaseFactory
 import jp.rimtty.codematch.core.data.HistoryRepository
+import jp.rimtty.codematch.core.data.ScanLogRepository
 import jp.rimtty.codematch.core.data.SettingsRepository
 import jp.rimtty.codematch.locale.AndroidFrameworkAppLanguagePort
 import jp.rimtty.codematch.locale.AppLanguageSynchronizer
@@ -29,6 +30,12 @@ object AppModule {
     fun provideHistoryRepository(
         database: CodeMatchDatabase,
     ): HistoryRepository = HistoryRepository(database)
+
+    @Provides
+    @Singleton
+    fun provideScanLogRepository(
+        database: CodeMatchDatabase,
+    ): ScanLogRepository = ScanLogRepository(database)
 
     @Provides
     @Singleton

@@ -11,6 +11,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import jp.rimtty.codematch.core.data.CodeMatchDatabase
 import jp.rimtty.codematch.core.data.CodeMatchDatabaseFactory
 import jp.rimtty.codematch.core.data.HistoryRepository
+import jp.rimtty.codematch.core.data.ScanLogRepository
 import jp.rimtty.codematch.core.data.SettingsRepository
 import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchResult
@@ -377,6 +378,7 @@ class ScanViewModelCheckpointInstrumentationTest {
                         settingsRepository = settings,
                         scanner = FakeExternalScanner(),
                         feedbackPlayer = FeedbackPlayer(context),
+                        scanLogRepository = ScanLogRepository(database),
                     ) as T
                 }
             }

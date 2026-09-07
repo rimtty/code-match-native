@@ -77,13 +77,22 @@ internal object HistoryJsonBridge {
         HistoryJsonResult.Failure(HistoryJsonFailure.CACHE_WRITE_FAILED)
     }
 
-    fun createShareChooser(context: Context, file: File): HistoryJsonResult<Intent> = try {
+    /**
+     * [mimeType] exists for the scan log, which is JSON Lines rather than a
+     * JSON document: declaring it as plain text is what makes it openable in
+     * the text editors and chat apps a field report actually travels through.
+     */
+    fun createShareChooser(
+        context: Context,
+        file: File,
+        mimeType: String = JSON_MIME_TYPE,
+    ): HistoryJsonResult<Intent> = try {
         val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
             file,
         )
-        HistoryJsonResult.Success(Intent.createChooser(createShareIntent(uri), null))
+        HistoryJsonResult.Success(Intent.createChooser(createShareIntent(uri, mimeType), null))
     } catch (_: Exception) {
         HistoryJsonResult.Failure(HistoryJsonFailure.FILE_PROVIDER_FAILED)
     }
@@ -95,8 +104,11 @@ internal object HistoryJsonBridge {
         HistoryJsonResult.Failure(HistoryJsonFailure.SHARE_LAUNCH_FAILED)
     }
 
-    internal fun createShareIntent(uri: Uri): Intent = Intent(Intent.ACTION_SEND).apply {
-        type = JSON_MIME_TYPE
+    internal fun createShareIntent(
+        uri: Uri,
+        mimeType: String = JSON_MIME_TYPE,
+    ): Intent = Intent(Intent.ACTION_SEND).apply {
+        type = mimeType
         putExtra(Intent.EXTRA_STREAM, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         clipData = ClipData.newRawUri(null, uri)

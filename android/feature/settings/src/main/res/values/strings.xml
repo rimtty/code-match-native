@@ -133,4 +133,19 @@
     <string name="settings_diagnostics_subject">CodeMatch Bluetooth診断ログ</string>
     <string name="settings_diagnostics_saved">診断ログを保存しました。</string>
     <string name="settings_diagnostics_save_failed">診断ログを保存できませんでした。</string>
+
+    <string name="settings_scan_log_title">照合ログ</string>
+    <string name="settings_scan_log_note">カメラ・Bluetooth の照合結果と不受理を直近5,000件まで端末内に保持します。読み取った値を含むので共有先に注意してください。</string>
+    <string name="settings_scan_log_count">記録: %1$d件</string>
+    <string name="settings_scan_log_share">照合ログをすべて共有</string>
+    <string name="settings_scan_log_save">照合ログを保存</string>
+    <string name="settings_scan_log_clear">照合ログを消去</string>
+    <string name="settings_scan_log_clear_confirm_title">照合ログを消去しますか？</string>
+    <string name="settings_scan_log_clear_confirm_message">端末内に保持している照合ログをすべて削除します。この操作は取り消せません。</string>
+    <string name="settings_scan_log_clear_confirm">消去する</string>
+    <string name="settings_scan_log_clear_cancel">キャンセル</string>
+    <string name="settings_scan_log_subject">CodeMatch 照合ログ</string>
+    <string name="settings_scan_log_saved">照合ログを保存しました。</string>
+    <string name="settings_scan_log_save_failed">照合ログを保存できませんでした。</string>
+    <string name="settings_scan_log_share_failed">照合ログを共有できませんでした。</string>
 </resources>

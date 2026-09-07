@@ -13,6 +13,7 @@ import androidx.test.core.app.ApplicationProvider
 import jp.rimtty.codematch.core.data.CodeMatchDatabase
 import jp.rimtty.codematch.core.data.CodeMatchDatabaseFactory
 import jp.rimtty.codematch.core.data.HistoryRepository
+import jp.rimtty.codematch.core.data.ScanLogRepository
 import jp.rimtty.codematch.core.data.SettingsRepository
 import jp.rimtty.codematch.core.model.MatchSession
 import jp.rimtty.codematch.feedback.FeedbackPlayer
@@ -197,6 +198,7 @@ class ScanViewModelSessionNameTest {
                     settingsRepository = settings,
                     scanner = scanner,
                     feedbackPlayer = FeedbackPlayer(context),
+                    scanLogRepository = ScanLogRepository(database),
                 ) as T
             }
         }

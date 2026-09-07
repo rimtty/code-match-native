@@ -1,8 +1,15 @@
 package jp.rimtty.codematch.feature.scan
 
+import jp.rimtty.codematch.core.matching.CodeMatcher
 import jp.rimtty.codematch.core.matching.TagBarcodeRecord
 import jp.rimtty.codematch.core.model.AutoAdvanceDelay
 import jp.rimtty.codematch.core.model.Destination
+import jp.rimtty.codematch.core.model.MatchResult
+import jp.rimtty.codematch.core.model.ScanLogEvent
+import jp.rimtty.codematch.core.model.ScanLogEventKind
+import jp.rimtty.codematch.core.model.ScanLogReason
+import jp.rimtty.codematch.core.model.ScanLogSource
+import jp.rimtty.codematch.core.model.ScanLogStep
 import jp.rimtty.codematch.core.model.ScanSessionCheckpoint
 import jp.rimtty.codematch.scanner.api.ConfigurationState
 import jp.rimtty.codematch.scanner.api.ConnectionState
@@ -33,7 +40,16 @@ class ScanSessionCoordinator(
     restoredCheckpoint: ScanSessionCheckpoint? = null,
     recordedBoxes: Collection<RecordedBox> = emptyList(),
     sessionDestination: Destination? = null,
+    scanLogRecorder: ScanLogRecorder? = null,
 ) : ExternalScannerListener {
+    /**
+     * Sink for the on-device scan log, or null to record nothing.
+     *
+     * This is the only place a scanned value is written anywhere outside the
+     * comparison itself; scanner diagnostics and [ScanEffect.InvalidScan] stay
+     * payload free.
+     */
+    var scanLogRecorder: ScanLogRecorder? = scanLogRecorder
     private val cameraAcceptanceLock = ScanAcceptanceLock()
     private var applyingScannerFormat = false
     private val restoredBoxes: List<RecordedBox> = recordedBoxes.toList()
@@ -164,7 +180,17 @@ class ScanSessionCoordinator(
         // CameraX/ML Kit and BLE callbacks may complete after lifecycle stop.
         // Never let a delayed result mutate a backgrounded session.
         if (isBackgrounded) return null
-        if (payload.source != inputSource) return null
+        if (payload.source != inputSource) {
+            // A stale camera frame during a Bluetooth step (or the reverse) is
+            // dropped silently by the flow. Record it: an operator reporting
+            // "nothing happened" is usually looking at exactly this case.
+            recordPayloadLog(
+                payload = payload,
+                event = ScanLogEventKind.REJECTED,
+                reason = ScanLogReason.SOURCE_MISMATCH,
+            )
+            return null
+        }
 
         val timestamp = payload.timestampMillis
         if (payload.source == InputSource.CAMERA && cameraAcceptanceLock.isLocked(timestamp)) {
@@ -184,7 +210,16 @@ class ScanSessionCoordinator(
         ) {
             when (val stabilization = cameraStabilizer.submit(payload.value, timestamp)) {
                 is ScanStabilizationResult.Accepted -> payload.copy(value = stabilization.value)
-                ScanStabilizationResult.Pending,
+                ScanStabilizationResult.Pending -> {
+                    // First of the two observations a camera Code 128 needs.
+                    // Only this one is logged: Locked and Rejected are repeats
+                    // of a value already recorded as a candidate.
+                    recordPayloadLog(
+                        payload = payload,
+                        event = ScanLogEventKind.BARCODE_CANDIDATE,
+                    )
+                    return null
+                }
                 ScanStabilizationResult.Locked,
                 ScanStabilizationResult.Rejected,
                 -> return null
@@ -293,9 +328,11 @@ class ScanSessionCoordinator(
             }
             else -> Unit
         }
+        val previousState = state
         val reduction = reducer.reduce(state, event)
         state = reduction.state
         lastEffects = reduction.effects
+        recordReductionLog(event, previousState, reduction)
         applyEffects(reduction.effects)
         onStateChanged?.invoke(state)
         onEffects?.invoke(reduction.effects)
@@ -407,6 +444,191 @@ class ScanSessionCoordinator(
         state = state.copy(inputSource = source)
         onInputSourceChanged?.invoke(source)
     }
+
+    // --- Scan log ---------------------------------------------------------
+
+    /** Log a payload that never reached the reducer, using the current state. */
+    private fun recordPayloadLog(
+        payload: ScanPayload,
+        event: String,
+        reason: String? = null,
+    ) {
+        val recorder = scanLogRecorder ?: return
+        val isBarcode = payload.format == ScanFormat.CODE_128
+        recorder.record(
+            ScanLogEvent(
+                atEpochMillis = System.currentTimeMillis(),
+                // The host fills the session id in: this object is built while
+                // the session may still be idle.
+                sessionId = null,
+                source = payload.source.scanLogId,
+                step = state.phase.scanLogId,
+                event = event,
+                reason = reason,
+                destination = state.destination,
+                qrPayload = payload.value.takeUnless { isBarcode },
+                barcodePayload = payload.value.takeIf { isBarcode },
+            ),
+        )
+    }
+
+    private fun recordReductionLog(
+        event: ScanEvent,
+        previous: ScanSessionState,
+        reduction: ScanReduction,
+    ) {
+        val recorder = scanLogRecorder ?: return
+        if (event is ScanEvent.PayloadReceived) {
+            recordPayloadReduction(recorder, event.payload, previous, reduction)
+            return
+        }
+        if (reduction.effects.any { it === ScanEffect.SessionEnded }) {
+            // Ending resets the input source and clears the destination, so the
+            // finished session is described by the state before the reduction.
+            recorder.record(
+                ScanLogEvent(
+                    atEpochMillis = System.currentTimeMillis(),
+                    sessionId = null,
+                    source = previous.inputSource.scanLogId,
+                    step = ScanLogStep.NONE,
+                    event = ScanLogEventKind.SESSION_END,
+                    destination = previous.destination,
+                ),
+            )
+        }
+    }
+
+    /**
+     * Turn one reduced payload into the log lines it produced.
+     *
+     * Both states are needed: the step a value was judged in comes from the
+     * state before the reduction, while the destination lock and the accepted
+     * values come from the one after it.
+     */
+    private fun recordPayloadReduction(
+        recorder: ScanLogRecorder,
+        payload: ScanPayload,
+        previous: ScanSessionState,
+        reduction: ScanReduction,
+    ) {
+        val source = payload.source.scanLogId
+        val step = previous.phase.scanLogId
+        val destination = reduction.state.destination
+        fun log(
+            event: String,
+            reason: String? = null,
+            qrPayload: String? = null,
+            barcodePayload: String? = null,
+            code: String? = null,
+            boxNumber: Int? = null,
+        ) = recorder.record(
+            ScanLogEvent(
+                atEpochMillis = System.currentTimeMillis(),
+                sessionId = null,
+                source = source,
+                step = step,
+                event = event,
+                reason = reason,
+                destination = destination,
+                qrPayload = qrPayload,
+                barcodePayload = barcodePayload,
+                code = code,
+                boxNumber = boxNumber,
+            ),
+        )
+
+        val invalid = reduction.effects.filterIsInstance<ScanEffect.InvalidScan>().firstOrNull()
+        if (invalid != null) {
+            // The value is filed under the step the reducer expected rather
+            // than the symbology the scanner reported, so a Code 128 sent in
+            // the QR step is still readable as "what arrived at the QR step".
+            val asBarcode = invalid.expectedFormat == ScanFormat.CODE_128
+            log(
+                event = ScanLogEventKind.REJECTED,
+                reason = invalid.reason.scanLogId,
+                qrPayload = payload.value.takeUnless { asBarcode },
+                barcodePayload = payload.value.takeIf { asBarcode },
+            )
+            return
+        }
+
+        val accepted = reduction.effects.any { it === ScanEffect.ScanAccepted }
+        when (val scan = reduction.state.scan) {
+            is ScanState.WaitingCode128 -> if (accepted) {
+                log(event = ScanLogEventKind.QR_ACCEPTED, qrPayload = scan.qrPayload)
+            }
+
+            is ScanState.Result -> if (accepted) {
+                log(
+                    event = ScanLogEventKind.BARCODE_ACCEPTED,
+                    barcodePayload = scan.barcodePayload,
+                )
+                val match = reduction.effects
+                    .filterIsInstance<ScanEffect.RecordMatch>()
+                    .firstOrNull()
+                log(
+                    event = when (scan.result) {
+                        MatchResult.MATCH -> ScanLogEventKind.MATCH
+                        MatchResult.MISMATCH -> ScanLogEventKind.MISMATCH
+                        MatchResult.DUPLICATE -> ScanLogEventKind.DUPLICATE
+                    },
+                    qrPayload = scan.qrPayload,
+                    barcodePayload = scan.barcodePayload,
+                    // Only a match carries a RecordMatch effect; the other two
+                    // verdicts still deserve the part number they were about.
+                    code = match?.code ?: recordedCode(scan.qrPayload, scan.barcodePayload),
+                    boxNumber = match?.boxNumber,
+                )
+            } else if (previous.scan is ScanState.Result && reduction.effects.isEmpty()) {
+                // The reducer deliberately swallows callbacks while a result is
+                // on screen. Record them: otherwise the most confusing case for
+                // an operator leaves no trace at all.
+                val isBarcode = payload.format == ScanFormat.CODE_128
+                log(
+                    event = ScanLogEventKind.REJECTED,
+                    reason = ScanLogReason.RESULT_PENDING,
+                    qrPayload = payload.value.takeUnless { isBarcode },
+                    barcodePayload = payload.value.takeIf { isBarcode },
+                )
+            }
+
+            ScanState.Idle, is ScanState.WaitingQr -> Unit
+        }
+    }
+
+    /** The part number the reducer would have recorded for this pair. */
+    private fun recordedCode(qrPayload: String, barcodePayload: String): String {
+        val part = CodeMatcher.partNumberFromBarcode(barcodePayload)
+            ?: CodeMatcher.partNumberFromQr(qrPayload)
+            ?: qrPayload
+        return CodeMatcher.formatPartNumber(part, CodeMatcher.detectDestination(qrPayload))
+    }
 }
+
+private val InputSource.scanLogId: String
+    get() = when (this) {
+        InputSource.CAMERA -> ScanLogSource.CAMERA
+        InputSource.BLUETOOTH -> ScanLogSource.BLUETOOTH
+    }
+
+private val ScanPhase.scanLogId: String
+    get() = when (this) {
+        ScanPhase.IDLE -> ScanLogStep.NONE
+        ScanPhase.WAITING_QR -> ScanLogStep.QR
+        ScanPhase.WAITING_CODE_128 -> ScanLogStep.BARCODE
+        ScanPhase.RESULT -> ScanLogStep.RESULT
+    }
+
+private val InvalidScanReason.scanLogId: String
+    get() = when (this) {
+        InvalidScanReason.SESSION_NOT_STARTED -> ScanLogReason.SESSION_NOT_STARTED
+        InvalidScanReason.WRONG_ORDER -> ScanLogReason.WRONG_ORDER
+        InvalidScanReason.EMPTY_PAYLOAD -> ScanLogReason.EMPTY
+        InvalidScanReason.INCOMPLETE_QR_PAYLOAD -> ScanLogReason.INCOMPLETE
+        InvalidScanReason.OVERLONG_QR_PAYLOAD -> ScanLogReason.OVERLONG
+        InvalidScanReason.INVALID_PAYLOAD -> ScanLogReason.INVALID
+        InvalidScanReason.WRONG_DESTINATION -> ScanLogReason.WRONG_DESTINATION
+    }
+
 
 typealias ScanController = ScanSessionCoordinator

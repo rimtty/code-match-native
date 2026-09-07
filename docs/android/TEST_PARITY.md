@@ -205,6 +205,25 @@ Issue #106（PR #113 / #114 / #115 / #116、iOS の履歴・PDF は #117）で�
 | UI 7 | Fake Bluetooth のデンソー流れで仕向地が固定され、品番ごとに箱が数えられる（`CodeMatchUITests::testMockBluetoothScannerDensoFlowLocksDestination`） | `AppFlowInstrumentationTest.kt::fakeScannerDensoFlowCountsBoxesPerPartNumberAndLocksDestination` は同じ debug Fake、app navigation、ViewModel、Room を通す | D（debug Fake） |
 | PDF 2 | 履歴詳細のデンソー13項目（帳票区分・部品番号・包装・収容数・次区・指示・かんばん連番・管理番号・納入日・便・指示数・アイテムNo・受入）、PDF のかんばん要約3行と箱ごとのかんばん連番・管理コード、カード番号と納品番号数が出ないこと、履歴 JSON の `"destination": "denso"`。Swift 側は #117 で追加する | `HistoryPdfContentTest.kt::densoReportPrintsKanbanBlockAndBoxesPerPartNumber` + `::englishDensoReportUsesEnglishLabels` + `HistoryDeliveryGroupsTest.kt::densoEntriesProduceNoDeliveryGroups` + `HistoryJsonExporterTest.kt::densoSessionExportsItsDestinationIdAndKanbanPayloadByteForByte` + `HistoryScreenTest.kt::densoEntryDetailDisplaysAllParsedFields` + `::densoSessionDetailAndRowShowDestination` | D |
 
+## 照合ログ（#122、Android 側の証拠）
+
+親 Issue #120 の iOS 側（#121）は別 PR なので、この節は Swift との行対応ではなく Android 側の証拠だけを挙げる。JSONL のスキーマ一致は両 OS の出力を突き合わせて確認する。
+
+| 対象 | Android の証拠 |
+|---|---|
+| 一致・不一致・重複と受理された QR / Code 128 が記録される | `ScanSessionCoordinatorTest.kt::scanLogRecordsAcceptedQrBarcodeMatchAndSessionEnd` + `::scanLogRecordsMismatchAndDuplicateWithTheirPartNumberButNoBoxNumber` |
+| 不受理 7 種（`session_not_started` / `wrong_order` / `empty` / `incomplete` / `overlong` / `invalid` / `wrong_destination`）が読取値つきで記録される | `ScanSessionCoordinatorTest.kt::scanLogRecordsEveryRejectionReasonWithTheValueThatCausedIt` |
+| 入力元不一致の破棄、カメラの確認 1 フレーム目、結果表示中に握りつぶした読取も残る | `ScanSessionCoordinatorTest.kt::scanLogRecordsDroppedSourceConfirmationCandidateAndResultCallbacks` |
+| Room v4 の `scan_log`、3→4 と 1→4 の migration | `CodeMatchDatabaseMigrationTest.kt::versionThreeMigratesToVersionFourWithTheScanLogTable` + `::versionOneMigratesToVersionFourThroughEveryMigration`（Pixel 7） |
+| 全項目の往復、件数 Flow、消去、5,000 件の切り詰め | `ScanLogRepositoryTest.kt`（Pixel 7、4 件） |
+| JSONL のヘッダ行・1 イベント 1 行・null の明示・引用符/改行/バックスラッシュのエスケープ・末尾空白の保持・ファイル名 | `ScanLogJsonExporterTest.kt`（5 件） |
+| 設定画面最下部のカード、件数表示、0 件での共有・保存の無効化、48dp、消去の確認ダイアログ | `SettingsScreenTest.kt::scanLogCardReportsItsCountAndGatesSharingSavingAndClearing` + `::explicitlyOpenedGuideShowsThreeStepsAndAllPreferenceGroups` + `::primarySettingsControlsKeepAccessibleTouchTargets`（Pixel 7） |
+| 日英の文言と書式トークンの一致 | `SettingsUiTextTest.kt`（新規、`HistoryUiTextTest` と同じ形） |
+| 一致 → 同じ箱の再読み → 設定画面の件数 | `AppFlowInstrumentationTest.kt::matchAndRepeatedBoxAreRecordedInTheScanLogAndCountedInSettings`（CI emulator） |
+| BLE 診断ログが読取値を含まないままであること | `BleExternalScannerTest.kt::facadeMapsExternalScannerStateAndKeepsPayloadsOutOfDiagnostics`（変更なし） |
+
+実スキャナーでの照合ログ書き出し、共有先アプリでの受け取り、5,000 件を実際に超えた運用は未実施である。
+
 ## 残る物理・手動・未対応の証拠
 
 2026-09-05のIssue #57で、この節に挙がる実機・手動ゲートのうち未実施のものは打ち切りとし、これ以上確認しません。打ち切りは検証成功を意味せず、`P`/`—`の分類は変更しません。一覧は[`STATUS.md`](STATUS.md)の「打ち切った確認項目」を参照してください。

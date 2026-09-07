@@ -4,6 +4,7 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import jp.rimtty.codematch.core.data.HistoryRepository
+import jp.rimtty.codematch.core.data.ScanLogRepository
 import jp.rimtty.codematch.core.data.SettingsRepository
 import jp.rimtty.codematch.scanner.api.ExternalScanner
 
@@ -22,4 +23,6 @@ interface DebugAppTestEntryPoint {
     fun historyRepository(): HistoryRepository
 
     fun settingsRepository(): SettingsRepository
+
+    fun scanLogRepository(): ScanLogRepository
 }

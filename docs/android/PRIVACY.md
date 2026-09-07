@@ -8,11 +8,14 @@
 |---|---|---|
 | カメラ映像・解析フレーム | CameraX/ML Kitの解析中だけ一時利用 | 保存・送信しない |
 | 一致履歴 | Roomへ端末内保存。一致したQR/Code 128のpayloadを箱詳細とPDF生成に使う | analytics、クラッシュレポート、サーバーへ送信しない |
-| 不一致・無効入力 | 照合状態とフィードバックにだけ使う | 履歴、診断、外部送信へ保存しない |
+| 不一致・無効入力 | 照合状態とフィードバックに使い、下記の照合ログへ1行として記録する | 一致履歴、BLE診断、外部送信へは保存しない |
+| 照合ログ | カメラ・BLEどちらの入力でも、判定（一致・不一致・重複）・不受理・セッション開始/終了を1件ずつRoomへ端末内保存する。読み取ったQR / Code 128のpayloadを含み、直近5,000件を超えると古いものから削除する。設定画面最下部で件数を表示し、消去できる | analytics、クラッシュレポート、サーバーへ送信しない。Auto Backupとdevice-to-device transferから除外する。利用者が「照合ログをすべて共有」「照合ログを保存」を選んだ時だけ、JSON Linesを共有シートまたは選択先へ渡す |
 | BLE診断 | 接続・設定・エラーの種別・連番・段階名を最大300件端末内に保持し、設定画面には直近20件の種別と連番だけを表示 | scan payloadを保存・表示・送信しない。利用者が「診断ログを共有」「診断ログを保存」を選んだ時だけ、段階名とアプリ／端末の版情報を含むテキストを共有シートまたは選択先へ渡す |
 | BLE復旧snapshot | `release`が公式SDK adapterへ接続し、開始前のsymbology設定を端末内に保存する | Auto Backupとdevice-to-device transferから除外する |
 | BLE既知端末identity | 同じ除外DataStoreへversion/profile、device ID、表示名だけを保存。設定値・scan payload・raw frameは含めない | Auto Backupとdevice-to-device transferから除外する |
 | PDF | ユーザーが保存を選んだ時は選択先へ、共有を選んだ時は専用cacheからSharesheetへ渡す | 明示操作の時だけアプリ領域外へ出る |
+
+照合ログはデバッグ用で、BLE診断ログとは別物です。BLE診断ログは従来どおり読取値を含みません。照合ログのファイル書き出しは`core/export/ScanLogJsonExporter`が専用cache（`cache/codematch-export/`）へ行い、SAF保存は選択先へ直接書きます。
 
 履歴のpayloadは「カメラ画像」ではありませんが、業務データとして扱います。端末内保存が不要な環境では、履歴の削除と端末管理ポリシーを利用してください。
 
@@ -27,6 +30,8 @@ releaseは公式Inateck SDKのBLE adapterを同梱します。releaseのアプ�
 依存ライブラリ由来のネットワーク権限は、アプリManifestの `tools:node="remove"` でrelease mergeから除外します。`release`は`app/src/release/AndroidManifest.xml`で`BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`を要求し、SDKのManifestが持ち込むlegacy Bluetooth、位置情報、advertise、network権限を明示除去します。公式SDKは固定commitからローカル取得し、Gitへは含めません。releaseのAPKはストアへ提出せず、手元の端末へ直接入れて使います。
 
 Room DB、設定DataStore、将来のBLE復旧・既知端末状態は、`android/app/src/main/res/xml/backup_rules.xml` と `data_extraction_rules.xml` のcloud/device-transfer双方で除外します。BLE snapshotのファイル名は `files/datastore/codematch-ble-symbology.preferences_pb` に固定し、汎用の `datastore/` 除外だけに依存しません。
+
+Room DBの`scan_log`テーブルも同じDBにあるため、上記の除外がそのまま効きます。
 
 PDF共有の `FileProvider` は `cache/codematch-pdf/` だけを公開し、provider自体は非exportedで一時読み取り権限に限定します。広いfiles/external/root pathは公開しません。
 

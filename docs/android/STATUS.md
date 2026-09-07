@@ -17,7 +17,7 @@
 |---|---|
 | Domain / matching | 純Kotlin matcher/parser、仕向地判定（澤井製作所66桁 / モルテン61桁 / デンソーはJAMA自己記述形式の可変長かんばん）と仕向地ごとのCode 128形式・品番表記・箱固有キー、shared fixture（`matching-cases.json`、schemaVersion 2・47ケース・`destination`は`sawai`/`molten`/`denso`）、JVM test、Swiftの単体/UIテストとの意図対応表（[`TEST_PARITY.md`](TEST_PARITY.md)） |
 | UI / navigation | Composeの照合・履歴・設定、3 destination、system/predictive backの完了・無効・cancel境界、履歴選択のActivity再生成・destination往復・compact back stack、320dp/840dp・font scale 1.3/2.0の主要操作到達、動的案内・結果のpolite live region、emulatorでのQR待機・Code 128待機・一致結果のOS force-stop後UI復元。Pixel 7ではfont scale 1.3/2.0の主要表示・操作をユーザーが承認 |
-| History / settings / PDF | Room（schema v3、セッションとcheckpointの仕向地列と`MIGRATION_2_3`を含む）/DataStore、日英リソースとper-app locale双方向同期、0件破棄・名称変更・詳細・削除のapp E2E、履歴詳細とPDFのモルテン項目（納品番号ごとの箱数・累計収容数と解析全項目）とデンソー項目（履歴詳細のかんばん解析13項目、PDFのかんばん要約と箱ごとのかんばん連番）、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test。Pixel 7では日英切替、1ページ/複数ページPDFのDownloads保存と共有先での表示、音量0/通常音量の音・触覚をユーザーが承認 |
+| History / settings / PDF | Room（schema v4、セッションとcheckpointの仕向地列と`MIGRATION_2_3`、照合ログ`scan_log`と`MIGRATION_3_4`を含む）/DataStore、照合ログの記録・5,000件の切り詰め・件数表示・JSON Lines書き出し・消去、日英リソースとper-app locale双方向同期、0件破棄・名称変更・詳細・削除のapp E2E、履歴詳細とPDFのモルテン項目（納品番号ごとの箱数・累計収容数と解析全項目）とデンソー項目（履歴詳細のかんばん解析13項目、PDFのかんばん要約と箱ごとのかんばん連番）、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test。Pixel 7では日英切替、1ページ/複数ページPDFのDownloads保存と共有先での表示、音量0/通常音量の音・触覚をユーザーが承認 |
 | Camera | CameraX/ML Kit adapter、工程別ROI、権限・lifecycle・focus・format切替の非同期境界test。Pixel 7縦画面で実ラベルのQR→Code 128一致、復帰後のCode 128、タップfocus、権限の拒否・恒久拒否・再許可、ガイド枠内外の読取境界、無関係QR拒否、不一致の表示・音・振動・非加算をユーザーが承認 |
 | BLE | SDK非依存の安全コア（command直列化、全設定snapshot、復元前Ready禁止、known-device store、再接続予算）、公式SDK adapter、公式native通知parser、工程別symbology制限（QR待機はQRのみ、Code 128待機はCode 128のみ）、照明の接続時OFF適用、読取チューニング（差分時のみ書込・readback確認）、診断ログの共有・保存、R8 vendor-log除去。Pixel 7 / BCST-36では検索・接続・fresh readback、QR→Code 128一致、背景復元、QR待機中のapp force-stop後の自動再接続、手動切断後の工程保持と再接続、電源OFF→ONの自動再接続、通常終了・手動切断・電源再起動後の開始前設定との一致（独立probe）、照明の初期OFFと手動ON/OFFをユーザーが承認。2026-09-05に`release` APKでBCST-36と接続し、QR→Code 128の照合完了をユーザーが確認（#56）。2026-09-06にPixel 7で読取チューニング「適用済み」と赤光約4秒、診断ログの共有・保存をユーザーが確認 |
 | Privacy / release | Manifest、backup/D2D除外規則、専用FileProvider、`verify-release-hardening.sh`によるAPK/依存グラフ/source検査（Fake・analytics・INTERNET・legacy Bluetooth・位置情報の不在、`:scanner:inateck`とarm64 native libraryの同梱、vendor raw-log除去、ML Kit registrar保持）。Pixel 7のnetstatsで当該UIDの通信量エントリなし |
@@ -59,6 +59,17 @@ bash scripts/verify-release-hardening.sh --dependency-report /tmp/codematch-rele
 JDK/SDKがない環境ではGradle結果を推測せず、実行不能として記録します。エミュレーター・CIのinstrumentation成功は、カメラの実読取やBLE通信の実機成功を意味しません。
 
 ## 履歴
+
+### 2026-09-08 照合ログ
+
+現場デバッグ用に、カメラ・BLEどちらの入力でも照合の結果と不受理を端末内へ記録し、設定画面の最下部から書き出せるようにした（Issue #120、Android側 #122）。
+
+- Room を v4 へ上げ、`scan_log`（`at`索引つき、autoincrement id）と`MIGRATION_3_4`を追加した。`ScanLogRepository`は1件挿入するたびに直近5,000件へ切り詰め、`count`をFlowで公開し、`export`と`clear`を持つ。セッションへの外部キーは持たない（不受理はセッション開始前にも起き、セッション削除でログまで消してはならないため）。
+- 記録点は`ScanSessionCoordinator`の`scanLogRecorder`（末尾の省略可能引数）に置いた。`submitScanPayload`で入力元不一致（`rejected`/`source_mismatch`）とカメラ1フレーム目（`barcode_candidate`）、`dispatch`のreduce直後に`rejected`（`InvalidScanReason`をsnake_caseへ）・`qr_accepted`・`barcode_accepted`＋`match`/`mismatch`/`duplicate`・結果表示中の握りつぶし（`rejected`/`result_pending`）・`session_end`を記録する。`session_start`は`ScanViewModel.beginSession`が記録し、session idはViewModelのrecorderラムダが埋める。`ScanEffect.InvalidScan`と BLE 診断ログは従来どおり読取値を持たない。
+- 書き出しは`core/export/ScanLogJsonExporter`のJSON Lines（1行目がヘッダ、以降1イベント1行、nullも明示、`at`はミリ秒つきISO 8601 UTC、ファイル名`codematch-scan-log-yyyyMMdd-HHmm.jsonl`）。共有は専用cache（`cache/codematch-export/`）＋FileProviderの`text/plain`、保存はSAF `CreateDocument("text/plain")`で、いずれも設定画面側（host）が持つ。`verify-release-hardening.sh`の`File(`許可リストへ`ScanLogJsonExporter`を足した以外、release gateは変えていない。
+- 設定画面の最下部に「照合ログ」カードを追加した（`settings_scan_log`、件数`settings_scan_log_count`、共有・保存・消去の3ボタンは48dp、0件では共有・保存を無効化、消去は確認ダイアログ）。文言は日英そろえて追加した。
+
+証跡: `lintDebug testDebugUnitTest` 457件（失敗・error 0）、`:app:assembleRelease`、`verify-release-hardening.sh`（全項目通過）、Pixel 7（Android 16 / API 36）で`:core:data` 32件・`:feature:settings` 22件のinstrumentationが成功。`AppFlowInstrumentationTest`の一致→重複→設定画面の件数はCI emulator（API 36）で実行する。実スキャナーでの照合ログ書き出しと共有先での受け取りは未実施。
 
 ### 2026-09-07 仕向地デンソー対応
 

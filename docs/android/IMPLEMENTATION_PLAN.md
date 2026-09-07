@@ -255,11 +255,13 @@ MatchResult
 
 仕向地は状態機械が持ち、`EndSession`でだけ解除する。`RereadQr`、手動の次工程、不一致では固定を維持し、別仕向地のQRは`InvalidScanReason.WRONG_DESTINATION`として拒否する。解析できないQRの案内は、固定済みならその仕向地のレコード長（66または61）と比べ、未固定なら57〜66の範囲と比べて「途中で終わった」「余分な情報を含む」を出し分ける。デンソーは可変長なので長さ案内をせず、デンソーで固定済みのセッションと、未固定でも`JAMA`で始まる読取値は`InvalidScanReason.INVALID_PAYLOAD`とする。記録済みの箱は`recordedBoxes`として状態機械に残し、重複判定（澤井製作所とデンソーはQR、モルテンはQR＋Code 128）と、モルテンの納品番号ごとの箱数・累計収容数の算出に使う。デンソーの箱数は澤井製作所と同じく品番ごとに数える。
 
+照合ログ（#122）の記録点は`ScanSessionCoordinator`に置く。`ScanEffect.InvalidScan`は意図的に読取値を持たず、不一致・重複は状態にしか現れないため、payloadと判定の両方を同時に持つ場所はここしかない。`submitScanPayload`は入力元不一致の破棄（`rejected`/`source_mismatch`）とカメラの1フレーム目（`barcode_candidate`）を、`dispatch`はreduce直後に旧状態・新状態・効果から`rejected`（`InvalidScanReason`をsnake_caseへ）、`qr_accepted`、`barcode_accepted`＋`match`/`mismatch`/`duplicate`、結果表示中に握りつぶしたpayload（`rejected`/`result_pending`）、`session_end`（旧状態のsourceとdestination）を記録する。`session_start`だけは`ScanViewModel.beginSession`が記録する（checkpoint復元で`SessionStarted`が再発火するため）。session idはViewModelのrecorderラムダが埋める。
+
 ## 7. 保存、PDF、設定
 
 ### 7.1 Room schema
 
-現行schemaは v3（`core/data/schemas/{1,2,3}.json`）。v2で`scan_checkpoints`を追加し、v3で`sessions`と`scan_checkpoints`へ仕向地列を足した。仕向地は文字列で持つので、デンソーの追加ではschemaもcheckpointの契約versionも上げていない。
+現行schemaは v4（`core/data/schemas/{1,2,3,4}.json`）。v2で`scan_checkpoints`を追加し、v3で`sessions`と`scan_checkpoints`へ仕向地列を足し、v4で照合ログの`scan_log`を追加した。仕向地は文字列で持つので、デンソーの追加ではschemaもcheckpointの契約versionも上げていない。
 
 `sessions`
 
@@ -286,7 +288,17 @@ MatchResult
 - `matchedCount: Int`、`inputSource: String`、`cameraWasSelectedByUser: Boolean`
 - `destination: String?`（v3で追加。nullable な追加列なのでcheckpointの契約versionは1のまま）
 
-一致記録とcheckpoint更新は同一トランザクションで行い、checkpointが仕向地を持つ場合はセッション側の固定も同時に書く。DB migration testを最初のschemaから用意し（`MIGRATION_1_2`、`MIGRATION_2_3`、および1→3の連続適用）、active sessionはアプリ再起動後も継続できるようにする。
+`scan_log`（照合ログ。v4で追加。#122）
+
+- `id: Long`（autoincrement。挿入順がそのまま切り詰めの基準）
+- `at: Long`（UTC epoch millis。索引あり）
+- `sessionId: String?`、`source: String`（`camera` / `bluetooth`）、`step: String`（`qr` / `barcode` / `result` / `none`）
+- `event: String`、`reason: String?`、`destination: String?`
+- `qrPayload: String?`、`barcodePayload: String?`、`code: String?`、`boxNumber: Int?`、`message: String?`
+
+`scan_log`はセッションへの外部キーを持たない。不受理はセッション開始前にも起きるうえ、セッションを削除したときに理由を説明するログまで消えては困るためである。`ScanLogRepository`は1件挿入するたびに`DELETE FROM scan_log WHERE id NOT IN (SELECT id FROM scan_log ORDER BY id DESC LIMIT 5000)`で切り詰めるので、上限は背景処理なしに保たれる。読取値を含むが、release gateがファイル書き込みを禁じている本番sourceでもRoomなら書けること、Auto Backup / D2D transferの除外がDBごと効くことがこの置き場所の理由である。
+
+一致記録とcheckpoint更新は同一トランザクションで行い、checkpointが仕向地を持つ場合はセッション側の固定も同時に書く。DB migration testを最初のschemaから用意し（`MIGRATION_1_2`、`MIGRATION_2_3`、`MIGRATION_3_4`、および1→3・3→4・1→4の連続適用）、active sessionはアプリ再起動後も継続できるようにする。migrationは`CodeMatchDatabase`と`CodeMatchDatabaseFactory.create`の両方へ登録する（migration testは`MigrationTestHelper`を直接呼ぶため、factoryへの登録漏れを検出しない）。
 
 ### 7.2 DataStore
 
