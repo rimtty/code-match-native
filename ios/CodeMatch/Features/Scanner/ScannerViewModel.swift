@@ -28,6 +28,7 @@ final class ScannerViewModel: ObservableObject {
     private let feedback = FeedbackPlayer.shared
     private let historyStore: HistoryStore
     private let bluetoothScanner: BluetoothScannerService
+    private let scanLog: ScanLogStore
     private var scanLocked = false
     private var barcodeCandidate: (value: String, count: Int, date: Date)?
     private var autoAdvanceTask: Task<Void, Never>?
@@ -46,6 +47,9 @@ final class ScannerViewModel: ObservableObject {
     /// 一定時間は再通知しない。
     private var rejectedCameraCode: (value: String, date: Date)?
     static let cameraRejectionRepeatInterval: TimeInterval = 2
+    /// 想定と違うシンボロジーをカメラが読んだときに、照合ログだけを抑制するための記録。
+    /// 文言と効果音は`rejectCameraCode`を通さない（通すと2秒ごとに警告音が鳴る）。
+    private var lastLoggedSymbologyMismatch: (value: String, date: Date)?
     private var localizedMessageBuilder: (() -> String)?
 
     var expectedCode: ExpectedCode? {
@@ -101,6 +105,7 @@ final class ScannerViewModel: ObservableObject {
     init(
         historyStore: HistoryStore,
         bluetoothScanner: BluetoothScannerService,
+        scanLog: ScanLogStore,
         camera: CameraScanner = CameraScanner(),
         isAutoAdvanceEnabled: Bool = AutoAdvanceSettings.isEnabled(),
         autoAdvanceDelay: AutoAdvanceDelay = AutoAdvanceSettings.delay(),
@@ -108,6 +113,7 @@ final class ScannerViewModel: ObservableObject {
     ) {
         self.historyStore = historyStore
         self.bluetoothScanner = bluetoothScanner
+        self.scanLog = scanLog
         self.camera = camera
         self.isAutoAdvanceEnabled = isAutoAdvanceEnabled
         self.autoAdvanceDelay = autoAdvanceDelay
@@ -203,6 +209,7 @@ final class ScannerViewModel: ObservableObject {
         scanLocked = false
         barcodeCandidate = nil
         rejectedCameraCode = nil
+        lastLoggedSymbologyMismatch = nil
         focusPoint = nil
         sessionBoxNumber = 0
         // 仕向地はセッション単位の固定なので、次の照合へ進んでも解除しない。
@@ -352,6 +359,8 @@ final class ScannerViewModel: ObservableObject {
     func prepareForSessionEnd(completion: CameraScanner.Completion? = nil) {
         cancelAutoAdvanceCountdown()
         guard !isEndingSession else { return }
+        // アクティブセッションのidが残っているうちに記録する。
+        log("session_end")
         isEndingSession = true
         scanLocked = true
         focusPoint = nil
@@ -448,6 +457,8 @@ final class ScannerViewModel: ObservableObject {
             self.destination = destination
             historyStore.setActiveSessionDestinationIfNeeded(destination)
         }
+        // 工程を進める前に記録する（この時点の step は "qr"）。
+        log("qr_accepted", qr: value)
         scanLocked = true
         qrValue = value
         step = .barcode
@@ -494,6 +505,7 @@ final class ScannerViewModel: ObservableObject {
         }
 
         guard barcodeCandidate?.count ?? 0 >= 2 else {
+            log("barcode_candidate", barcode: value)
             setLocalizedMessage {
                 AppLocalization.string("コードを確認中です。そのまま一瞬だけ保持してください。")
             }
@@ -504,6 +516,7 @@ final class ScannerViewModel: ObservableObject {
     }
 
     private func acceptBarcode(_ value: String, resultSoundDelay: TimeInterval = 0) {
+        log("barcode_accepted", barcode: value)
         scanLocked = true
         barcodeValue = value
         feedback.scanAccepted()
@@ -530,7 +543,11 @@ final class ScannerViewModel: ObservableObject {
         // 一致は自動送り／手動送りの流れに任せ、通知しない。
         if case .result(let result) = step {
             if result != .match {
-                rejectBluetoothScan("結果を確認して「次のコードを照合」を押してください。")
+                rejectBluetoothScan(
+                    "結果を確認して「次のコードを照合」を押してください。",
+                    logReason: "result_pending",
+                    value: value
+                )
             }
             return
         }
@@ -542,16 +559,23 @@ final class ScannerViewModel: ObservableObject {
             guard let detected = Destination.detect(qrPayload: value) else {
                 // 相手工程の正しい形式なら順序違い、それ以外は無関係なコードとして案内する。
                 // 仕向地が未確定でも取りこぼさないよう、現品票の判定は緩い方を使う。
+                let isWrongOrder = TagBarcodeRecord.isValidScanPayload(value, destination: nil)
                 rejectBluetoothScan(
-                    TagBarcodeRecord.isValidScanPayload(value, destination: nil)
+                    isWrongOrder
                         ? "読み取り順序が違います。先に納品書兼現品票のQRコードを読み取ってください。"
-                        : "納品書兼現品票のQRコードではありません。納品書兼現品票のQRコードを読み取ってください。"
+                        : "納品書兼現品票のQRコードではありません。納品書兼現品票のQRコードを読み取ってください。",
+                    logReason: isWrongOrder ? "wrong_order" : "invalid_format",
+                    value: value
                 )
                 return
             }
             // セッションの仕向地が確定していれば、別仕向地のQRは照合へ進めない。
             if let locked = destination, locked != detected {
-                rejectBluetoothScan(Self.destinationLockMessage(locked))
+                rejectBluetoothScan(
+                    Self.destinationLockMessage(locked),
+                    logReason: "wrong_destination",
+                    value: value
+                )
                 return
             }
             acceptQR(value, destination: detected)
@@ -560,10 +584,13 @@ final class ScannerViewModel: ObservableObject {
             // QR確定後に同じペイロードが再通知されてもバーコードとして扱わない。
             guard value != qrValue else { return }
             guard TagBarcodeRecord.isValidScanPayload(value, destination: destination) else {
+                let isWrongOrder = Destination.detect(qrPayload: value) != nil
                 rejectBluetoothScan(
-                    Destination.detect(qrPayload: value) != nil
+                    isWrongOrder
                         ? "読み取り順序が違います。現在は現品票のCode 128バーコード待ちです。"
-                        : "現品票のCode 128バーコードではありません。現在は現品票のCode 128バーコード待ちです。"
+                        : "現品票のCode 128バーコードではありません。現在は現品票のCode 128バーコード待ちです。",
+                    logReason: isWrongOrder ? "wrong_order" : "invalid_format",
+                    value: value
                 )
                 return
             }
@@ -572,17 +599,24 @@ final class ScannerViewModel: ObservableObject {
         }
     }
 
-    private func rejectBluetoothScan(_ reason: String.LocalizationValue) {
+    private func rejectBluetoothScan(
+        _ reason: String.LocalizationValue,
+        logReason: String,
+        value: String
+    ) {
         setLocalizedMessage {
             "\(AppLocalization.string(reason)) " + AppLocalization.string("読み取った値は照合に使用していません。")
         }
         feedback.invalidScan()
+        logRejection(reason: logReason, value: value)
     }
 
     /// カメラのQRもBLEと同じ業務QR（仕向地ごとの固定長レコード）の検証を通す。無関係なQRは
     /// 警告してQR待機と件数を保持し、履歴や診断へ値を残さない。
     private func rejectCameraQR(_ value: String) {
-        rejectCameraCode(value) {
+        // 文言は1種類だが、理由はBluetoothと同じ基準で分ける（相手工程の正しい形式なら順序違い）。
+        let isWrongOrder = TagBarcodeRecord.isValidScanPayload(value, destination: nil)
+        rejectCameraCode(value, reason: isWrongOrder ? "wrong_order" : "invalid_format") {
             AppLocalization.string("納品書兼現品票のQRコードではありません。正しいQRコードを枠の中央に合わせてください。")
         }
     }
@@ -590,7 +624,8 @@ final class ScannerViewModel: ObservableObject {
     /// カメラのCode 128もBLEと同じ現品票の業務形式（品番@管理コード）の検証を通す。
     /// 業務外のCode 128は2フレーム確認の候補に入れず、Code 128待機と件数を保持する。
     private func rejectCameraBarcode(_ value: String) {
-        rejectCameraCode(value) {
+        let isWrongOrder = Destination.detect(qrPayload: value) != nil
+        rejectCameraCode(value, reason: isWrongOrder ? "wrong_order" : "invalid_format") {
             AppLocalization.string("現品票のCode 128バーコードではありません。現品票のCode 128バーコードを枠に合わせてください。")
         }
     }
@@ -598,7 +633,7 @@ final class ScannerViewModel: ObservableObject {
     /// 仕向地を固定した後に別仕向地のQRが届いたときの案内。カメラは同じQRが
     /// フレームごとに届くため、`rejectCameraCode`の再通知抑制を通す。
     private func rejectCameraDestinationLock(_ value: String, locked: Destination) {
-        rejectCameraCode(value) {
+        rejectCameraCode(value, reason: "wrong_destination") {
             AppLocalization.string(Self.destinationLockMessage(locked))
         }
     }
@@ -608,7 +643,11 @@ final class ScannerViewModel: ObservableObject {
         "このセッションは仕向地「\(locked.displayName)」で照合中です。別の仕向地のQRコードは照合できません。仕向地を変えるにはセッションを終了してください。"
     }
 
-    private func rejectCameraCode(_ value: String, message: @escaping () -> String) {
+    private func rejectCameraCode(
+        _ value: String,
+        reason: String,
+        message: @escaping () -> String
+    ) {
         let now = Date()
         if let rejected = rejectedCameraCode,
            rejected.value == value,
@@ -618,6 +657,7 @@ final class ScannerViewModel: ObservableObject {
         rejectedCameraCode = (value, now)
         setLocalizedMessage(message)
         feedback.invalidScan()
+        logRejection(reason: reason, value: value)
     }
 
     private func updateBluetoothInstruction() {
@@ -713,6 +753,14 @@ final class ScannerViewModel: ObservableObject {
                         : AppLocalization.string("品目番号が一致しています。")
                 }
             }
+            log(
+                "match",
+                qr: qrValue,
+                barcode: barcodeValue,
+                code: recordedCode,
+                boxNumber: sessionBoxNumber,
+                message: message
+            )
             feedback.success(after: resultSoundDelay)
             startAutoAdvanceCountdownIfNeeded()
         case .mismatch:
@@ -721,6 +769,13 @@ final class ScannerViewModel: ObservableObject {
             setLocalizedMessage {
                 AppLocalization.string("品目番号が一致しません。納品書と現品の取り違えを確認してください。")
             }
+            log(
+                "mismatch",
+                qr: qrValue,
+                barcode: barcodeValue,
+                code: recordedCode,
+                message: message
+            )
             feedback.failure()
         case .duplicate:
             sessionBoxNumber = 0
@@ -728,6 +783,13 @@ final class ScannerViewModel: ObservableObject {
             setLocalizedMessage {
                 AppLocalization.string("すでに照合済みです。このコードは照合件数に加えていません。")
             }
+            log(
+                "duplicate",
+                qr: qrValue,
+                barcode: barcodeValue,
+                code: recordedCode,
+                message: message
+            )
             feedback.failure()
         }
     }
@@ -766,6 +828,60 @@ final class ScannerViewModel: ObservableObject {
         autoAdvanceTask?.cancel()
         autoAdvanceTask = nil
         autoAdvanceSecondsRemaining = nil
+    }
+
+    // MARK: - 照合ログ
+
+    /// 照合ログへ1件記録する。セッション・入力方法・工程・仕向地は現在の状態から埋める。
+    private func log(
+        _ event: String,
+        reason: String? = nil,
+        qr: String? = nil,
+        barcode: String? = nil,
+        code: String? = nil,
+        boxNumber: Int? = nil,
+        message: String? = nil
+    ) {
+        scanLog.record(
+            ScanLogEvent(
+                at: Date(),
+                session: historyStore.activeSession?.id,
+                source: inputSource.scanLogValue,
+                step: step.scanLogValue,
+                event: event,
+                reason: reason,
+                destination: destination?.rawValue,
+                qr: qr,
+                barcode: barcode,
+                code: code,
+                boxNumber: boxNumber,
+                message: message
+            )
+        )
+    }
+
+    /// 不受理の記録。読み取った値は待っている工程に合わせてQR / Code 128のどちらかへ入れる。
+    private func logRejection(reason: String, value: String) {
+        let isQRStep = expectedCode == .qr
+        log(
+            "rejected",
+            reason: reason,
+            qr: isQRStep ? value : nil,
+            barcode: isQRStep ? nil : value
+        )
+    }
+
+    /// 想定と違うシンボロジーを読んだときの記録。カメラは同じ値がフレームごとに届くため、
+    /// 文言・効果音の挙動は変えずにログだけを2秒に1件へ抑える。
+    private func logSymbologyMismatch(_ value: String) {
+        let now = Date()
+        if let logged = lastLoggedSymbologyMismatch,
+           logged.value == value,
+           now.timeIntervalSince(logged.date) < Self.cameraRejectionRepeatInterval {
+            return
+        }
+        lastLoggedSymbologyMismatch = (value, now)
+        logRejection(reason: "wrong_symbology", value: value)
     }
 
     /// 履歴へ残す値。読み取れた品番を優先し、抽出できない場合はQRの生値を使う。
@@ -827,6 +943,7 @@ extension ScannerViewModel: CameraScannerDelegate {
             }
             acceptBarcodeCandidate(value)
         default:
+            logSymbologyMismatch(value)
             setLocalizedMessage {
                 expectedCode == .qr
                     ? AppLocalization.string("正方形のQRコードを枠に合わせてください。")
@@ -839,5 +956,21 @@ extension ScannerViewModel: CameraScannerDelegate {
         isCameraStarting = false
         isCameraRunning = false
         setLocalizedMessage { message }
+    }
+}
+
+extension ScanInputSource {
+    /// 照合ログの `source`。Android版と同じ文字列を使う。
+    var scanLogValue: String { rawValue }
+}
+
+extension ScanStep {
+    /// 照合ログの `step`。Android版と同じ文字列を使う。
+    var scanLogValue: String {
+        switch self {
+        case .qr: "qr"
+        case .barcode: "barcode"
+        case .result: "result"
+        }
     }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ScannerScreen: View {
     @ObservedObject var historyStore: HistoryStore
+    @ObservedObject var scanLog: ScanLogStore
     @ObservedObject var bluetoothScanner: BluetoothScannerService
     let sessionID: UUID
     @StateObject private var viewModel: ScannerViewModel
@@ -15,17 +16,20 @@ struct ScannerScreen: View {
 
     init(
         historyStore: HistoryStore,
+        scanLog: ScanLogStore,
         bluetoothScanner: BluetoothScannerService,
         cameraScanner: CameraScanner,
         sessionID: UUID
     ) {
         self.historyStore = historyStore
+        self.scanLog = scanLog
         self.bluetoothScanner = bluetoothScanner
         self.sessionID = sessionID
         _viewModel = StateObject(
             wrappedValue: ScannerViewModel(
                 historyStore: historyStore,
                 bluetoothScanner: bluetoothScanner,
+                scanLog: scanLog,
                 camera: cameraScanner
             )
         )

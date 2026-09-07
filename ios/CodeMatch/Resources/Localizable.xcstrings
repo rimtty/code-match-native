@@ -5928,6 +5928,150 @@
           }
         }
       }
+    },
+    "照合ログ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan log"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合ログ"
+          }
+        }
+      }
+    },
+    "カメラ・Bluetooth の照合結果と不受理を直近5,000件まで端末内に保持します。読み取った値を含むので共有先に注意してください。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keeps the latest 5,000 scan results and rejections on this device, camera and Bluetooth alike. The log contains the scanned values, so share it with care."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラ・Bluetooth の照合結果と不受理を直近5,000件まで端末内に保持します。読み取った値を含むので共有先に注意してください。"
+          }
+        }
+      }
+    },
+    "記録: %lld件" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld events"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記録: %lld件"
+          }
+        }
+      }
+    },
+    "照合ログをすべて共有" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share all scan logs"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合ログをすべて共有"
+          }
+        }
+      }
+    },
+    "照合ログを消去" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear scan log"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合ログを消去"
+          }
+        }
+      }
+    },
+    "消去する" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "消去する"
+          }
+        }
+      }
+    },
+    "照合ログを消去しますか？" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear the scan log?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合ログを消去しますか？"
+          }
+        }
+      }
+    },
+    "照合ログの書き出しに失敗しました。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not export the scan log."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合ログの書き出しに失敗しました。"
+          }
+        }
+      }
+    },
+    "照合ログを保存できませんでした。端末の空き容量を確認してください。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Failed to save the scan log. Please check available storage on this device."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合ログを保存できませんでした。端末の空き容量を確認してください。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

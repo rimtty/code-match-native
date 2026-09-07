@@ -53,7 +53,7 @@ final class CodeMatchUITests: XCTestCase {
     }
 
     func testMockBluetoothScannerConnectsAndCompletesMatch() {
-        let app = launchApp(["-resetHistory", "-resetAutoAdvance", "-demoBluetoothConnected"])
+        let app = launchApp(["-resetHistory", "-resetScanLog", "-resetAutoAdvance", "-demoBluetoothConnected"])
 
         app.buttons["startSessionButton"].tap()
         let inputPicker = app.segmentedControls["scanInputSourcePicker"]
@@ -98,10 +98,32 @@ final class CodeMatchUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["一致しました"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["sessionMatchCount"].label, "1件照合済み")
+
+        // 照合ログは設定画面の最下部から共有でき、判定の分だけ件数が増えている。
+        app.tabBars.buttons["設定"].tap()
+        let shareScanLogButton = app.buttons["shareScanLogButton"]
+        revealScanLogCard(in: app)
+        XCTAssertTrue(shareScanLogButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(shareScanLogButton.isEnabled)
+        XCTAssertTrue(app.buttons["clearScanLogButton"].exists)
+        let scanLogCount = app.staticTexts["scanLogCount"]
+        XCTAssertTrue(scanLogCount.waitForExistence(timeout: 3))
+        XCTAssertNotEqual(scanLogCount.label, "記録: 0件")
+    }
+
+    private func revealScanLogCard(in app: XCUIApplication) {
+        let shareScanLogButton = app.buttons["shareScanLogButton"]
+        let maxScrollAttempts = 12
+        for _ in 0..<maxScrollAttempts {
+            if shareScanLogButton.exists && shareScanLogButton.isHittable {
+                return
+            }
+            app.swipeUp()
+        }
     }
 
     func testMockBluetoothScannerMoltenFlowLocksDestination() {
-        let app = launchApp(["-resetHistory", "-resetAutoAdvance", "-demoBluetoothConnected"])
+        let app = launchApp(["-resetHistory", "-resetScanLog", "-resetAutoAdvance", "-demoBluetoothConnected"])
 
         app.buttons["startSessionButton"].tap()
         let inputPicker = app.segmentedControls["scanInputSourcePicker"]
@@ -183,7 +205,7 @@ final class CodeMatchUITests: XCTestCase {
     }
 
     func testMockBluetoothScannerDensoFlowLocksDestination() {
-        let app = launchApp(["-resetHistory", "-resetAutoAdvance", "-demoBluetoothConnected"])
+        let app = launchApp(["-resetHistory", "-resetScanLog", "-resetAutoAdvance", "-demoBluetoothConnected"])
 
         app.buttons["startSessionButton"].tap()
         let inputPicker = app.segmentedControls["scanInputSourcePicker"]
@@ -274,7 +296,7 @@ final class CodeMatchUITests: XCTestCase {
     }
 
     func testSettingsDiscoversAndConnectsMockScanner() {
-        let app = launchApp(["-resetHistory", "-resetAutoAdvance", "-resetBluetoothScanner"])
+        let app = launchApp(["-resetHistory", "-resetScanLog", "-resetAutoAdvance", "-resetBluetoothScanner"])
 
         app.tabBars.buttons["設定"].tap()
         let setupGuideButton = app.buttons["scannerSetupGuideButton"]
@@ -319,7 +341,7 @@ final class CodeMatchUITests: XCTestCase {
     /// スキャナーの主要フローを1回のアプリ起動でまとめて検証する。
     /// 起動が最も時間を要するため、一致→重複→リセット→不一致を連続で確認する。
     func testScannerFlowMatchDuplicateResetAndMismatch() {
-        let app = launchApp(["-resetHistory", "-resetAutoAdvance", "-demoMatch"])
+        let app = launchApp(["-resetHistory", "-resetScanLog", "-resetAutoAdvance", "-demoMatch"])
 
         // 起動引数による一致状態と件数
         XCTAssertTrue(app.staticTexts["一致しました"].waitForExistence(timeout: 5))
@@ -374,7 +396,7 @@ final class CodeMatchUITests: XCTestCase {
     }
 
     func testSettingsSoundSelectionAndLanguageSwitchPersists() {
-        var app = launchApp(["-resetHistory", "-resetAutoAdvance"])
+        var app = launchApp(["-resetHistory", "-resetScanLog", "-resetAutoAdvance"])
 
         app.tabBars.buttons["設定"].tap()
         let autoAdvanceToggle = app.switches["autoAdvanceSettingsToggle"]
@@ -419,7 +441,7 @@ final class CodeMatchUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Language"].waitForExistence(timeout: 5))
 
         app.terminate()
-        app = launchApp(["-resetHistory", "-resetAutoAdvance"], resetLanguage: false)
+        app = launchApp(["-resetHistory", "-resetScanLog", "-resetAutoAdvance"], resetLanguage: false)
 
         XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 5))
         app.tabBars.buttons["Settings"].tap()
@@ -437,7 +459,7 @@ final class CodeMatchUITests: XCTestCase {
     }
 
     func testSessionAutoAdvanceShowsCountdownAndStartsNextMatch() {
-        let app = launchApp(["-resetHistory", "-resetAutoAdvance"])
+        let app = launchApp(["-resetHistory", "-resetScanLog", "-resetAutoAdvance"])
 
         let startButton = app.buttons["startSessionButton"]
         XCTAssertTrue(startButton.waitForExistence(timeout: 5))

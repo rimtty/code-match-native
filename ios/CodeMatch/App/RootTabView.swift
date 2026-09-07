@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootTabView: View {
     @StateObject private var historyStore: HistoryStore
+    @StateObject private var scanLog: ScanLogStore
     @StateObject private var bluetoothScanner: BluetoothScannerService
     @StateObject private var cameraScanner: CameraScanner
     @Environment(\.scenePhase) private var scenePhase
@@ -12,6 +13,7 @@ struct RootTabView: View {
         // 毎回実行するとUIが再描画ループへ陥るため、@StateObjectの
         // autoclosureへ包んで最初のレンダリング時の一度きりに限定する。
         _historyStore = StateObject(wrappedValue: Self.makeHistoryStore())
+        _scanLog = StateObject(wrappedValue: ScanLogStore())
         _bluetoothScanner = StateObject(wrappedValue: BluetoothScannerService())
         _cameraScanner = StateObject(wrappedValue: cameraScanner())
     }
@@ -30,6 +32,7 @@ struct RootTabView: View {
         TabView {
             ScannerFlowView(
                 historyStore: historyStore,
+                scanLog: scanLog,
                 bluetoothScanner: bluetoothScanner,
                 cameraScanner: cameraScanner
             )
@@ -42,7 +45,7 @@ struct RootTabView: View {
                     Label(AppLocalization.string("履歴"), systemImage: "clock.arrow.circlepath")
                 }
 
-            SettingsScreen(bluetoothScanner: bluetoothScanner)
+            SettingsScreen(bluetoothScanner: bluetoothScanner, scanLog: scanLog)
                 .tabItem {
                     Label(AppLocalization.string("設定"), systemImage: "gearshape.fill")
                 }
@@ -60,6 +63,7 @@ struct RootTabView: View {
 
 private struct ScannerFlowView: View {
     @ObservedObject var historyStore: HistoryStore
+    @ObservedObject var scanLog: ScanLogStore
     @ObservedObject var bluetoothScanner: BluetoothScannerService
     @ObservedObject var cameraScanner: CameraScanner
 
@@ -68,13 +72,18 @@ private struct ScannerFlowView: View {
             if let session = historyStore.activeSession {
                 ScannerScreen(
                     historyStore: historyStore,
+                    scanLog: scanLog,
                     bluetoothScanner: bluetoothScanner,
                     cameraScanner: cameraScanner,
                     sessionID: session.id
                 )
                     .id(session.id)
             } else {
-                SessionStartView(historyStore: historyStore)
+                SessionStartView(
+                    historyStore: historyStore,
+                    scanLog: scanLog,
+                    bluetoothScanner: bluetoothScanner
+                )
             }
         }
     }
@@ -82,6 +91,8 @@ private struct ScannerFlowView: View {
 
 private struct SessionStartView: View {
     @ObservedObject var historyStore: HistoryStore
+    @ObservedObject var scanLog: ScanLogStore
+    @ObservedObject var bluetoothScanner: BluetoothScannerService
     @State private var sessionName = ""
     @Environment(\.locale) private var locale
 
@@ -139,7 +150,19 @@ private struct SessionStartView: View {
                             .accessibilityIdentifier("sessionNameField")
 
                         Button {
-                            historyStore.beginSession(name: sessionName)
+                            let sessionID = historyStore.beginSession(name: sessionName)
+                            scanLog.record(
+                                ScanLogEvent(
+                                    at: Date(),
+                                    session: sessionID,
+                                    // 接続済みならBluetoothが初期入力になる。
+                                    source: bluetoothScanner.isConnected
+                                        ? ScanInputSource.bluetooth.scanLogValue
+                                        : ScanInputSource.camera.scanLogValue,
+                                    step: "none",
+                                    event: "session_start"
+                                )
+                            )
                             sessionName = ""
                         } label: {
                             Label(AppLocalization.string("記録を開始する"), systemImage: "play.fill")
