@@ -55,7 +55,7 @@ App Iconは「Code 128を想起させる白いバーコード＋ライムの照�
 3. 実機で初回カメラ権限、QR、Code 128、一致、不一致、バックグラウンド復帰を確認する。
 4. Product > ArchiveでRelease Archiveを作る。
 5. App Store Connectでアプリ名、説明、スクリーンショット、プライバシー回答を設定する。
-6. TestFlightへアップロードし、照明・距離・印刷品質が異なる現場ラベルで評価する。
+6. TestFlightへアップロードし、照明・距離・印刷品質が異なる現場ラベルで評価する。現場で新しい書式のラベルが拒否されたときの手順は [`../label-variation-playbook.html`](../label-variation-playbook.html)（写真のデコード `shared/tools/decode_label_photos.swift`、実ペアの検証 `ios/scripts/verify_label_pairs.sh`）。
 
 ### USB-C接続で実機確認する
 

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ラベルバリエーション対応プレイブック — code-match</title>
+<style>
+  :root { --ink:#1f2933; --muted:#52606d; --line:#d9e2ec; --card:#ffffff; --bg:#f5f7fa; --ok:#0b6e4f; --ng:#b42318; --warn:#9a6700; --accent:#1d4ed8; }
+  body { margin:0; padding:24px; font-family:-apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; font-size:15px; line-height:1.7; color:var(--ink); background:var(--bg); }
+  main { max-width: 1040px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 0 0 12px; }
+  h3 { font-size: 16px; margin: 20px 0 8px; }
+  .lead { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px 24px; margin: 0 0 20px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  .mono, code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+  code { background: #eef2f7; padding: 1px 5px; border-radius: 4px; }
+  pre { background: #0f172a; color: #e2e8f0; padding: 12px 14px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.55; }
+  pre code { background: none; padding: 0; color: inherit; }
+  .scroll { overflow-x: auto; }
+  .ok { color: var(--ok); font-weight: 600; }
+  .ng { color: var(--ng); font-weight: 600; }
+  .warn { color: var(--warn); font-weight: 600; }
+  .note { border-left: 4px solid var(--accent); background: #eff6ff; padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+  .danger { border-left-color: var(--ng); background: #fef2f2; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 3px 0; }
+  .pill { display:inline-block; font-size:12px; font-weight:600; padding:1px 8px; border-radius:999px; background:#e0e7ff; color:#3730a3; margin-right:6px; }
+  .small { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>ラベルバリエーション対応プレイブック</h1>
+  <p class="lead">現場のラベルに新しい書式（カード番号の型、品番の桁数、Code 128 の区切り、新しい仕向地など）が現れたときに、何が起きるか・どう切り分けるか・どう直すかをまとめる。2026-09-08 の障害（<a href="https://github.com/rimtty/code-match-native/issues/129">#129</a>）を教訓として書いた。顧客向けのデータ仕様書（<code>docs/qr-barcode-spec-analysis.html</code>、git-ignored）とは別に、リポジトリに残す運用文書である。</p>
+
+  <section class="card">
+    <h2>1. 何が起きたか（2026-09-08）</h2>
+    <p>TestFlight 1.0 (6)/(8) を配った直後、現場から「以前の QR と Code 128 が読めず照合できない」と報告があった。照合ログ（設定 → 照合ログの共有）には、カメラで読んだ澤井製作所の QR が <code>rejected / invalid_format</code> で4回続けて弾かれた記録が残っていた。</p>
+    <div class="scroll">
+    <table>
+      <tr><th>観点</th><th>アプリが想定していた書式</th><th>現場の実データ</th><th>影響</th></tr>
+      <tr><td>QR カード番号（1〜10桁）</td><td class="mono">^[A-Z]{4}[0-9]{6}$<br>英字4＋数字6（例 DCLP675300）</td><td class="mono">DAH4093870<br>英数4桁のコード＋数字6桁の連番</td><td class="ng">写真27ラベル全てを QR 段階で拒否</td></tr>
+      <tr><td>QR 品目番号欄（11〜20桁）</td><td class="mono">^[A-Z0-9]{10}$<br>常に10桁</td><td class="mono">BCJH5281F␣<br>9桁を左詰め、末尾は空白</td><td class="ng">9桁品番の9ラベルを拒否</td></tr>
+      <tr><td>Code 128 の品番区切り（澤井製作所）</td><td class="mono">4-2-4 のみ</td><td class="mono">BCJH-52-81F@01R95K<br>4-2-3 もある</td><td class="ng">同じ9ラベルを Code 128 段階でも拒否</td></tr>
+      <tr><td>デンソー対応の処理</td><td colspan="2">JAMA 自己記述レコードの解析、6-4 の現品票</td><td class="ok">無関係（澤井の QR は JAMA で始まらない）</td></tr>
+    </table>
+    </div>
+    <div class="note">「デンソー対応ビルドから壊れた」ように見えたのは、厳格化（#46 / #75 / #78 / #93）が build 4（2026-09-06）で入り、build 5・6・8 が短期間に続いたため、現場が最初に触った厳格ビルドがたまたまデンソー対応版だったからである。</div>
+  </section>
+
+  <section class="card">
+    <h2>2. 根本原因</h2>
+    <ol>
+      <li><strong>サンプルへの過学習。</strong>2026-08-17 時点で手元にあった12組（カード番号は <code>DCLP</code> / <code>DAYA</code> / <code>DAAL</code>＋6桁）から「英字4＋数字6」「品目番号は10桁」と定め、それを受理条件として固定した。12組は同じ工場・同じ時期の連続したラベルで、書式の全体像を代表していなかった。</li>
+      <li><strong>吸収していた緩さを、別の目的で取り除いた。</strong>もともとカメラの QR は内容検証をせず、照合も「QR 全文の正規化文字列にバーコードの品番が含まれるか」という部分一致で成立していた。逆順入力や無関係な QR を弾くために内容検証を加え（#46 / #75 / #78）、部分一致フォールバックを撤去した（#93）ことで、正規表現の狭さがそのまま拒否になった。個々の変更は正しいが、合わせると「実データより狭い規則が唯一の判定」になった。</li>
+      <li><strong>テストが思い込みを固定した。</strong>モルテン対応で 4-2-3 を追加したとき、「4-2-3 はモルテンだけ、澤井製作所では受理しない」というテストを書いた（TEST_PARITY 行77・86）。実データの裏付けがない排他条件をテストで固定すると、後から直す人が「仕様」だと誤解する。</li>
+      <li><strong>現場との検証が Code 128 中心だった。</strong>Bluetooth 経路の QR 検証は以前から存在したが、現場はカメラ運用だったため問題が隠れていた。TestFlight での検証もフィクスチャの12組で行っていた。</li>
+    </ol>
+  </section>
+
+  <section class="card">
+    <h2>3. 現在の受理条件（2026-09-08 以降）</h2>
+    <p>iOS <code>ios/CodeMatch/Models/ScanModels.swift</code> と Android <code>android/core/matching/.../CodeMatcher.kt</code> が同じ規則を持つ。正本は <a href="PRODUCT_SPEC.md"><code>docs/PRODUCT_SPEC.md</code></a>。</p>
+    <div class="scroll">
+    <table>
+      <tr><th>仕向地</th><th>QR</th><th>Code 128（品番@管理コード）</th><th>箱の識別</th></tr>
+      <tr><td>澤井製作所 <code>sawai</code></td><td>66桁固定長。カード番号 <code class="mono">^[A-Z0-9]{4}[0-9]{6}$</code>、品目番号欄 <code class="mono">^[A-Z0-9]{9}[A-Z0-9 ]$</code>（末尾空白を除いた値が品番）、枝番は空白可</td><td class="mono">4-2-4 または 4-2-3</td><td>QR 全文（カード番号が箱ごとに違う）</td></tr>
+      <tr><td>モルテン <code>molten</code></td><td>61桁固定長（57〜61桁は空白で補完）。部品番号は 7〜16桁目、左詰め</td><td class="mono">4-2-4 または 4-2-3</td><td>QR 正規形＋Code 128</td></tr>
+      <tr><td>デンソー <code>denso</code></td><td>JAMA 自己記述形式（可変長）。項目104・112・152 必須</td><td class="mono">6-4</td><td>QR 全文（かんばん連番が箱ごとに違う）</td></tr>
+    </table>
+    </div>
+    <p class="small">仕向地の判定はデンソー → 澤井製作所 → モルテン → 空白除去した澤井製作所の順。仕向地未確定のときの Code 128 は3パターンの OR で受理する。</p>
+  </section>
+
+  <section class="card">
+    <h2>4. 受理条件を決めるときの原則</h2>
+    <ul>
+      <li><strong>誤って弾く方が、誤って通すより高くつく。</strong>本物のラベルを弾くと生産が止まる。無関係な QR を通しても、その後の照合で「不一致」になるだけで履歴にも件数にも残らない。迷ったら緩い側に倒す。</li>
+      <li><strong>構造で判定し、文字種の並びを決め打ちしない。</strong>固定長、数量欄が数字、品番欄が英数字、といった「レコードとしての構造」は安定している。「4文字目は必ず英字」のような観察は、サンプルが増えると覆る。</li>
+      <li><strong>排他条件（「〜だけで受理」「〜では受理しない」）には実データの裏付けを要求する。</strong>裏付けがないなら共通の規則にする。今回の Code 128 は澤井製作所とモルテンで同一パターンになった。</li>
+      <li><strong>部分一致フォールバックは復活させない。</strong>取り違え（同一シリーズの 52 / 55、9桁と10桁の同一接頭辞）を見逃す。緩めるのは「受理条件」であって「一致条件」ではない。</li>
+      <li><strong>受理条件を狭めるときは、必ず現場の照合ログか写真の実測値で全ラベルを流してから。</strong>フィクスチャの既存ケースが通るだけでは足りない。</li>
+      <li><strong>新しい実データは共通フィクスチャに追加してから規則を変える。</strong>写真そのものはリポジトリに置かず、デコード済みの文字列だけを入れる。</li>
+    </ul>
+    <div class="note danger">CLAUDE.md にも記した: 今回緩めた規則を12組のサンプルに合わせて狭め直さないこと。</div>
+  </section>
+
+  <section class="card">
+    <h2>5. 新しいバリエーションが来たときの手順</h2>
+    <h3><span class="pill">STEP 0</span>現場から証拠を回収する</h3>
+    <ul>
+      <li>設定 → 照合ログの共有（JSONL）。<code>rejected</code> イベントに生の QR / Code 128 と <code>reason</code>（<code>invalid_format</code> / <code>wrong_order</code> / <code>wrong_destination</code> …）が残る。これだけで多くは切り分けられる。</li>
+      <li>ラベルの写真（QR と Code 128 が同じ写真に写っているもの）。git-ignored の <code>tmp/</code> 配下に置き、絶対にコミットしない。</li>
+    </ul>
+
+    <h3><span class="pill">STEP 1</span>写真を一括デコードする</h3>
+<pre><code>swiftc -O shared/tools/decode_label_photos.swift -o /tmp/decode_label_photos
+/tmp/decode_label_photos tmp/labels &gt; tmp/decoded.tsv
+grep -c . tmp/decoded.tsv          # 1シンボル1行。NONE の写真は全景など</code></pre>
+    <p class="small">Vision の <code>VNDetectBarcodesRequest</code> を使う。末尾空白や CR/LF は <code>[ ]</code> 内にそのまま残るので、桁数（<code>len=</code>）で固定長を確認できる。</p>
+
+    <h3><span class="pill">STEP 2</span>現行の照合コアに流し、何がどこで落ちるかを見る</h3>
+<pre><code>ios/scripts/verify_label_pairs.sh tmp/decoded.tsv</code></pre>
+    <p>iOS の <code>ScanModels.swift</code> をそのままコンパイルして、写真ごとに仕向地判定・品番抽出・Code 128 の形式検証・照合結果・箱識別子を表にする。末尾の <code>summary</code> で「<code>nil/…</code>（仕向地判定で落ちた）」「<code>…/tag=false/…</code>（Code 128 の形式で落ちた）」を数える。Android は同じ規則をミラーしているので、原因の特定は iOS 側で足りる。</p>
+
+    <h3><span class="pill">STEP 3</span>規則を「実データで裏付けられる構造」まで緩める</h3>
+    <ul>
+      <li>iOS: <code>KanbanQRRecord.parse</code> / <code>MoltenQRRecord.parse</code> / <code>DensoKanbanRecord.parse</code>、<code>TagBarcodeRecord.isValidScanPayload</code>、<code>Destination.detect</code>。</li>
+      <li>Android: <code>KanbanQrRecord</code> / <code>MoltenQrRecord</code> / <code>DensoKanbanQrRecord</code>、<code>TagBarcodeRecord.isValidScanPayload</code>、<code>CodeMatcher.detectDestination</code>。<code>ScanReducer.invalidPayloadReason</code> は桁数の案内だけなので、固定長が変わらなければ触らない。</li>
+      <li>表記（<code>format(partNumber:destination:)</code> / <code>formatPartNumber</code>）と履歴・PDF は品番の桁数から区切りを決めているので、桁数の種類が増えたときだけ見直す。</li>
+      <li>変更後に STEP 2 を再実行し、全ペアが <code>match</code>、<code>guards</code>（<code>X×66</code>、逆順、他仕向地の区切り）が変わっていないことを確認する。</li>
+    </ul>
+
+    <h3><span class="pill">STEP 4</span>共通フィクスチャとテストに固定する</h3>
+    <ul>
+      <li><code>shared/test-fixtures/matching-cases.json</code> に、日付入りのプレフィックス（例 <code>sawai-2026-09-08-NN-&lt;品番&gt;</code>）でケースを追加する。一致ケースに加え、同一品番の2箱、隣接シリーズの取り違え、桁数違いの同一接頭辞を <code>mismatch</code> として入れる。<code>notes</code> に由来を1項目追加する。</li>
+      <li>ケース数を固定しているテスト（iOS <code>CodeMatcherTests.testSharedMatchingFixtures</code>、Android <code>CodeMatcherTest.sharedMatchingFixturesHaveTheSameResultsAsSwift</code>）と docs の「NNケース」を更新する。既存の <code>label-</code> プレフィックスは12組固定なので流用しない。</li>
+      <li>新プレフィックス向けに「読取境界を両方通る」テストを iOS / Android の両方に追加し、<code>docs/android/TEST_PARITY.md</code> に行を足す。</li>
+      <li>「〜では受理しない」を固定しているテストがあれば、実データに合わせて反転する。</li>
+    </ul>
+
+    <h3><span class="pill">STEP 5</span>検証してリリースする</h3>
+<pre><code># iOS
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test \
+  -project ios/CodeMatch.xcodeproj -scheme CodeMatch \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+# Android
+cd android && ./gradlew lintDebug testDebugUnitTest && ./gradlew :app:assembleRelease \
+  && bash scripts/verify-release-hardening.sh</code></pre>
+    <ul>
+      <li>GitHub Issue を起票し（原因・実測値・決定事項）、PR で <code>docs/PRODUCT_SPEC.md</code>、<code>CLAUDE.md</code>、<code>docs/android/STATUS.md</code>、<code>docs/android/TEST_PARITY.md</code>、顧客向け仕様書（ローカル）を同時に更新する。</li>
+      <li>iOS はビルド番号を上げて TestFlight へ。Android は release APK を側面ロード。</li>
+      <li>配布後、現場の照合ログをもう一度回収し、<code>rejected / invalid_format</code> が残っていないことを確認して閉じる。</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>6. チェックリスト</h2>
+    <ul>
+      <li>☐ 照合ログか写真から、拒否された<strong>生ペイロード</strong>を得た（推測で直していない）</li>
+      <li>☐ <code>verify_label_pairs.sh</code> で「現行」と「修正後」の両方の結果を記録した</li>
+      <li>☐ 既存の3仕向地の全ペアと <code>guards</code> が変わっていない</li>
+      <li>☐ 新しい実データを共通フィクスチャに追加した（写真は未コミット）</li>
+      <li>☐ 反転・追加したテストを TEST_PARITY に反映した</li>
+      <li>☐ PRODUCT_SPEC / CLAUDE.md / STATUS / 顧客向け仕様書を更新した</li>
+      <li>☐ iOS 単体・UI テスト、Android lint・JVM テスト、release ゲートが通った</li>
+      <li>☐ 配布後に現場の照合ログで <code>invalid_format</code> が消えたことを確認した</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>7. 関連</h2>
+    <ul>
+      <li>Issue <a href="https://github.com/rimtty/code-match-native/issues/129">#129</a>、PR <a href="https://github.com/rimtty/code-match-native/pull/130">#130</a>（今回の修正）</li>
+      <li>厳格化の経緯: <a href="https://github.com/rimtty/code-match-native/issues/46">#46</a>（カメラ QR の内容検証）、<a href="https://github.com/rimtty/code-match-native/issues/75">#75</a>（カメラと BLE の統一）、<a href="https://github.com/rimtty/code-match-native/issues/78">#78</a>（カメラ Code 128 の形式検証）、<a href="https://github.com/rimtty/code-match-native/issues/93">#93</a>（部分一致フォールバックの撤去）</li>
+      <li><a href="PRODUCT_SPEC.md"><code>docs/PRODUCT_SPEC.md</code></a>、<a href="../shared/test-fixtures/matching-cases.json"><code>shared/test-fixtures/matching-cases.json</code></a>、<a href="android/TEST_PARITY.md"><code>docs/android/TEST_PARITY.md</code></a></li>
+      <li>ツール: <code>shared/tools/decode_label_photos.swift</code>、<code>ios/scripts/verify_label_pairs.sh</code></li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>
