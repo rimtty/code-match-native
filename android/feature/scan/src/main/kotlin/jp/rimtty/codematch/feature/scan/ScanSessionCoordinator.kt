@@ -201,7 +201,7 @@ class ScanSessionCoordinator(
         // stabilization: the reducer rejects it on the first frame and it
         // never occupies the two-observation candidate slot (#78). The format
         // depends on the locked destination, so a 4-2-3 tag reaches the
-        // stabilizer only in a Molten session and a 6-4 tag only in a Denso one.
+        // stabilizer in a Sawai or Molten session and a 6-4 tag only in a Denso one.
         val payloadToDispatch = if (
             payload.source == InputSource.CAMERA &&
             payload.format == ScanFormat.CODE_128 &&

@@ -15,7 +15,7 @@
 
 | 領域 | 確認済み（自動test・artifact検査・Pixel 7実機） |
 |---|---|
-| Domain / matching | 純Kotlin matcher/parser、仕向地判定（澤井製作所66桁 / モルテン61桁 / デンソーはJAMA自己記述形式の可変長かんばん）と仕向地ごとのCode 128形式・品番表記・箱固有キー、shared fixture（`matching-cases.json`、schemaVersion 2・47ケース・`destination`は`sawai`/`molten`/`denso`）、JVM test、Swiftの単体/UIテストとの意図対応表（[`TEST_PARITY.md`](TEST_PARITY.md)） |
+| Domain / matching | 純Kotlin matcher/parser、仕向地判定（澤井製作所66桁 / モルテン61桁 / デンソーはJAMA自己記述形式の可変長かんばん）と仕向地ごとのCode 128形式・品番表記・箱固有キー、shared fixture（`matching-cases.json`、schemaVersion 2・63ケース・`destination`は`sawai`/`molten`/`denso`）、JVM test、Swiftの単体/UIテストとの意図対応表（[`TEST_PARITY.md`](TEST_PARITY.md)） |
 | UI / navigation | Composeの照合・履歴・設定、3 destination、system/predictive backの完了・無効・cancel境界、履歴選択のActivity再生成・destination往復・compact back stack、320dp/840dp・font scale 1.3/2.0の主要操作到達、動的案内・結果のpolite live region、emulatorでのQR待機・Code 128待機・一致結果のOS force-stop後UI復元。Pixel 7ではfont scale 1.3/2.0の主要表示・操作をユーザーが承認 |
 | History / settings / PDF | Room（schema v4、セッションとcheckpointの仕向地列と`MIGRATION_2_3`、照合ログ`scan_log`と`MIGRATION_3_4`を含む）/DataStore、照合ログの記録・5,000件の切り詰め・件数表示・JSON Lines書き出し・消去、日英リソースとper-app locale双方向同期、0件破棄・名称変更・詳細・削除のapp E2E、履歴詳細とPDFのモルテン項目（納品番号ごとの箱数・累計収容数と解析全項目）とデンソー項目（履歴詳細のかんばん解析13項目、PDFのかんばん要約と箱ごとのかんばん連番）、A4複数ページPDFの実render、SAF保存/専用FileProvider共有の契約test。Pixel 7では日英切替、1ページ/複数ページPDFのDownloads保存と共有先での表示、音量0/通常音量の音・触覚をユーザーが承認 |
 | Camera | CameraX/ML Kit adapter、工程別ROI、権限・lifecycle・focus・format切替の非同期境界test。Pixel 7縦画面で実ラベルのQR→Code 128一致、復帰後のCode 128、タップfocus、権限の拒否・恒久拒否・再許可、ガイド枠内外の読取境界、無関係QR拒否、不一致の表示・音・振動・非加算をユーザーが承認 |
@@ -70,6 +70,13 @@ JDK/SDKがない環境ではGradle結果を推測せず、実行不能として�
 - 設定画面の最下部に「照合ログ」カードを追加した（`settings_scan_log`、件数`settings_scan_log_count`、共有・保存・消去の3ボタンは48dp、0件では共有・保存を無効化、消去は確認ダイアログ）。文言は日英そろえて追加した。
 
 証跡: `lintDebug testDebugUnitTest` 457件（失敗・error 0）、`:app:assembleRelease`、`verify-release-hardening.sh`（全項目通過）、Pixel 7（Android 16 / API 36）で`:core:data` 32件・`:feature:settings` 22件のinstrumentationが成功。`AppFlowInstrumentationTest`の一致→重複→設定画面の件数はCI emulator（API 36）で実行する。実スキャナーでの照合ログ書き出しと共有先での受け取りは未実施。
+
+### 2026-09-08 澤井製作所のカード番号 `DAH4` 型と9桁品番（#129）
+
+TestFlight 1.0 (6)/(8) を配った現場から、澤井製作所のラベルが QR 段階で拒否されると報告があった。写真67枚をデコードして確認した原因は2つで、デンソー固有の処理は無関係だった。
+
+- `KanbanQrRecord` のカード番号を `[A-Z]{4}[0-9]{6}` から `[A-Z0-9]{4}[0-9]{6}`（英数4桁のコード＋6桁連番）へ、品目番号欄を `[A-Z0-9]{10}` から `[A-Z0-9]{9}[A-Z0-9 ]`（9桁品番は左詰め・末尾空白を除去して保持）へ緩めた。`TagBarcodeRecord` の澤井製作所パターンはモルテンと同じ `4-2-3` / `4-2-4` になった。`expectedQrLength`・`invalidPayloadReason`・履歴・PDF は変更なし（`formatPartNumber` が9桁を `4-2-3` で表記する）。
+- 共通fixture `matching-cases.json` を63ケースへ拡張した（`sawai-2026-09-08-` の16ケース: 一致12・不一致4。澤井製作所39・モルテン11・デンソー11・仕向地なし2）。「澤井製作所では `4-2-3` を受理しない」と固定していたテストは反転した（[`TEST_PARITY.md`](TEST_PARITY.md) 行77・86）。
 
 ### 2026-09-07 仕向地デンソー対応
 

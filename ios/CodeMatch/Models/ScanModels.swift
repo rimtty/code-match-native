@@ -99,7 +99,7 @@ enum Destination: String, Codable, CaseIterable, Equatable {
     /// QRペイロードの仕向地を判定する。いずれのレコード様式でもない場合は nil。
     ///
     /// デンソーを最初に判定する: `KanbanQRRecord.parse` は寛容(先頭10桁が
-    /// `[A-Z]{4}[0-9]{6}`、20桁以上)なので、`JAMA501195…` をカード番号として
+    /// `[A-Z0-9]{4}[0-9]{6}`、20桁以上)なので、`JAMA501195…` をカード番号として
     /// 受理してしまう。JAMA自己記述形式として解析できるQRは常にデンソーとする。
     static func detect(qrPayload raw: String) -> Destination? {
         let payload = stripTransportTerminators(raw)
@@ -138,8 +138,10 @@ extension Destination {
 ///
 /// - 現品票のCode 128: `品番(ハイフン付き)@管理コード` 例: `BCJH-52-81GG@1N5X0C`
 /// - 澤井製作所の納品書兼現品票QR: 66桁固定長レコード。先頭からカード番号(10桁)、
-///   品目番号(10桁・区切りなし)、枝番(2桁・空白の場合あり)、数量などが続く。
-///   例: `DCLP675300` + `BCJH5281GG` + `02` + …
+///   品目番号(10桁の欄・区切りなし・9桁品番は左詰めで末尾空白)、枝番(2桁・空白の場合あり)、
+///   数量などが続く。例: `DCLP675300` + `BCJH5281GG` + `02` + …、
+///   9桁品番の例: `DAH4093540` + `BCJH5281F ` + `  ` + …
+/// - 現品票のCode 128の品番は10桁品番が4-2-4、9桁品番が4-2-3(例: `BCJH-52-81F@01R95K`)。
 /// - モルテンの納品書QR: 61桁固定長レコード。7-16桁が左詰めの部品番号(9桁または10桁)。
 ///
 /// 2つのペイロードは文字列としては一致しないため、双方から品番を抽出して比較する。
@@ -209,8 +211,8 @@ enum CodeMatcher {
 /// フィールド位置は docs/PRODUCT_SPEC.md と実データ解析に基づく。
 /// もう一方の仕向地モルテン(61桁)は `MoltenQRRecord` が担当する。
 struct KanbanQRRecord: Equatable {
-    let cardNumber: String        // 1-10桁: カード番号
-    let partNumber: String        // 11-20桁: 品目番号
+    let cardNumber: String        // 1-10桁: カード番号(英数4桁のコード + 6桁の連番)
+    let partNumber: String        // 11-20桁: 品目番号(9桁または10桁。9桁は左詰めで末尾空白を除去済み)
     let partSuffix: String?       // 21-22桁: 枝番(空白の場合あり)
     let deliveryQuantity: Double? // 23-30桁: 納入数量(×100で記録)
     let instructedQuantity: Double? // 31-38桁: 指示数(×100で記録)
@@ -249,14 +251,17 @@ struct KanbanQRRecord: Equatable {
 
         guard
             let cardNumber = slice(0..<10),
-            cardNumber.range(of: "^[A-Z]{4}[0-9]{6}$", options: .regularExpression) != nil,
-            let partNumber = slice(10..<20),
-            partNumber.range(of: "^[A-Z0-9]{10}$", options: .regularExpression) != nil
+            // カード番号は英数4桁のコード + 6桁の連番。実データは `DCLP675300` 型と
+            // `DAH4093870` 型の両方があり、4桁目が数字でも受理する(#129)。
+            cardNumber.range(of: "^[A-Z0-9]{4}[0-9]{6}$", options: .regularExpression) != nil,
+            let partField = slice(10..<20),
+            // 品目番号欄は10桁。9桁品番は左詰めで末尾が空白(`BCJH5281F `)。
+            partField.range(of: "^[A-Z0-9]{9}[A-Z0-9 ]$", options: .regularExpression) != nil
         else { return nil }
 
         return KanbanQRRecord(
             cardNumber: cardNumber,
-            partNumber: partNumber,
+            partNumber: partField.trimmingCharacters(in: .whitespaces),
             partSuffix: trimmedOrNil(slice(20..<22)),
             deliveryQuantity: quantity(slice(22..<30)),
             instructedQuantity: quantity(slice(30..<38)),
@@ -569,8 +574,8 @@ struct TagBarcodeRecord: Equatable {
     let partNumber: String       // ハイフン付き品番
     let managementCode: String?  // @以降の管理コード
 
-    /// 澤井製作所の現品票: 品番は4-2-4。
-    private static let sawaiFormatPattern = "^[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{4}@[A-Z0-9]+$"
+    /// 澤井製作所の現品票: 品番は4-2-4(10桁)または4-2-3(9桁品番、例 `BCJH-52-81F`)。
+    private static let sawaiFormatPattern = "^[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{3,4}@[A-Z0-9]+$"
     /// モルテンの現品票: 品番は4-2-3または4-2-4。
     private static let moltenFormatPattern = "^[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{3,4}@[A-Z0-9]+$"
     /// デンソーの現品票: 品番は6-4。
@@ -578,7 +583,7 @@ struct TagBarcodeRecord: Equatable {
 
     /// 現品票Code 128の業務フォーマット（品番@管理コード）かを確認する。
     /// 物理シンボル種別はSDK通知に含まれないため、QR文字列などを次工程で受理しない。
-    /// 品番の区切りは澤井製作所が4-2-4、モルテンが4-2-3または4-2-4、デンソーが6-4。
+    /// 品番の区切りは澤井製作所・モルテンが4-2-3または4-2-4、デンソーが6-4。
     /// 仕向地が未判定(nil)のときは、どの仕向地でも取りこぼさないよう3つのORで判定する。
     static func isValidScanPayload(_ payload: String, destination: Destination?) -> Bool {
         let value = payload.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()

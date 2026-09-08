@@ -55,6 +55,12 @@ class ScanSessionCoordinatorTest {
         "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
     private val moltenShortPartBarcode = "PAF1-15-422@0NKD3C"
 
+    // A Sawai label with a nine-character part number and a 4-2-3 tag
+    // (2026-09-08 field labels, #129).
+    private val sawaiShortPartQrPayload =
+        "DAH4093540BCJH5281F   0002000000020000H      000000BHB01LHA28   0*"
+    private val sawaiShortPartBarcode = "BCJH-52-81F@01R95K"
+
     // Destination Denso, whose product tag prints a 6-4 part number. The QR's
     // runs of spaces are blank item values.
     private val densoQrPayload =
@@ -586,7 +592,7 @@ class ScanSessionCoordinatorTest {
     }
 
     @Test
-    fun cameraFourTwoThreeTagGoesThroughStabilizerOnlyInMoltenSession() {
+    fun cameraFourTwoThreeTagGoesThroughStabilizerInSawaiAndMoltenSessions() {
         val molten = ScanSessionCoordinator(TestScanner())
         molten.startSession()
         molten.submitScanPayload(ScanPayload.qr(moltenQrPayload, timestampMillis = 0L))
@@ -605,14 +611,22 @@ class ScanSessionCoordinatorTest {
         assertEquals(ScanPhase.RESULT, accepted?.state?.phase)
         assertEquals(MatchResult.MATCH, accepted?.state?.result)
 
+        // A Sawai label can carry a nine-character part number too (#129), so
+        // its 4-2-3 tag takes the same two-observation path in a Sawai session.
         val sawai = ScanSessionCoordinator(TestScanner())
         sawai.startSession()
-        sawai.submitScanPayload(ScanPayload.qr(qrPayload, timestampMillis = 0L))
-        val rejected = sawai.submitScanPayload(
-            ScanPayload.code128(moltenShortPartBarcode, timestampMillis = 300L),
+        sawai.submitScanPayload(ScanPayload.qr(sawaiShortPartQrPayload, timestampMillis = 0L))
+        assertEquals(Destination.SAWAI, sawai.state.destination)
+        assertNull(
+            sawai.submitScanPayload(
+                ScanPayload.code128(sawaiShortPartBarcode, timestampMillis = 300L),
+            ),
         )
-        assertTrue(rejected?.effects?.single() is ScanEffect.InvalidScan)
-        assertEquals(ScanPhase.WAITING_CODE_128, sawai.state.phase)
+        val sawaiAccepted = sawai.submitScanPayload(
+            ScanPayload.code128(sawaiShortPartBarcode, timestampMillis = 400L),
+        )
+        assertEquals(ScanPhase.RESULT, sawaiAccepted?.state?.phase)
+        assertEquals(MatchResult.MATCH, sawaiAccepted?.state?.result)
     }
 
     @Test

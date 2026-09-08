@@ -24,6 +24,13 @@ class ScanReducerTest {
         "DAAL134140BCJH5581GG020000120000001200A      000000BAB15LAB07   0*"
     private val sharedBoxBarcode = "BCJH-55-81GG@1KVQ0C"
 
+    // A Sawai label with a nine-character part number (2026-09-08 field
+    // labels, #129): `DAH4`-shaped card number, left-justified item field with
+    // a trailing space, blank suffix, and a 4-2-3 tag.
+    private val sawaiShortPartQr =
+        "DAH4093540BCJH5281F   0002000000020000H      000000BHB01LHA28   0*"
+    private val sawaiShortPartTag = "BCJH-52-81F@01R95K"
+
     // Destination Molten. The trailing spaces are record data, so these
     // literals must never be reformatted or trimmed by an editor.
     private val moltenQr1 =
@@ -631,7 +638,7 @@ class ScanReducerTest {
     }
 
     @Test
-    fun moltenSessionAcceptsFourTwoFourTagAndSawaiSessionRejectsFourTwoThreeTag() {
+    fun sawaiAndMoltenSessionsAcceptFourTwoFourAndFourTwoThreeTags() {
         val reducer = ScanReducer()
         var molten = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
         molten = reducer.reduce(molten, ScanEvent.PayloadReceived(ScanPayload.qr(moltenQr1))).state
@@ -642,21 +649,32 @@ class ScanReducerTest {
         assertEquals(ScanPhase.RESULT, fourTwoFour.state.phase)
         assertEquals(MatchResult.MATCH, fourTwoFour.state.result)
 
+        // A Sawai label with a nine-character part number matches its 4-2-3
+        // tag (#129) and prints the part as 4-2-3.
         var sawai = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
-        sawai = reducer.reduce(sawai, ScanEvent.PayloadReceived(ScanPayload.qr(qrPayload))).state
+        sawai = reducer.reduce(sawai, ScanEvent.PayloadReceived(ScanPayload.qr(sawaiShortPartQr))).state
+        assertEquals(Destination.SAWAI, sawai.destination)
+        assertEquals(ScanPhase.WAITING_CODE_128, sawai.phase)
         val fourTwoThree = reducer.reduce(
             sawai,
+            ScanEvent.PayloadReceived(ScanPayload.code128(sawaiShortPartTag)),
+        )
+        assertEquals(ScanPhase.RESULT, fourTwoThree.state.phase)
+        assertEquals(MatchResult.MATCH, fourTwoThree.state.result)
+        assertEquals(1, fourTwoThree.state.matchedCount)
+
+        // A 4-2-3 tag of another part is a valid tag in a Sawai session too,
+        // so it reaches the comparison and is a mismatch rather than a
+        // rejected scan.
+        var tenCharacter = reducer.reduce(ScanSessionState(), ScanEvent.StartSession).state
+        tenCharacter = reducer.reduce(tenCharacter, ScanEvent.PayloadReceived(ScanPayload.qr(qrPayload))).state
+        val otherPart = reducer.reduce(
+            tenCharacter,
             ScanEvent.PayloadReceived(ScanPayload.code128(moltenTag2FirstBox)),
         )
-        assertEquals(sawai, fourTwoThree.state)
-        assertEquals(
-            ScanEffect.InvalidScan(
-                ScanFormat.CODE_128,
-                InvalidScanReason.INVALID_PAYLOAD,
-                moltenTag2FirstBox.length,
-            ),
-            fourTwoThree.effects.single(),
-        )
+        assertEquals(ScanPhase.RESULT, otherPart.state.phase)
+        assertEquals(MatchResult.MISMATCH, otherPart.state.result)
+        assertTrue(otherPart.effects.none { it is ScanEffect.InvalidScan })
     }
 
     @Test

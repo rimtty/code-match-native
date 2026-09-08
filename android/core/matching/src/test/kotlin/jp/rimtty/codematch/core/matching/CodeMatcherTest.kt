@@ -28,6 +28,19 @@ class CodeMatcherTest {
         "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
     private val moltenShortPartBarcodePayload = "PAF1-15-422@0NKD3C"
 
+    // Field labels of 2026-09-08 (destination Sawai, #129): the card number is
+    // `DAH4` + a six-digit serial (an alphanumeric four-character code), in the
+    // same 66-character record as the `DCLP675300` labels above.
+    private val sawaiAlnumCardQrPayload =
+        "DAH4093870BCJH558SHE020001600000016000H      000000BHB01LHA29   0*"
+    private val sawaiAlnumCardBarcodePayload = "BCJH-55-8SHE@02C04G"
+
+    // A nine-character Sawai part number: the item field is left-justified
+    // with a trailing space, the suffix field is blank, and the tag is 4-2-3.
+    private val sawaiShortPartQrPayload =
+        "DAH4093540BCJH5281F   0002000000020000H      000000BHB01LHA28   0*"
+    private val sawaiShortPartBarcodePayload = "BCJH-52-81F@01R95K"
+
     // Destination Denso, the real 221-character kanban of box 0140 (part
     // 860150-7722). The runs of spaces are item values (144, 402, 515, 516),
     // so never let an editor collapse them.
@@ -161,6 +174,59 @@ class CodeMatcherTest {
         assertTrue(KanbanQrRecord.isValidScanPayload("$qrPayload "))
     }
 
+    /**
+     * Field labels of 2026-09-08 (#129): a card number whose fourth character
+     * is a digit (`DAH4093870`) is accepted, and a nine-character part number
+     * is stored without the trailing space of its ten-wide field. The suffix
+     * field may be blank or `02`.
+     */
+    @Test
+    fun kanbanRecordAcceptsAlphanumericCardCodeAndNineCharacterPart() {
+        val tenCharacter = KanbanQrRecord.parse(sawaiAlnumCardQrPayload)
+        assertEquals("DAH4093870", tenCharacter?.cardNumber)
+        assertEquals("BCJH558SHE", tenCharacter?.partNumber)
+        assertEquals("02", tenCharacter?.partSuffix)
+        assertEquals(160.0, tenCharacter?.deliveryQuantity ?: 0.0, 0.001)
+        assertEquals(160.0, tenCharacter?.instructedQuantity ?: 0.0, 0.001)
+        assertEquals("H", tenCharacter?.factoryCode)
+        assertEquals("BHB01", tenCharacter?.warehouseCode)
+        assertEquals("LHA29", tenCharacter?.supplyPointCode)
+
+        val nineCharacter = KanbanQrRecord.parse(sawaiShortPartQrPayload)
+        assertEquals("DAH4093540", nineCharacter?.cardNumber)
+        assertEquals("BCJH5281F", nineCharacter?.partNumber)
+        assertNull(nineCharacter?.partSuffix)
+        assertEquals(200.0, nineCharacter?.deliveryQuantity ?: 0.0, 0.001)
+
+        val nineCharacterWithSuffix = KanbanQrRecord.parse(
+            "DAH4094390BEME5581F 020002000000020000H      000000BHB01LHA29   0*"
+        )
+        assertEquals("BEME5581F", nineCharacterWithSuffix?.partNumber)
+        assertEquals("02", nineCharacterWithSuffix?.partSuffix)
+
+        // The scan boundary, the destination detector and the comparison all pass.
+        assertTrue(KanbanQrRecord.isValidScanPayload(sawaiAlnumCardQrPayload))
+        assertTrue(KanbanQrRecord.isValidScanPayload(sawaiShortPartQrPayload))
+        assertEquals(Destination.SAWAI, CodeMatcher.detectDestination(sawaiAlnumCardQrPayload))
+        assertEquals(Destination.SAWAI, CodeMatcher.detectDestination(sawaiShortPartQrPayload))
+        assertEquals(
+            MatchResult.MATCH,
+            CodeMatcher.compare(sawaiAlnumCardQrPayload, sawaiAlnumCardBarcodePayload)
+        )
+        assertEquals(
+            MatchResult.MATCH,
+            CodeMatcher.compare(sawaiShortPartQrPayload, sawaiShortPartBarcodePayload)
+        )
+        assertEquals("BCJH-52-81F", CodeMatcher.formatPartNumber("BCJH5281F", Destination.SAWAI))
+
+        // A space inside the item field, a letter in the serial, a shifted
+        // record and an unrelated 66-character payload are still rejected.
+        assertNull(KanbanQrRecord.parse("DAH4093540BCJH52 1F   0002000000020000H      000000BHB01LHA28   0*"))
+        assertNull(KanbanQrRecord.parse("DAH409387ABCJH558SHE020001600000016000H      000000BHB01LHA29   0*"))
+        assertNull(KanbanQrRecord.parse("DAH4093540 BCJH5281F  0002000000020000H      000000BHB01LHA28   0*"))
+        assertNull(CodeMatcher.detectDestination("X".repeat(66)))
+    }
+
     @Test
     fun tagRecordValidationRejectsReverseOrderAndWrongShape() {
         assertTrue(TagBarcodeRecord.isValidScanPayload(barcodePayload, Destination.SAWAI))
@@ -196,7 +262,7 @@ class CodeMatcherTest {
         val fixture = SharedFixtureJson.decode(json)
 
         assertEquals(2, fixture.schemaVersion)
-        assertEquals(47, fixture.cases.size)
+        assertEquals(63, fixture.cases.size)
         assertEquals(
             "Shared fixture IDs must be unique",
             fixture.cases.size,
@@ -357,6 +423,64 @@ class CodeMatcherTest {
         assertTrue(MoltenQrRecord.isValidScanPayload(moltenQrPayload))
     }
 
+    /**
+     * The field labels of 2026-09-08 (sawai-2026-09-08-NN, #129): `DAH4`-shaped
+     * card numbers and five nine-character part numbers with 4-2-3 tags. Every
+     * pair passes both scan boundaries and the QR item number equals the tag
+     * part number.
+     */
+    @Test
+    fun sharedFieldLabels20260908PassBothScanBoundaries() {
+        val resource = javaClass.getResourceAsStream("/matching-cases.json")
+        assertNotNull("matching-cases.json must be on the test runtime classpath", resource)
+        val fixture = SharedFixtureJson.decode(resource!!.bufferedReader().use { it.readText() })
+        val pairs = fixture.cases.filter {
+            it.id.startsWith("sawai-2026-09-08-") && it.expected == "match"
+        }
+        assertEquals(12, pairs.size)
+
+        val cardNumberShape = Regex("[A-Z0-9]{4}[0-9]{6}")
+        var nineCharacterParts = 0
+        pairs.forEach { pair ->
+            assertTrue(pair.id, KanbanQrRecord.isValidScanPayload(pair.qrPayload))
+            assertTrue(
+                pair.id,
+                TagBarcodeRecord.isValidScanPayload(pair.barcodePayload, Destination.SAWAI)
+            )
+            assertFalse(pair.id, MoltenQrRecord.isValidScanPayload(pair.qrPayload))
+            assertEquals(pair.id, Destination.SAWAI, CodeMatcher.detectDestination(pair.qrPayload))
+            val record = KanbanQrRecord.parse(pair.qrPayload)
+            assertEquals(pair.id, CodeMatcher.partNumberFromBarcode(pair.barcodePayload), record?.partNumber)
+            assertTrue(pair.id, cardNumberShape.matches(record?.cardNumber.orEmpty()))
+            assertTrue(pair.id, record?.cardNumber.orEmpty().startsWith("DAH4"))
+            assertEquals(pair.id, "H", record?.factoryCode)
+            assertTrue(pair.id, record?.partSuffix == null || record?.partSuffix == "02")
+            if (record?.partNumber?.length == 9) nineCharacterParts += 1
+        }
+        assertEquals(5, nineCharacterParts)
+
+        fun pair(suffix: String) = pairs.single { it.id == "sawai-2026-09-08-$suffix" }
+        // Nine-character parts occur with a blank suffix and with suffix 02.
+        val blankSuffix = KanbanQrRecord.parse(pair("06-BCJH-52-81F").qrPayload)
+        assertEquals("BCJH5281F", blankSuffix?.partNumber)
+        assertNull(blankSuffix?.partSuffix)
+        val numberedSuffix = KanbanQrRecord.parse(pair("07-BEME-55-81F").qrPayload)
+        assertEquals("BEME5581F", numberedSuffix?.partNumber)
+        assertEquals("02", numberedSuffix?.partSuffix)
+
+        // Two boxes of one part: same tag, consecutive card numbers, and
+        // therefore two different box identities.
+        val boxA = pair("box-a-KAAA-45-81MB")
+        val boxB = pair("box-b-KAAA-45-81MB")
+        assertEquals(boxA.barcodePayload, boxB.barcodePayload)
+        assertEquals("DAH4094520", KanbanQrRecord.parse(boxA.qrPayload)?.cardNumber)
+        assertEquals("DAH4094530", KanbanQrRecord.parse(boxB.qrPayload)?.cardNumber)
+        assertNotEquals(
+            CodeMatcher.boxIdentity(boxA.qrPayload, boxA.barcodePayload),
+            CodeMatcher.boxIdentity(boxB.qrPayload, boxB.barcodePayload)
+        )
+    }
+
     @Test
     fun detectDestinationSeparatesSawaiAndMoltenAndRejectsOthers() {
         assertEquals(Destination.SAWAI, CodeMatcher.detectDestination(qrPayload))
@@ -396,18 +520,19 @@ class CodeMatcherTest {
     }
 
     @Test
-    fun tagValidationAllowsFourTwoThreeOnlyForMolten() {
-        assertTrue(
-            TagBarcodeRecord.isValidScanPayload(
-                moltenShortPartBarcodePayload,
-                Destination.MOLTEN
+    fun tagValidationAllowsFourTwoThreeForSawaiAndMolten() {
+        // A nine-character part number (4-2-3 tag) exists on Sawai labels as
+        // well (#129); only Denso's 6-4 tags are a different shape.
+        listOf(Destination.SAWAI, Destination.MOLTEN).forEach { destination ->
+            assertTrue(
+                TagBarcodeRecord.isValidScanPayload(moltenShortPartBarcodePayload, destination)
             )
-        )
+            assertTrue(
+                TagBarcodeRecord.isValidScanPayload(sawaiShortPartBarcodePayload, destination)
+            )
+        }
         assertFalse(
-            TagBarcodeRecord.isValidScanPayload(
-                moltenShortPartBarcodePayload,
-                Destination.SAWAI
-            )
+            TagBarcodeRecord.isValidScanPayload(sawaiShortPartBarcodePayload, Destination.DENSO)
         )
 
         // Denso is deliberately absent: its tags are 6-4, so the 4-2-4 and

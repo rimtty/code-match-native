@@ -4,7 +4,7 @@
 
 行番号は記載時点のものであり、その後の変更（#82 / #83 / #93 / #95 / #97 / #113 / #115）で前後している。行の同定はテスト名で行うこと。2026-09-07時点のSwiftソースは単体が約155本・UI 7本で、監査後に追加された仕向地関連のテストは末尾の「仕向地モルテンの追加テスト（2026-09-07）」と「仕向地デンソーの追加テスト（2026-09-07）」で対応付ける。
 
-共通照合データは [`matching-cases.json`](../../shared/test-fixtures/matching-cases.json)（schemaVersion 2、47ケース、各ケースにQRの`destination`）であり、Swift はファイルを直接読み、Kotlin は test runtime classpath から読む。`src/test` は JVM テスト、`src/androidTest` は端末・エミュレーター依存の証拠である。D/P は「実カメラ読取」や「対象 BLE scanner 通信」の成功を意味しない。
+共通照合データは [`matching-cases.json`](../../shared/test-fixtures/matching-cases.json)（schemaVersion 2、63ケース、各ケースにQRの`destination`）であり、Swift はファイルを直接読み、Kotlin は test runtime classpath から読む。`src/test` は JVM テスト、`src/androidTest` は端末・エミュレーター依存の証拠である。D/P は「実カメラ読取」や「対象 BLE scanner 通信」の成功を意味しない。
 
 ### Android 証拠ファイル（略記の正本）
 
@@ -158,7 +158,9 @@ Issue #84（PR #93 / #95 / #96 / #97 / #98 / #99）で追加した Swift テス�
 | 74 | 空欄の TY ロケーション・時刻を欠損として扱う（`CodeMatcherTests::testMoltenQRRecordHandlesBlankOptionalFields`） | `CodeMatcherTest.kt::moltenRecordParsesAllFieldsFromRealPayloads`（空欄を含む実レコード） | D |
 | 75 | 末尾空白が落ちた読取値を61桁へ補完し、同じ正規形にする（`CodeMatcherTests::testMoltenQRRecordPadsStrippedTrailingSpaces`） | `CodeMatcherTest.kt::moltenRecordPadsShortPayloadAndCanonicalizesIdentity` | D |
 | 76 | 桁数・収容数・日付・時刻・部品番号欄が不正なら受理しない（`CodeMatcherTests::testMoltenQRRecordRejectsInvalidFields`） | `CodeMatcherTest.kt::moltenRecordRejectsWrongLengthQuantityDateTimeAndPartField` | D |
-| 77 | `4-2-3` の Code 128 はモルテンだけで受理する（`CodeMatcherTests::testTagBarcodeRecordAcceptsFourTwoThreeOnlyForMolten`） | `CodeMatcherTest.kt::tagValidationAllowsFourTwoThreeOnlyForMolten` | D |
+| 77 | `4-2-3` の Code 128 は澤井製作所・モルテンで受理し、デンソーでは受理しない（`CodeMatcherTests::testTagBarcodeRecordAcceptsFourTwoThreeForSawaiAndMolten`、#129 で反転） | `CodeMatcherTest.kt::tagValidationAllowsFourTwoThreeForSawaiAndMolten` | D |
+| 77a | カード番号の4桁目が数字（`DAH4093870`）と9桁品番（品目番号欄の末尾空白を除去）の澤井製作所 QR を受理する（`CodeMatcherTests::testKanbanQRRecordAcceptsAlphanumericCardCodeAndNineCharacterPart`） | `CodeMatcherTest.kt::kanbanRecordAcceptsAlphanumericCardCodeAndNineCharacterPart` | D |
+| 77b | 2026-09-08 の現場ラベル fixture（`sawai-2026-09-08-`）がカメラ・Bluetooth 双方の受理境界を通り、9桁品番5組と同一品番2箱を含む（`CodeMatcherTests::testSharedFieldLabels20260908PassBothScanBoundaries`） | `CodeMatcherTest.kt::sharedFieldLabels20260908PassBothScanBoundaries` | D |
 | 78 | 箱固有キーは澤井製作所が QR のみ、モルテンは QR＋Code 128（`CodeMatcherTests::testBoxIdentityPerDestination`） | `CodeMatcherTest.kt::boxIdentityIncludesTagOnlyForMolten` | D |
 | 79 | モルテンの共通 fixture がカメラ・Bluetooth 双方の受理境界を通る（`CodeMatcherTests::testSharedMoltenPairsPassBothScanBoundaries`） | `CodeMatcherTest.kt::sharedMoltenFixturesPassBothScanBoundaries` + `ScanReducerTest.kt::moltenFixturesKeepTheirPadding` | D |
 | 80 | モルテンの QR→`4-2-3` バーコードが一致し、納品番号の箱数を報告する（`BluetoothScannerFlowTests::testMoltenQRThenFourTwoThreeBarcodeMatchesAndReportsDeliveryBox`） | `ScanReducerTest.kt::moltenQrThenTagMatchesWithNineCharPartAndDeliverySummary` + `ScanScreenTest.kt::moltenMatchResultShowsDeliveryBoxSummaryAndDestinationBadge` | D |
@@ -167,7 +169,7 @@ Issue #84（PR #93 / #95 / #96 / #97 / #98 / #99）で追加した Swift テス�
 | 83 | モルテンの不一致は計上しない（`BluetoothScannerFlowTests::testMoltenMismatchIsNotCounted`） | `ScanReducerTest.kt::mismatchRemainsVisibleAndNeverProducesRecordEffect`（記録effectなし）+ `CodeMatcherTest.kt::sharedMatchingFixturesHaveTheSameResultsAsSwift`（モルテンの不一致 fixture） | D |
 | 84 | 末尾空白が落ちた読取値でも一致し、別の箱を作らない（`BluetoothScannerFlowTests::testStrippedTrailingSpacesStillMatchAndDoNotCreateSecondBox`） | `ScanReducerTest.kt::moltenQrWithTrailingSpacesStrippedIsAcceptedAndSharesIdentityWithPaddedForm` | D |
 | 85 | 最初に受理した QR で仕向地を固定し、別仕向地の QR を拒否する（`BluetoothScannerFlowTests::testSessionLocksToFirstDestinationAndRejectsOtherDestinationQR`、`::testSawaiSessionRejectsMoltenQRViaCameraNamingSawai`） | `ScanReducerTest.kt::firstAcceptedQrLocksDestinationAndOtherDestinationQrIsRejected` + `ScanScreenTest.kt::wrongDestinationMessageNamesLockedDestinationOnCameraAndBluetooth` | D |
-| 86 | 澤井製作所のセッションでは `4-2-3` の Code 128 を受理しない（`BluetoothScannerFlowTests::testFourTwoThreeBarcodeIsRejectedInSawaiSession`） | `ScanReducerTest.kt::moltenSessionAcceptsFourTwoFourTagAndSawaiSessionRejectsFourTwoThreeTag` + `ScanSessionCoordinatorTest.kt::cameraFourTwoThreeTagGoesThroughStabilizerOnlyInMoltenSession` | D |
+| 86 | 澤井製作所のセッションでも 9桁品番の QR と `4-2-3` の Code 128 が一致し、カメラでは同一値2回の確定を通る（`BluetoothScannerFlowTests::testFourTwoThreeBarcodeMatchesInSawaiSession`、#129 で反転） | `ScanReducerTest.kt::sawaiAndMoltenSessionsAcceptFourTwoFourAndFourTwoThreeTags` + `ScanSessionCoordinatorTest.kt::cameraFourTwoThreeTagGoesThroughStabilizerInSawaiAndMoltenSessions` | D |
 | 86a | 固定は不一致・手動の次工程でも解除されない（Swift は `::testSessionLocksToFirstDestinationAndRejectsOtherDestinationQR` の再読取で暗黙に確認） | `ScanReducerTest.kt::destinationLockSurvivesMismatchAndManualNext` | D |
 | 87 | Code 128 待機中のモルテン QR は順序違いとして拒否（`BluetoothScannerFlowTests::testMoltenQRAtBarcodeStepIsWrongOrder`） | `ScanReducerTest.kt::reverseOrderAndInvalidPayloadAreRejectedWithoutChangingState` | D |
 | 88 | ViewModel 再生成時に active session から仕向地を復元（`BluetoothScannerFlowTests::testDestinationIsRestoredFromActiveSessionOnViewModelCreation`） | `ScanSessionCoordinatorTest.kt::restoredCheckpointDestinationSeedsTheLock` + `::sessionDestinationSeedsTheLockWhenCheckpointHasNone` + `::recordedBoxesDeriveTheLockWhenNothingElseIsStored` + `ScanCheckpointMappingTest.kt::destinationRoundTripsInEveryPhase` + `::checkpointWithoutDestinationDerivesItFromAcceptedQr` + `ScanViewModelCheckpointInstrumentationTest.kt::moltenDestinationLockSurvivesIsolatedDatabaseReopen` | D |

@@ -465,8 +465,8 @@ class ScanReducer(
             }
             // A Code 128 symbol likewise only proves the symbology. Camera and
             // Bluetooth input must both carry the product-tag business format
-            // (a 4-2-4 part number for Sawai, 4-2-3 or 4-2-4 for Molten, 6-4
-            // for Denso, followed by @management code) before comparison runs.
+            // (a 4-2-4 or 4-2-3 part number for Sawai and Molten, 6-4 for
+            // Denso, followed by @management code) before comparison runs.
             // Before the lock any of the three is accepted; a QR is always read
             // first, so in practice the destination is known here.
             payload.format == ScanFormat.CODE_128 ->

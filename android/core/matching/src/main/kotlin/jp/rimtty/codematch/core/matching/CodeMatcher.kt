@@ -52,7 +52,7 @@ object CodeMatcher {
      * destination's record.
      *
      * Denso is probed first: [KanbanQrRecord.parse] is deliberately tolerant
-     * (twenty characters or more whose first ten match `[A-Z]{4}[0-9]{6}`), so
+     * (twenty characters or more whose first ten match `[A-Z0-9]{4}[0-9]{6}`), so
      * it accepts `JAMA501195…` as a card number. A payload that parses as a
      * JAMA self-describing record is always Denso.
      */
@@ -186,6 +186,12 @@ object CodeMatcher {
 /**
  * A 66-character delivery-slip/kanban QR record.
  *
+ * The card number (characters 1-10) is a four-character alphanumeric code
+ * followed by a six-digit serial: both `DCLP675300` and `DAH4093870` occur on
+ * real slips (#129). The item-number field (characters 11-20) is ten wide; a
+ * nine-character part number is left-justified with a trailing space
+ * (`BCJH5281F `) and [partNumber] holds it trimmed.
+ *
  * Numeric quantities are encoded as integer hundredths (for example `00001200`
  * becomes `12.0`). Parsing is intentionally tolerant of an incomplete payload
  * because [parse] is also useful for displaying old saved entries; the scanner
@@ -205,8 +211,8 @@ data class KanbanQrRecord(
     companion object {
         const val REQUIRED_SCAN_PAYLOAD_LENGTH = 66
 
-        private val cardNumberPattern = Regex("[A-Z]{4}[0-9]{6}")
-        private val partNumberPattern = Regex("[A-Z0-9]{10}")
+        private val cardNumberPattern = Regex("[A-Z0-9]{4}[0-9]{6}")
+        private val partFieldPattern = Regex("[A-Z0-9]{9}[A-Z0-9 ]")
 
         /** Accept only a complete standard QR record at a scanner boundary. */
         fun isValidScanPayload(payload: String): Boolean {
@@ -229,13 +235,13 @@ data class KanbanQrRecord(
                 value?.trim()?.toDoubleOrNull()?.div(100.0)
 
             val cardNumber = slice(0, 10)
-            val partNumber = slice(10, 20)
+            val partField = slice(10, 20)
             if (cardNumber == null || !cardNumberPattern.matches(cardNumber)) return null
-            if (partNumber == null || !partNumberPattern.matches(partNumber)) return null
+            if (partField == null || !partFieldPattern.matches(partField)) return null
 
             return KanbanQrRecord(
                 cardNumber = cardNumber,
-                partNumber = partNumber,
+                partNumber = partField.trim(),
                 partSuffix = trimmedOrNull(slice(20, 22)),
                 deliveryQuantity = quantity(slice(22, 30)),
                 instructedQuantity = quantity(slice(30, 38)),
@@ -256,7 +262,7 @@ data class TagBarcodeRecord(
 ) {
     companion object {
         private val sawaiFormatPattern =
-            Regex("[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{4}@[A-Z0-9]+")
+            Regex("[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{3,4}@[A-Z0-9]+")
         private val moltenFormatPattern =
             Regex("[A-Z0-9]{4}-[A-Z0-9]{2}-[A-Z0-9]{3,4}@[A-Z0-9]+")
         private val densoFormatPattern =
@@ -264,8 +270,9 @@ data class TagBarcodeRecord(
 
         /**
          * Strict scanner-boundary validation for the product tag format of one
-         * destination: a Sawai part number is 4-2-4, a Molten part number is
-         * 4-2-3 or 4-2-4, and a Denso part number is 6-4. A null destination
+         * destination: a Sawai or Molten part number is 4-2-4 (ten characters)
+         * or 4-2-3 (nine characters, e.g. `BCJH-52-81F`), and a Denso part
+         * number is 6-4. A null destination
          * means the session has not locked one yet, so any of the three is
          * accepted. Lowercase input is accepted just as Swift's
          * uppercase-before-regex implementation accepts it.
