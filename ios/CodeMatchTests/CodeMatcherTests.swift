@@ -28,6 +28,14 @@ final class CodeMatcherTests: XCTestCase {
     private let moltenShortPartQRPayload = "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
     private let moltenShortPartBarcodePayload = "PAF1-15-422@0NKD3C"
 
+    // 2026-09-08 の現場ラベル（仕向地 澤井製作所、#129）。カード番号は `DAH4` + 6桁連番
+    // （英数4桁のコード）で、`DCLP675300` 型と同じ66桁レコード。
+    private let sawaiAlnumCardQRPayload = "DAH4093870BCJH558SHE020001600000016000H      000000BHB01LHA29   0*"
+    private let sawaiAlnumCardBarcodePayload = "BCJH-55-8SHE@02C04G"
+    // 9桁品番: 品目番号欄は左詰め＋末尾空白、枝番欄は空白、現品票は4-2-3。
+    private let sawaiShortPartQRPayload = "DAH4093540BCJH5281F   0002000000020000H      000000BHB01LHA28   0*"
+    private let sawaiShortPartBarcodePayload = "BCJH-52-81F@01R95K"
+
     // 仕向地 デンソーの実データ（かんばん 0140・221桁）。
     // 項目144・402・515・516の空白の連なりもデータなので、詰めないこと。
     private let densoQRPayload =
@@ -82,7 +90,7 @@ final class CodeMatcherTests: XCTestCase {
         let fixtures = try loadSharedMatchingFixtures()
 
         XCTAssertEqual(fixtures.schemaVersion, 2)
-        XCTAssertEqual(fixtures.cases.count, 47)
+        XCTAssertEqual(fixtures.cases.count, 63)
         XCTAssertEqual(
             Set(fixtures.cases.map(\.id)).count,
             fixtures.cases.count,
@@ -168,6 +176,65 @@ final class CodeMatcherTests: XCTestCase {
         XCTAssertEqual(label12?.supplyPointCode, "LAB14")
     }
 
+    /// 2026-09-08 の現場ラベル（sawai-2026-09-08-NN、#129）: カード番号が `DAH4` 型で、
+    /// 9桁品番（4-2-3の現品票）を5品番含む。全てがカメラ・BLE共通の読取境界を通り、
+    /// QRの品目番号と現品票の品番が一致する。
+    func testSharedFieldLabels20260908PassBothScanBoundaries() throws {
+        let pairs = try loadSharedMatchingFixtures().cases.filter {
+            $0.id.hasPrefix("sawai-2026-09-08-") && $0.expected == "match"
+        }
+        XCTAssertEqual(pairs.count, 12)
+
+        var nineCharacterParts = 0
+        for pair in pairs {
+            XCTAssertTrue(KanbanQRRecord.isValidScanPayload(pair.qrPayload), pair.id)
+            XCTAssertTrue(
+                TagBarcodeRecord.isValidScanPayload(pair.barcodePayload, destination: .sawai),
+                pair.id
+            )
+            XCTAssertFalse(MoltenQRRecord.isValidScanPayload(pair.qrPayload), pair.id)
+            XCTAssertEqual(Destination.detect(qrPayload: pair.qrPayload), .sawai, pair.id)
+            let record = KanbanQRRecord.parse(pair.qrPayload)
+            XCTAssertEqual(
+                record?.partNumber,
+                CodeMatcher.partNumber(fromBarcode: pair.barcodePayload),
+                pair.id
+            )
+            // カード番号は英数4桁のコード + 6桁の連番
+            XCTAssertNotNil(
+                record?.cardNumber.range(of: "^[A-Z0-9]{4}[0-9]{6}$", options: .regularExpression),
+                pair.id
+            )
+            XCTAssertTrue(record?.cardNumber.hasPrefix("DAH4") ?? false, pair.id)
+            XCTAssertEqual(record?.factoryCode, "H", pair.id)
+            XCTAssertTrue(record?.partSuffix == nil || record?.partSuffix == "02", pair.id)
+            if record?.partNumber.count == 9 { nineCharacterParts += 1 }
+        }
+        XCTAssertEqual(nineCharacterParts, 5)
+
+        func pair(_ suffix: String) -> SharedMatchingCase? {
+            pairs.first { $0.id == "sawai-2026-09-08-\(suffix)" }
+        }
+        // 9桁品番: 枝番が空白のものと `02` のものの両方がある。
+        let blankSuffix = pair("06-BCJH-52-81F").flatMap { KanbanQRRecord.parse($0.qrPayload) }
+        XCTAssertEqual(blankSuffix?.partNumber, "BCJH5281F")
+        XCTAssertNil(blankSuffix?.partSuffix)
+        let numberedSuffix = pair("07-BEME-55-81F").flatMap { KanbanQRRecord.parse($0.qrPayload) }
+        XCTAssertEqual(numberedSuffix?.partNumber, "BEME5581F")
+        XCTAssertEqual(numberedSuffix?.partSuffix, "02")
+
+        // 同一品番2箱: 現品票は同じでカード番号が連番。箱固有キーはQR単体なので別の箱になる。
+        let boxA = pair("box-a-KAAA-45-81MB")
+        let boxB = pair("box-b-KAAA-45-81MB")
+        XCTAssertEqual(boxA?.barcodePayload, boxB?.barcodePayload)
+        XCTAssertEqual(KanbanQRRecord.parse(boxA?.qrPayload ?? "")?.cardNumber, "DAH4094520")
+        XCTAssertEqual(KanbanQRRecord.parse(boxB?.qrPayload ?? "")?.cardNumber, "DAH4094530")
+        XCTAssertNotEqual(
+            BoxIdentity.make(qrPayload: boxA?.qrPayload ?? "", barcodePayload: boxA?.barcodePayload),
+            BoxIdentity.make(qrPayload: boxB?.qrPayload ?? "", barcodePayload: boxB?.barcodePayload)
+        )
+    }
+
     func testDifferentPartNumberMismatches() {
         // BCJH-55-81GG (LH) と BCJH-52-81GG (RH) の取り違え
         XCTAssertEqual(
@@ -245,6 +312,53 @@ final class CodeMatcherTests: XCTestCase {
     func testKanbanQRRecordRejectsNonStandardPayload() {
         XCTAssertNil(KanbanQRRecord.parse("PART:BCJH-52-81GG;QTY:12"))
         XCTAssertNil(KanbanQRRecord.parse("SHORT"))
+    }
+
+    /// 2026-09-08 の現場ラベル（#129）: カード番号の4桁目が数字（`DAH4093870`）でも受理し、
+    /// 9桁品番は品目番号欄の末尾空白を除いて保持する。枝番は空白でも `02` でもよい。
+    func testKanbanQRRecordAcceptsAlphanumericCardCodeAndNineCharacterPart() {
+        let tenCharacter = KanbanQRRecord.parse(sawaiAlnumCardQRPayload)
+        XCTAssertEqual(tenCharacter?.cardNumber, "DAH4093870")
+        XCTAssertEqual(tenCharacter?.partNumber, "BCJH558SHE")
+        XCTAssertEqual(tenCharacter?.partSuffix, "02")
+        XCTAssertEqual(tenCharacter?.deliveryQuantity ?? 0, 160, accuracy: 0.001)
+        XCTAssertEqual(tenCharacter?.instructedQuantity ?? 0, 160, accuracy: 0.001)
+        XCTAssertEqual(tenCharacter?.factoryCode, "H")
+        XCTAssertEqual(tenCharacter?.warehouseCode, "BHB01")
+        XCTAssertEqual(tenCharacter?.supplyPointCode, "LHA29")
+
+        let nineCharacter = KanbanQRRecord.parse(sawaiShortPartQRPayload)
+        XCTAssertEqual(nineCharacter?.cardNumber, "DAH4093540")
+        XCTAssertEqual(nineCharacter?.partNumber, "BCJH5281F")
+        XCTAssertNil(nineCharacter?.partSuffix)
+        XCTAssertEqual(nineCharacter?.deliveryQuantity ?? 0, 200, accuracy: 0.001)
+
+        let nineCharacterWithSuffix = KanbanQRRecord.parse(
+            "DAH4094390BEME5581F 020002000000020000H      000000BHB01LHA29   0*"
+        )
+        XCTAssertEqual(nineCharacterWithSuffix?.partNumber, "BEME5581F")
+        XCTAssertEqual(nineCharacterWithSuffix?.partSuffix, "02")
+
+        // 読取境界・仕向地判定・照合のすべてを通る。
+        XCTAssertTrue(KanbanQRRecord.isValidScanPayload(sawaiAlnumCardQRPayload))
+        XCTAssertTrue(KanbanQRRecord.isValidScanPayload(sawaiShortPartQRPayload))
+        XCTAssertEqual(Destination.detect(qrPayload: sawaiAlnumCardQRPayload), .sawai)
+        XCTAssertEqual(Destination.detect(qrPayload: sawaiShortPartQRPayload), .sawai)
+        XCTAssertEqual(
+            CodeMatcher.compare(qrPayload: sawaiAlnumCardQRPayload, barcodePayload: sawaiAlnumCardBarcodePayload),
+            .match
+        )
+        XCTAssertEqual(
+            CodeMatcher.compare(qrPayload: sawaiShortPartQRPayload, barcodePayload: sawaiShortPartBarcodePayload),
+            .match
+        )
+        XCTAssertEqual(CodeMatcher.format(partNumber: "BCJH5281F", destination: .sawai), "BCJH-52-81F")
+
+        // 品目番号欄の途中の空白、連番の英字、無関係な66桁は引き続き受理しない。
+        XCTAssertNil(KanbanQRRecord.parse("DAH4093540BCJH52 1F   0002000000020000H      000000BHB01LHA28   0*"))
+        XCTAssertNil(KanbanQRRecord.parse("DAH409387ABCJH558SHE020001600000016000H      000000BHB01LHA29   0*"))
+        XCTAssertNil(KanbanQRRecord.parse("DAH4093540 BCJH5281F  0002000000020000H      000000BHB01LHA28   0*"))
+        XCTAssertNil(Destination.detect(qrPayload: String(repeating: "X", count: 66)))
     }
 
     func testBluetoothScanPayloadValidationRejectsReverseOrderFormats() {
@@ -391,12 +505,18 @@ final class CodeMatcherTests: XCTestCase {
         )
     }
 
-    func testTagBarcodeRecordAcceptsFourTwoThreeOnlyForMolten() {
-        XCTAssertTrue(
-            TagBarcodeRecord.isValidScanPayload(moltenShortPartBarcodePayload, destination: .molten)
-        )
+    func testTagBarcodeRecordAcceptsFourTwoThreeForSawaiAndMolten() {
+        // 9桁品番の現品票（4-2-3）は澤井製作所にもある（#129）。デンソーの6-4とは区別する。
+        for destination in [Destination.sawai, .molten] {
+            XCTAssertTrue(
+                TagBarcodeRecord.isValidScanPayload(moltenShortPartBarcodePayload, destination: destination)
+            )
+            XCTAssertTrue(
+                TagBarcodeRecord.isValidScanPayload(sawaiShortPartBarcodePayload, destination: destination)
+            )
+        }
         XCTAssertFalse(
-            TagBarcodeRecord.isValidScanPayload(moltenShortPartBarcodePayload, destination: .sawai)
+            TagBarcodeRecord.isValidScanPayload(sawaiShortPartBarcodePayload, destination: .denso)
         )
         // 仕向地未判定のときは、どちらの仕向地の現品票も取りこぼさない
         XCTAssertTrue(

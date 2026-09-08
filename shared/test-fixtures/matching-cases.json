@@ -5,7 +5,8 @@
     "label-AA-qr-vs-label-BB-tag cases pair a QR with the tag of the neighbouring label of the same series (e.g. 52 vs 55) to pin the most likely field mix-up as a mismatch.",
     "box-a / box-b are two boxes of the same part (BCJH-55-81GG) photographed with the same tag barcode and different card numbers (DAAL134140 / DAAL134150): the basis for the duplicate rule keying on the QR record, not the part number.",
     "molten-NN cases are the Vision-decoded slip/label pairs of destination モルテン (spec §6.5, docs/qr-barcode-spec-analysis.html, git-ignored). QR payloads keep their trailing spaces and are exactly 61 characters; `destination` is the value the destination detector must return for the QR.",
-    "denso-NN cases are the Vision-decoded kanban/tag pairs of destination デンソー (2026-09-07, spec §7). Each QR is the complete 221-character JAMA self-describing record whose header declares the item list; the box is identified by the QR alone because item 152 (kanban serial) differs per box. The tag part number prints 6-4."
+    "denso-NN cases are the Vision-decoded kanban/tag pairs of destination デンソー (2026-09-07, spec §7). Each QR is the complete 221-character JAMA self-describing record whose header declares the item list; the box is identified by the QR alone because item 152 (kanban serial) differs per box. The tag part number prints 6-4.",
+    "sawai-2026-09-08-NN cases are the field labels photographed on 2026-09-08 (Vision-decoded, destination 澤井製作所, #129). Their card numbers are the `DAH4` + 6-digit-serial shape (an alphanumeric 4-character code, not four letters), five of the part numbers are nine characters — the QR item field is left-justified with a trailing space (`BCJH5281F `), the suffix field is blank or `02`, and the tag prints 4-2-3 (`BCJH-52-81F@01R95K`). box-a / box-b are two boxes of KAAA-45-81MB with the same tag and consecutive card numbers. The `*-qr-vs-*-tag` cases pin the neighbouring-series mix-ups and the nine-vs-ten-character mix-ups of the same prefix as mismatches."
   ],
   "cases": [
     {
@@ -332,6 +333,118 @@
       "id": "sawai-qr-vs-denso-tag",
       "qrPayload": "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
       "barcodePayload": "860150-7722@1DZ50O",
+      "expected": "mismatch",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-01-BCJH-55-8SHE",
+      "qrPayload": "DAH4093870BCJH558SHE020001600000016000H      000000BHB01LHA29   0*",
+      "barcodePayload": "BCJH-55-8SHE@02C04G",
+      "expected": "match",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-02-BCJH-45-81MC",
+      "qrPayload": "DAH4093150BCJH4581MC020003360000033600H      000000BHB01LHA27   0*",
+      "barcodePayload": "BCJH-45-81MC@01V29C",
+      "expected": "match",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-03-KAAA-52-81MB",
+      "qrPayload": "DAH4094610KAAA5281MB020003360000033600H      000000BHB03LHA24   0*",
+      "barcodePayload": "KAAA-52-81MB@01MV9C",
+      "expected": "match",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-04-BCJM-55-81MC",
+      "qrPayload": "DAH4094030BCJM5581MC020003360000033600H      000000BHB01LHA29   0*",
+      "barcodePayload": "BCJM-55-81MC@01QG9C",
+      "expected": "match",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-05-BEME-52-8SHD",
+      "qrPayload": "DAH4094130BEME528SHD020001600000016000H      000000BHB01LHA28   0*",
+      "barcodePayload": "BEME-52-8SHD@03Q04G",
+      "expected": "match",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-06-BCJH-52-81F",
+      "qrPayload": "DAH4093540BCJH5281F   0002000000020000H      000000BHB01LHA28   0*",
+      "barcodePayload": "BCJH-52-81F@01R95K",
+      "expected": "match",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-07-BEME-55-81F",
+      "qrPayload": "DAH4094390BEME5581F 020002000000020000H      000000BHB01LHA29   0*",
+      "barcodePayload": "BEME-55-81F@031U5K",
+      "expected": "match",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-08-BEME-52-81F",
+      "qrPayload": "DAH4094210BEME5281F 020002000000020000H      000000BHB01LHA28   0*",
+      "barcodePayload": "BEME-52-81F@02WG5K",
+      "expected": "match",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-09-BCJH-45-8SF",
+      "qrPayload": "DAH4093000BCJH458SF   0001000000010000H      000000BHB01LHA27   0*",
+      "barcodePayload": "BCJH-45-8SF@07CU2S",
+      "expected": "match",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-10-BCJH-42-8SF",
+      "qrPayload": "DAH4092630BCJH428SF   0001000000010000H      000000BHB01LHA26   0*",
+      "barcodePayload": "BCJH-42-8SF@079U2S",
+      "expected": "match",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-box-a-KAAA-45-81MB",
+      "qrPayload": "DAH4094520KAAA4581MB020003360000033600H      000000BHB03LHA23   0*",
+      "barcodePayload": "KAAA-45-81MB@01HP9C",
+      "expected": "match",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-box-b-KAAA-45-81MB",
+      "qrPayload": "DAH4094530KAAA4581MB020003360000033600H      000000BHB03LHA23   0*",
+      "barcodePayload": "KAAA-45-81MB@01HP9C",
+      "expected": "match",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-07-qr-vs-08-tag",
+      "qrPayload": "DAH4094390BEME5581F 020002000000020000H      000000BHB01LHA29   0*",
+      "barcodePayload": "BEME-52-81F@02WG5K",
+      "expected": "mismatch",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-09-qr-vs-10-tag",
+      "qrPayload": "DAH4093000BCJH458SF   0001000000010000H      000000BHB01LHA27   0*",
+      "barcodePayload": "BCJH-42-8SF@079U2S",
+      "expected": "mismatch",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-ten-char-qr-vs-nine-char-tag",
+      "qrPayload": "DAH4093500BCJH528SHE020001600000016000H      000000BHB01LHA28   0*",
+      "barcodePayload": "BCJH-52-81F@01R95K",
+      "expected": "mismatch",
+      "destination": "sawai"
+    },
+    {
+      "id": "sawai-2026-09-08-nine-char-qr-vs-ten-char-tag",
+      "qrPayload": "DAH4093540BCJH5281F   0002000000020000H      000000BHB01LHA28   0*",
+      "barcodePayload": "BCJH-52-8SHE@02NV4G",
       "expected": "mismatch",
       "destination": "sawai"
     }

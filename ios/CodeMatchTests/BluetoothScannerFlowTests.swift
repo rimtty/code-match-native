@@ -935,32 +935,33 @@ final class BluetoothScannerFlowTests: XCTestCase {
         XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
     }
 
-    func testFourTwoThreeBarcodeIsRejectedInSawaiSession() async {
+    func testFourTwoThreeBarcodeMatchesInSawaiSession() async {
         let context = makeContext()
         defer { context.cleanup() }
         let camera = context.viewModel.camera
+        // 2026-09-08 の現場ラベル（#129）: カード番号は `DAH4` 型、品目番号欄は9桁品番を
+        // 左詰めにした末尾空白、枝番は空白。現品票の品番は4-2-3。
+        let qrPayload = "DAH4093540BCJH5281F   0002000000020000H      000000BHB01LHA28   0*"
+        let barcodePayload = "BCJH-52-81F@01R95K"
+        XCTAssertEqual(qrPayload.count, 66)
 
-        context.viewModel.cameraScanner(camera, didRead: ScannerViewModel.sampleQRPayload, type: .qr)
+        context.viewModel.cameraScanner(camera, didRead: qrPayload, type: .qr)
         XCTAssertEqual(context.viewModel.step, .barcode)
         XCTAssertEqual(context.viewModel.destination, .sawai)
+        XCTAssertEqual(context.viewModel.qrPartNumber, "BCJH5281F")
         try? await Task.sleep(for: .milliseconds(300))
 
-        // 澤井製作所の現品票は品番末尾が4桁固定。モルテンの4-2-3品番は受理しない。
-        context.viewModel.cameraScanner(
-            camera,
-            didRead: ScannerViewModel.sampleMoltenBarcodePayload,
-            type: .code128
-        )
-        context.viewModel.cameraScanner(
-            camera,
-            didRead: ScannerViewModel.sampleMoltenBarcodePayload,
-            type: .code128
-        )
-
+        // 4-2-3の現品票も澤井製作所のセッションで受理し、カメラでは同一値2フレームで確定する。
+        context.viewModel.cameraScanner(camera, didRead: barcodePayload, type: .code128)
         XCTAssertEqual(context.viewModel.step, .barcode)
         XCTAssertTrue(context.viewModel.barcodeValue.isEmpty)
-        XCTAssertTrue(context.viewModel.message.contains("Code 128バーコードではありません"))
-        XCTAssertEqual(context.store.activeSession?.matchedCount, 0)
+        context.viewModel.cameraScanner(camera, didRead: barcodePayload, type: .code128)
+
+        XCTAssertEqual(context.viewModel.step, .result(.match))
+        XCTAssertEqual(context.viewModel.barcodePartNumber, "BCJH5281F")
+        XCTAssertEqual(CodeMatcher.format(partNumber: "BCJH5281F", destination: context.viewModel.destination), "BCJH-52-81F")
+        XCTAssertEqual(context.store.activeSession?.matchedCount, 1)
+        XCTAssertEqual(context.store.activeSession?.destination, .sawai)
     }
 
     func testMoltenQRAtBarcodeStepIsWrongOrder() async {
@@ -1231,7 +1232,7 @@ final class BluetoothScannerFlowTests: XCTestCase {
     }
 
     func testSixFourBarcodeIsRejectedInSawaiAndMoltenSessions() async {
-        // 澤井製作所は4-2-4、モルテンは4-2-3/4-2-4。デンソーの6-4はどちらでも受理しない。
+        // 澤井製作所・モルテンは4-2-3/4-2-4。デンソーの6-4はどちらでも受理しない。
         for (qrPayload, destination) in [
             (ScannerViewModel.sampleQRPayload, Destination.sawai),
             (ScannerViewModel.sampleMoltenQRPayload, Destination.molten)
