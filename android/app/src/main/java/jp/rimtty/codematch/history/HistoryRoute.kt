@@ -29,6 +29,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import jp.rimtty.codematch.R
 import jp.rimtty.codematch.core.export.HistoryReportKind
+import jp.rimtty.codematch.core.export.ReportMailContent
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchSession
 import jp.rimtty.codematch.feature.history.HistoryContent
@@ -400,7 +401,11 @@ private fun preparePdfForShare(
         val result = when (
             val cacheResult = HistoryPdfBridge.writeShareCache(context, session, language, kind = kind)
         ) {
-            is HistoryPdfResult.Success -> HistoryPdfBridge.createShareChooser(context, cacheResult.value)
+            is HistoryPdfResult.Success -> HistoryPdfBridge.createMailOrShareChooser(
+                context,
+                cacheResult.value,
+                ReportMailContent.build(session, kind, cacheResult.value.name, language),
+            )
             is HistoryPdfResult.Failure -> HistoryPdfResult.Failure(cacheResult.reason)
         }
         withContext(Dispatchers.Main.immediate) {

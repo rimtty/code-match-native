@@ -82,6 +82,13 @@ data class HistoryExportLabels(
     val columnCumulativeQuantity: String,
     val columnCheck: String,
     val inspectionFooterNote: String,
+    /** Pre-filled report e-mail: greeting, intro per report, headings and footer. */
+    val mailGreeting: String,
+    val mailIntroInspection: String,
+    val mailIntroHistory: String,
+    val mailSessionHeading: String,
+    val mailAttachmentHeading: String,
+    val mailFooter: String,
     /** Singular and plural units are kept separately for natural English. */
     val boxCountSingular: String = boxCount,
     val boxCountPlural: String = boxCount,
@@ -185,6 +192,12 @@ object HistoryExportTextFormatter {
             columnCheck = "確認",
             inspectionFooterNote =
                 "検品表にあってこの一覧にない品番は、このセッションで照合されていません。",
+            mailGreeting = "お疲れさまです。",
+            mailIntroInspection = "CodeMatch の検品レポートをお送りします。",
+            mailIntroHistory = "CodeMatch の照合履歴レポートをお送りします。",
+            mailSessionHeading = "■ セッション",
+            mailAttachmentHeading = "■ 添付",
+            mailFooter = "このメールは CodeMatch から作成しました。内容は端末内のデータのみです。",
             boxCountSingular = "箱",
             boxCountPlural = "箱",
         )
@@ -260,6 +273,12 @@ object HistoryExportTextFormatter {
             columnCheck = "Check",
             inspectionFooterNote =
                 "Part numbers on the inspection sheet that are missing from this list were not matched in this session.",
+            mailGreeting = "Hello,",
+            mailIntroInspection = "Please find the CodeMatch inspection report attached.",
+            mailIntroHistory = "Please find the CodeMatch match history report attached.",
+            mailSessionHeading = "Session",
+            mailAttachmentHeading = "Attachment",
+            mailFooter = "Created by CodeMatch. The contents are on-device data only.",
             boxCountSingular = "box",
             boxCountPlural = "boxes",
         )

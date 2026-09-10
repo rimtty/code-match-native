@@ -1,0 +1,103 @@
+package jp.rimtty.codematch.core.export
+
+import jp.rimtty.codematch.core.model.AppLanguage
+import jp.rimtty.codematch.core.model.Destination
+import jp.rimtty.codematch.core.model.MatchEntry
+import jp.rimtty.codematch.core.model.MatchSession
+import java.time.ZoneId
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ReportMailContentTest {
+    private val utc = ZoneId.of("UTC")
+    private val sawaiQr =
+        "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*"
+    private val moltenQrPAF1 =
+        "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+
+    @Test
+    fun recipientIsTheFixedOperatorAddress() {
+        assertEquals("ttyrim@gmail.com", ReportMailContent.RECIPIENT)
+        assertEquals(listOf("ttyrim@gmail.com"), ReportMailContent.recipients.toList())
+    }
+
+    @Test
+    fun inspectionMailRepeatsTheReportHeaderAndNamesTheAttachment() {
+        val session = MatchSession(
+            startedAt = 1_700_000_000_000L,
+            endedAt = 1_700_000_120_000L,
+            name = "朝便",
+            destination = Destination.SAWAI,
+            entries = listOf(
+                entry("one", "BCJH-52-81GG", sawaiQr, "BCJH-52-81GG@1N5X0C"),
+                entry("two", "BCJH-52-81GG", sawaiQr, "BCJH-52-81GG@1N5X0D"),
+            ),
+        )
+
+        val mail = ReportMailContent.build(
+            session,
+            HistoryReportKind.INSPECTION,
+            "検品レポート_朝便.pdf",
+            AppLanguage.JAPANESE,
+            utc,
+        )
+
+        assertEquals("[CodeMatch] 検品レポート 朝便 - 澤井製作所", mail.subject)
+        val expectedBody = listOf(
+            "お疲れさまです。",
+            "CodeMatch の検品レポートをお送りします。",
+            "",
+            "■ セッション",
+            "セッション名: 朝便",
+            "開始: ${HistoryExportTextFormatter.dateTime(1_700_000_000_000L, AppLanguage.JAPANESE, utc)}",
+            "終了: ${HistoryExportTextFormatter.dateTime(1_700_000_120_000L, AppLanguage.JAPANESE, utc)}",
+            "仕向地: 澤井製作所",
+            "検査箱数: 2箱",
+            "品番数（枝番別）: 1",
+            "",
+            "■ 添付",
+            "検品レポート_朝便.pdf",
+            "",
+            "このメールは CodeMatch から作成しました。内容は端末内のデータのみです。",
+        ).joinToString("\n")
+        assertEquals(expectedBody, mail.body)
+        assertFalse("the mail never carries a raw payload", mail.body.contains(sawaiQr))
+    }
+
+    @Test
+    fun historyMailOfAMoltenSessionAddsTheDeliveryNumberCountAndUsesTheStartDateWhenUnnamed() {
+        val session = MatchSession(
+            startedAt = 1_700_000_000_000L,
+            destination = Destination.MOLTEN,
+            entries = listOf(entry("one", "PAF1-15-422", moltenQrPAF1, "PAF1-15-422@0NKD3C")),
+        )
+
+        val mail = ReportMailContent.build(
+            session,
+            HistoryReportKind.MATCH_HISTORY,
+            "MatchHistory_x.pdf",
+            AppLanguage.ENGLISH,
+            utc,
+        )
+
+        val start = HistoryExportTextFormatter.dateTime(1_700_000_000_000L, AppLanguage.ENGLISH, utc)
+        assertEquals("[CodeMatch] Match History Report $start - Molten", mail.subject)
+        assertTrue(mail.body.startsWith("Hello,\nPlease find the CodeMatch match history report attached.\n"))
+        assertTrue(mail.body.contains("Status: In progress"))
+        assertTrue(mail.body.contains("Boxes: 1 box"))
+        assertTrue(mail.body.contains("Part numbers: 1"))
+        assertTrue(mail.body.contains("Delivery numbers: 1"))
+        assertTrue(mail.body.contains("Attachment\nMatchHistory_x.pdf"))
+        assertFalse(mail.body.contains("Session name"))
+    }
+
+    private fun entry(id: String, code: String, qrPayload: String?, barcodePayload: String?) = MatchEntry(
+        id = id,
+        code = code,
+        matchedAt = 1_700_000_001_000L,
+        qrPayload = qrPayload,
+        barcodePayload = barcodePayload,
+    )
+}

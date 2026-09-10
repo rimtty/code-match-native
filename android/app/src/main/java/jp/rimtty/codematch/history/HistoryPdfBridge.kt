@@ -12,6 +12,8 @@ import java.io.OutputStream
 import java.time.ZoneId
 import jp.rimtty.codematch.core.export.HistoryPdfExporter
 import jp.rimtty.codematch.core.export.HistoryReportKind
+import jp.rimtty.codematch.core.export.ReportMail
+import jp.rimtty.codematch.core.export.ReportMailContent
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchSession
 
@@ -188,6 +190,59 @@ internal object HistoryPdfBridge {
         HistoryPdfResult.Success(Intent.createChooser(createShareIntent(uri), null))
     } catch (_: Exception) {
         HistoryPdfResult.Failure(HistoryPdfFailure.FILE_PROVIDER_FAILED)
+    }
+
+    /**
+     * The e-mail hand-off for a report: a mail app opens with the recipient,
+     * subject, body and the PDF attached, and the operator only has to send.
+     * When no mail app can take the intent the plain share chooser is used so
+     * the PDF can still leave the device.
+     */
+    fun createMailOrShareChooser(context: Context, file: File, mail: ReportMail): HistoryPdfResult<Intent> =
+        createMailOrShareChooser(
+            file = file,
+            mail = mail,
+            uriForFile = { current ->
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", current)
+            },
+            hasMailApp = { intent ->
+                // A resolver failure only means "no mail app to hand off to"; the
+                // share chooser must still open, so it is not a provider failure.
+                runCatching { context.packageManager.queryIntentActivities(intent, 0).isNotEmpty() }
+                    .getOrDefault(false)
+            },
+        )
+
+    /** Injectable URI and resolver seams so both branches are testable without a real FileProvider root. */
+    internal fun createMailOrShareChooser(
+        file: File,
+        mail: ReportMail,
+        uriForFile: (File) -> Uri,
+        hasMailApp: (Intent) -> Boolean,
+    ): HistoryPdfResult<Intent> = try {
+        val uri = uriForFile(file)
+        val mailIntent = createMailIntent(uri, mail)
+        HistoryPdfResult.Success(
+            if (hasMailApp(mailIntent)) mailIntent else Intent.createChooser(createShareIntent(uri), null),
+        )
+    } catch (_: Exception) {
+        HistoryPdfResult.Failure(HistoryPdfFailure.FILE_PROVIDER_FAILED)
+    }
+
+    /**
+     * `ACTION_SEND` carrying the PDF plus the mail fields, restricted to mail
+     * apps through a `mailto:` selector. The system resolver lets the operator
+     * pin one mail app ("always") when several are installed.
+     */
+    internal fun createMailIntent(uri: Uri, mail: ReportMail): Intent = Intent(Intent.ACTION_SEND).apply {
+        type = PDF_MIME_TYPE
+        putExtra(Intent.EXTRA_EMAIL, ReportMailContent.recipients)
+        putExtra(Intent.EXTRA_SUBJECT, mail.subject)
+        putExtra(Intent.EXTRA_TEXT, mail.body)
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        clipData = ClipData.newRawUri(null, uri)
+        selector = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"))
     }
 
     internal fun launchShare(context: Context, chooser: Intent): HistoryPdfResult<Unit> = try {
