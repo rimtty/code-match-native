@@ -44,6 +44,26 @@ class HistoryExportTextTest {
     }
 
     @Test
+    fun inspectionReportPrefixSharesTheHistoryFileNameSanitizing() {
+        val session = MatchSession(
+            id = "12345678-aaaa-bbbb-cccc-dddddddddddd",
+            startedAt = 0L,
+            name = "  morning/09:00\\report..pdf?  ",
+        )
+        val japanese = HistoryExportTextFormatter.labels(AppLanguage.JAPANESE)
+        val english = HistoryExportTextFormatter.labels(AppLanguage.ENGLISH)
+
+        assertEquals(
+            "検品レポート_morning-0900-report_pdf.pdf",
+            HistoryExportTextFormatter.fileName(session, AppLanguage.JAPANESE, utc, japanese.inspectionFilePrefix),
+        )
+        assertTrue(
+            HistoryExportTextFormatter.fileName(session, AppLanguage.ENGLISH, utc, english.inspectionFilePrefix)
+                .startsWith("InspectionReport_"),
+        )
+    }
+
+    @Test
     fun quantityAndTimeAreLocalizedAndNullQuantityIsDash() {
         assertEquals("12", HistoryExportTextFormatter.quantity(12.0, AppLanguage.JAPANESE))
         assertEquals("12.50", HistoryExportTextFormatter.quantity(12.5, AppLanguage.ENGLISH))
