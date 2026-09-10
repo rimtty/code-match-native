@@ -48,15 +48,10 @@ object HistoryPdfExporter {
         language: AppLanguage = AppLanguage.JAPANESE,
         zoneId: ZoneId = ZoneId.systemDefault(),
         kind: HistoryReportKind = HistoryReportKind.MATCH_HISTORY,
-    ): String = HistoryExportTextFormatter.fileName(
-        session = session,
-        language = language,
-        zoneId = zoneId,
-        prefix = when (kind) {
-            HistoryReportKind.MATCH_HISTORY -> null
-            HistoryReportKind.INSPECTION -> HistoryExportTextFormatter.labels(language).inspectionFilePrefix
-        },
-    )
+    ): String = when (kind) {
+        HistoryReportKind.MATCH_HISTORY -> HistoryExportTextFormatter.fileName(session, language, zoneId)
+        HistoryReportKind.INSPECTION -> HistoryExportTextFormatter.inspectionFileName(session, language, zoneId)
+    }
 
     /** Name of the only cache directory used for a shareable history report. */
     const val CACHE_DIRECTORY: String = "codematch-pdf"

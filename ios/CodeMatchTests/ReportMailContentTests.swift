@@ -27,7 +27,8 @@ final class ReportMailContentTests: XCTestCase {
 
         let mail = ReportMailContent.make(session: session, kind: .inspection, fileName: "検品レポート_朝便.pdf", locale: locale)
 
-        XCTAssertEqual(mail.subject, "[CodeMatch] 検品レポート 朝便 - 澤井製作所")
+        XCTAssertEqual(mail.subject, "検品レポート \(appLanguage.formatDateTime(startedAt)) - 澤井製作所")
+        XCTAssertFalse(mail.subject.contains("朝便"))
         let expectedBody = [
             "お疲れさまです。",
             "CodeMatch の検品レポートをお送りします。",
@@ -41,9 +42,7 @@ final class ReportMailContentTests: XCTestCase {
             "品番数（枝番別）: 1",
             "",
             "■ 添付",
-            "検品レポート_朝便.pdf",
-            "",
-            "このメールは CodeMatch から作成しました。内容は端末内のデータのみです。"
+            "検品レポート_朝便.pdf"
         ].joined(separator: "\n")
         XCTAssertEqual(mail.body, expectedBody)
         XCTAssertFalse(mail.body.contains(sawaiQR), "メール本文に生の読取値は載せない")
@@ -61,13 +60,13 @@ final class ReportMailContentTests: XCTestCase {
 
         let mail = ReportMailContent.make(session: session, kind: .matchHistory, fileName: "照合履歴_x.pdf", locale: locale)
 
-        XCTAssertEqual(mail.subject, "[CodeMatch] 照合履歴レポート \(start) - モルテン")
+        XCTAssertEqual(mail.subject, "照合履歴レポート \(start) - モルテン")
         XCTAssertTrue(mail.body.hasPrefix("お疲れさまです。\nCodeMatch の照合履歴レポートをお送りします。\n"))
         XCTAssertTrue(mail.body.contains("状態: 照合中"))
         XCTAssertTrue(mail.body.contains("検査箱数: 1箱"))
         XCTAssertTrue(mail.body.contains("品番数: 1"))
         XCTAssertTrue(mail.body.contains("納品番号数: 1"))
-        XCTAssertTrue(mail.body.contains("■ 添付\n照合履歴_x.pdf"))
+        XCTAssertTrue(mail.body.hasSuffix("■ 添付\n照合履歴_x.pdf"))
         XCTAssertFalse(mail.body.contains("セッション名"))
     }
 }

@@ -44,7 +44,9 @@ class ReportMailContentTest {
             utc,
         )
 
-        assertEquals("[CodeMatch] 検品レポート 朝便 - 澤井製作所", mail.subject)
+        val start = HistoryExportTextFormatter.dateTime(1_700_000_000_000L, AppLanguage.JAPANESE, utc)
+        assertEquals("検品レポート $start - 澤井製作所", mail.subject)
+        assertFalse(mail.subject.contains("朝便"))
         val expectedBody = listOf(
             "お疲れさまです。",
             "CodeMatch の検品レポートをお送りします。",
@@ -59,8 +61,6 @@ class ReportMailContentTest {
             "",
             "■ 添付",
             "検品レポート_朝便.pdf",
-            "",
-            "このメールは CodeMatch から作成しました。内容は端末内のデータのみです。",
         ).joinToString("\n")
         assertEquals(expectedBody, mail.body)
         assertFalse("the mail never carries a raw payload", mail.body.contains(sawaiQr))
@@ -83,13 +83,14 @@ class ReportMailContentTest {
         )
 
         val start = HistoryExportTextFormatter.dateTime(1_700_000_000_000L, AppLanguage.ENGLISH, utc)
-        assertEquals("[CodeMatch] Match History Report $start - Molten", mail.subject)
+        assertEquals("Match History Report $start - Molten", mail.subject)
         assertTrue(mail.body.startsWith("Hello,\nPlease find the CodeMatch match history report attached.\n"))
         assertTrue(mail.body.contains("Status: In progress"))
         assertTrue(mail.body.contains("Boxes: 1 box"))
         assertTrue(mail.body.contains("Part numbers: 1"))
         assertTrue(mail.body.contains("Delivery numbers: 1"))
-        assertTrue(mail.body.contains("Attachment\nMatchHistory_x.pdf"))
+        assertTrue(mail.body.endsWith("Attachment\nMatchHistory_x.pdf"))
+        assertFalse(mail.body.contains("CodeMatch."))
         assertFalse(mail.body.contains("Session name"))
     }
 

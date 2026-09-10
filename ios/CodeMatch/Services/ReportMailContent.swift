@@ -26,10 +26,8 @@ struct ReportMailContent: Equatable {
         case .inspection: title = AppLocalization.string("検品レポート")
         }
         let destination = session.resolvedDestination
-        let sessionLabel = session.displayName.isEmpty
-            ? appLanguage.formatDateTime(session.startedAt)
-            : session.displayName
-        var subject = "[CodeMatch] \(title) \(sessionLabel)"
+        // 「検品レポート 2026/09/07 23:17 - 澤井製作所」。セッション名ではなく開始日時で並ぶようにする。
+        var subject = "\(title) \(appLanguage.formatDateTime(session.startedAt))"
         if let destination {
             subject += " - \(destination.displayName)"
         }
@@ -59,8 +57,6 @@ struct ReportMailContent: Equatable {
         lines.append("")
         lines.append(AppLocalization.string("■ 添付"))
         lines.append(fileName)
-        lines.append("")
-        lines.append(AppLocalization.string("このメールは CodeMatch から作成しました。内容は端末内のデータのみです。"))
 
         return ReportMailContent(subject: subject, body: lines.joined(separator: "\n"))
     }

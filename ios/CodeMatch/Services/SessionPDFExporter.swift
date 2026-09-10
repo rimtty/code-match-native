@@ -11,13 +11,18 @@ enum SessionPDFExporter {
         "\(AppLocalization.string("照合履歴"))_\(sanitizedStem(for: session, locale: locale)).pdf"
     }
 
-    /// 表示名（未設定なら開始日時）をファイル名向けに整えた語幹。検品レポートも同じ規則を使う。
+    /// 表示名（未設定なら開始日時）をファイル名向けに整えた語幹。
     static func sanitizedStem(for session: MatchSession, locale: Locale) -> String {
         let appLanguage = AppLanguage(locale)
         let base = session.displayName.isEmpty
             ? appLanguage.formatDateTime(session.startedAt)
             : session.displayName
-        return base
+        return sanitizedFileNamePart(base)
+    }
+
+    /// ファイル名の1区画向けに `/`・`:`・空白を置き換える。
+    static func sanitizedFileNamePart(_ value: String) -> String {
+        value
             .replacingOccurrences(of: "/", with: "-")
             .replacingOccurrences(of: ":", with: "")
             .replacingOccurrences(of: " ", with: "_")

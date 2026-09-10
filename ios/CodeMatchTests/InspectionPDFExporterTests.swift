@@ -133,19 +133,19 @@ final class InspectionPDFExporterTests: XCTestCase {
         XCTAssertTrue(lastPage.contains("BCJH0119GG"))
     }
 
-    func testFileNameUsesTheInspectionPrefixAndTheHistoryStem() {
-        let session = MatchSession(startedAt: startedAt, name: "morning/09:00 run")
+    func testFileNameIsDestinationAndStartTimeNeverTheSessionName() {
+        let session = MatchSession(startedAt: startedAt, name: "morning/09:00 run", destination: .sawai)
+        let start = SessionPDFExporter.sanitizedFileNamePart(AppLanguage(locale).formatDateTime(startedAt))
 
         let inspection = InspectionPDFExporter.fileName(for: session, locale: locale)
+        let noDestination = InspectionPDFExporter.fileName(for: MatchSession(startedAt: startedAt, name: "morning"), locale: locale)
         let history = SessionPDFExporter.fileName(for: session, locale: locale)
 
-        XCTAssertTrue(inspection.hasPrefix("検品レポート_"), inspection)
-        XCTAssertTrue(history.hasPrefix("照合履歴_"), history)
-        XCTAssertEqual(
-            inspection.dropFirst("検品レポート_".count),
-            history.dropFirst("照合履歴_".count)
-        )
+        XCTAssertEqual(inspection, "検品レポート_澤井製作所_\(start).pdf")
+        XCTAssertEqual(noDestination, "検品レポート_\(start).pdf")
+        XCTAssertFalse(inspection.contains("morning"))
         XCTAssertFalse(inspection.contains("/"))
+        XCTAssertTrue(history.hasPrefix("照合履歴_morning"), "照合履歴のファイル名は従来どおりセッション名")
     }
 
     // MARK: - Helpers

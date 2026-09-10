@@ -44,23 +44,30 @@ class HistoryExportTextTest {
     }
 
     @Test
-    fun inspectionReportPrefixSharesTheHistoryFileNameSanitizing() {
+    fun inspectionFileNameIsDestinationAndStartTimeNeverTheSessionName() {
         val session = MatchSession(
             id = "12345678-aaaa-bbbb-cccc-dddddddddddd",
             startedAt = 0L,
             name = "  morning/09:00\\report..pdf?  ",
+            destination = Destination.SAWAI,
         )
-        val japanese = HistoryExportTextFormatter.labels(AppLanguage.JAPANESE)
-        val english = HistoryExportTextFormatter.labels(AppLanguage.ENGLISH)
+        val startJa = HistoryExportTextFormatter.dateTime(0L, AppLanguage.JAPANESE, utc)
+            .replace("/", "-").replace(":", "").replace(" ", "_")
 
-        assertEquals(
-            "検品レポート_morning-0900-report_pdf.pdf",
-            HistoryExportTextFormatter.fileName(session, AppLanguage.JAPANESE, utc, japanese.inspectionFilePrefix),
+        val japanese = HistoryExportTextFormatter.inspectionFileName(session, AppLanguage.JAPANESE, utc)
+        val english = HistoryExportTextFormatter.inspectionFileName(session, AppLanguage.ENGLISH, utc)
+        val noDestination = HistoryExportTextFormatter.inspectionFileName(
+            MatchSession(startedAt = 0L, name = "morning"),
+            AppLanguage.JAPANESE,
+            utc,
         )
-        assertTrue(
-            HistoryExportTextFormatter.fileName(session, AppLanguage.ENGLISH, utc, english.inspectionFilePrefix)
-                .startsWith("InspectionReport_"),
-        )
+
+        assertEquals("検品レポート_澤井製作所_$startJa.pdf", japanese)
+        assertTrue(english, english.startsWith("InspectionReport_Sawai_Seisakusho_"))
+        assertFalse(japanese.contains("morning"))
+        assertFalse(japanese.contains('/'))
+        assertEquals("検品レポート_$startJa.pdf", noDestination)
+        assertFalse(noDestination.contains("morning"))
     }
 
     @Test

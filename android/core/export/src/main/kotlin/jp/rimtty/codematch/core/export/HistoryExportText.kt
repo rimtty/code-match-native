@@ -88,7 +88,6 @@ data class HistoryExportLabels(
     val mailIntroHistory: String,
     val mailSessionHeading: String,
     val mailAttachmentHeading: String,
-    val mailFooter: String,
     /** Singular and plural units are kept separately for natural English. */
     val boxCountSingular: String = boxCount,
     val boxCountPlural: String = boxCount,
@@ -197,7 +196,6 @@ object HistoryExportTextFormatter {
             mailIntroHistory = "CodeMatch の照合履歴レポートをお送りします。",
             mailSessionHeading = "■ セッション",
             mailAttachmentHeading = "■ 添付",
-            mailFooter = "このメールは CodeMatch から作成しました。内容は端末内のデータのみです。",
             boxCountSingular = "箱",
             boxCountPlural = "箱",
         )
@@ -278,7 +276,6 @@ object HistoryExportTextFormatter {
             mailIntroHistory = "Please find the CodeMatch match history report attached.",
             mailSessionHeading = "Session",
             mailAttachmentHeading = "Attachment",
-            mailFooter = "Created by CodeMatch. The contents are on-device data only.",
             boxCountSingular = "box",
             boxCountPlural = "boxes",
         )
@@ -352,6 +349,30 @@ object HistoryExportTextFormatter {
         val source = session.displayName.ifBlank {
             dateTime(session.startedAt, language, zoneId)
         }
+        return "${filePrefix}_${sanitizeFileNamePart(source, session)}.pdf"
+    }
+
+    /**
+     * `検品レポート_<仕向地>_<開始日時>.pdf`: the inspection report is filed by
+     * destination and start time, never by the session name, so the mail
+     * attachment and the saved file sort the same way as the paper sheets.
+     */
+    fun inspectionFileName(
+        session: MatchSession,
+        language: AppLanguage,
+        zoneId: ZoneId = ZoneId.systemDefault(),
+    ): String {
+        val labels = labels(language)
+        val destination = session.resolvedDestination()
+        val prefix = buildString {
+            append(labels.inspectionFilePrefix)
+            if (destination != null) append('_').append(sanitizeFileNamePart(labels.destinationName(destination), session))
+        }
+        val start = sanitizeFileNamePart(dateTime(session.startedAt, language, zoneId), session)
+        return "${prefix}_$start.pdf"
+    }
+
+    private fun sanitizeFileNamePart(source: String, session: MatchSession): String {
         val safe = buildString(source.length) {
             source.forEach { character ->
                 when {
@@ -366,8 +387,7 @@ object HistoryExportTextFormatter {
         }.trim('_', '.', ' ')
             .replace("..", "_")
             .ifBlank { "session_${session.id.take(8)}" }
-
-        return "${filePrefix}_$safe.pdf"
+        return safe
     }
 
     private fun locale(language: AppLanguage): Locale = when (language) {

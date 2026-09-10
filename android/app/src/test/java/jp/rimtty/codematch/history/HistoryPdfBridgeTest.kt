@@ -67,7 +67,8 @@ class HistoryPdfBridgeTest {
         )
         val document = PendingHistoryPdf(bytes = "%PDF-test".toByteArray(), fileName = fileName)
 
-        assertEquals("InspectionReport_morning.pdf", fileName)
+        assertTrue(fileName, fileName.startsWith("InspectionReport_") && fileName.endsWith(".pdf"))
+        assertFalse(fileName.contains("morning"))
         assertEquals(HistoryPdfBridge.PDF_MIME_TYPE, document.mimeType)
     }
 

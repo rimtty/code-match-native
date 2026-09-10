@@ -41,11 +41,11 @@ object ReportMailContent {
             HistoryReportKind.INSPECTION -> labels.inspectionTitle
         }
         val destination = session.resolvedDestination()
-        val sessionLabel = session.displayName.ifBlank {
-            HistoryExportTextFormatter.dateTime(session.startedAt, language, zoneId)
-        }
+        // `検品レポート 2026/09/07 23:17 - 澤井製作所`: the start time, never the
+        // session name, so subjects sort and read like the paper sheets.
         val subject = buildString {
-            append("[CodeMatch] ").append(title).append(' ').append(sessionLabel)
+            append(title).append(' ')
+            append(HistoryExportTextFormatter.dateTime(session.startedAt, language, zoneId))
             if (destination != null) append(" - ").append(labels.destinationName(destination))
         }
 
@@ -75,8 +75,6 @@ object ReportMailContent {
         lines += ""
         lines += labels.mailAttachmentHeading
         lines += fileName
-        lines += ""
-        lines += labels.mailFooter
 
         return ReportMail(subject = subject, body = lines.joinToString("\n"))
     }
