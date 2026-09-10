@@ -13,7 +13,7 @@ enum ReportKind {
 /// 送信そのものは操作者が使うメールアプリに任せる。Android の `ReportMailContent` と同じ規則。
 struct ReportMailContent: Equatable {
     /// すべてのレポートメールの宛先。
-    static let recipients = ["ttyrim@gmail.com"]
+    static let recipients = ["takemoto1075@icloud.com"]
 
     let subject: String
     let body: String

@@ -23,7 +23,7 @@ data class ReportMail(
  */
 object ReportMailContent {
     /** The one address every report mail is addressed to. */
-    const val RECIPIENT: String = "ttyrim@gmail.com"
+    const val RECIPIENT: String = "takemoto1075@icloud.com"
 
     val recipients: Array<String>
         get() = arrayOf(RECIPIENT)
