@@ -11,6 +11,7 @@ import java.io.File
 import java.io.OutputStream
 import java.time.ZoneId
 import jp.rimtty.codematch.core.export.HistoryPdfExporter
+import jp.rimtty.codematch.core.export.HistoryReportKind
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchSession
 
@@ -87,15 +88,16 @@ internal object HistoryPdfBridge {
         session: MatchSession,
         language: AppLanguage,
         zoneId: ZoneId = ZoneId.systemDefault(),
+        kind: HistoryReportKind = HistoryReportKind.MATCH_HISTORY,
     ): HistoryPdfResult<PendingHistoryPdf> = createDocument(
         session = session,
         language = language,
         zoneId = zoneId,
         generate = { currentSession, currentLanguage, currentZone ->
-            HistoryPdfExporter.generate(currentSession, currentLanguage, currentZone)
+            HistoryPdfExporter.generate(currentSession, currentLanguage, currentZone, kind)
         },
         fileName = { currentSession, currentLanguage, currentZone ->
-            HistoryPdfExporter.fileName(currentSession, currentLanguage, currentZone)
+            HistoryPdfExporter.fileName(currentSession, currentLanguage, currentZone, kind)
         },
     )
 
@@ -155,9 +157,10 @@ internal object HistoryPdfBridge {
         session: MatchSession,
         language: AppLanguage,
         zoneId: ZoneId = ZoneId.systemDefault(),
+        kind: HistoryReportKind = HistoryReportKind.MATCH_HISTORY,
     ): HistoryPdfResult<File> = try {
         HistoryPdfResult.Success(
-            HistoryPdfExporter.writeToCache(context, session, language, zoneId),
+            HistoryPdfExporter.writeToCache(context, session, language, zoneId, kind),
         )
     } catch (_: Exception) {
         HistoryPdfResult.Failure(HistoryPdfFailure.CACHE_WRITE_FAILED)

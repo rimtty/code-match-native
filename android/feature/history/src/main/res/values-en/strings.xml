@@ -18,6 +18,8 @@
     <string name="history_share_all">Share all history</string>
     <string name="history_save_pdf">Save PDF</string>
     <string name="history_share_pdf">Share</string>
+    <string name="history_inspection_report">Inspection report</string>
+    <string name="history_match_history_report">Match history report</string>
     <string name="history_matched_codes">Matched codes</string>
     <string name="history_no_matches_title">No matches in this session</string>
     <string name="history_no_matches_description">No matched codes have been recorded in this session.</string>

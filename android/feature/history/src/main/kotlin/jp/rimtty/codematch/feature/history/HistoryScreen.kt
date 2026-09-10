@@ -98,6 +98,8 @@ object HistoryTestTags {
     const val SHARE_ALL = "shareAllHistoryButton"
     const val SAVE_PDF = "savePDFButton"
     const val SHARE_PDF = "sharePDFButton"
+    const val SAVE_INSPECTION_REPORT = "saveInspectionReportButton"
+    const val SHARE_INSPECTION_REPORT = "shareInspectionReportButton"
 }
 
 /**
@@ -147,6 +149,8 @@ fun HistoryContent(
     onBack: () -> Unit = {},
     onSavePdf: (MatchSession) -> Unit = {},
     onSharePdf: (MatchSession) -> Unit = {},
+    onSaveInspectionReport: (MatchSession) -> Unit = {},
+    onShareInspectionReport: (MatchSession) -> Unit = {},
     onShareAllHistory: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -175,6 +179,8 @@ fun HistoryContent(
                 onEntrySelected = onEntrySelected,
                 onSavePdf = onSavePdf,
                 onSharePdf = onSharePdf,
+                onSaveInspectionReport = onSaveInspectionReport,
+                onShareInspectionReport = onShareInspectionReport,
                 modifier = detailModifier,
             )
         }
@@ -403,6 +409,8 @@ fun HistorySessionDetail(
     onEntrySelected: (String) -> Unit = {},
     onSavePdf: (MatchSession) -> Unit = {},
     onSharePdf: (MatchSession) -> Unit = {},
+    onSaveInspectionReport: (MatchSession) -> Unit = {},
+    onShareInspectionReport: (MatchSession) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     HistoryLocalized(language) {
@@ -442,6 +450,8 @@ fun HistorySessionDetail(
                     onGroupSelected = onGroupSelected,
                     onSavePdf = onSavePdf,
                     onSharePdf = onSharePdf,
+                    onSaveInspectionReport = onSaveInspectionReport,
+                    onShareInspectionReport = onShareInspectionReport,
                     modifier = modifier,
                 )
             }
@@ -458,6 +468,8 @@ private fun SessionOverview(
     onGroupSelected: (String) -> Unit,
     onSavePdf: (MatchSession) -> Unit,
     onSharePdf: (MatchSession) -> Unit,
+    onSaveInspectionReport: (MatchSession) -> Unit,
+    onShareInspectionReport: (MatchSession) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var editedName by remember(session.id, session.displayName) {
@@ -528,28 +540,29 @@ private fun SessionOverview(
                 }
             }
         }
+        // The inspection report comes first: it is the sheet the operator
+        // reconciles against, while the match history PDF is the audit trail.
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Button(
-                    onClick = { onSavePdf(session) },
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag(HistoryTestTags.SAVE_PDF),
-                ) {
-                    Icon(Icons.Outlined.SaveAlt, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(labels.savePdf)
-                }
-                OutlinedButton(
-                    onClick = { onSharePdf(session) },
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag(HistoryTestTags.SHARE_PDF),
-                ) {
-                    Icon(Icons.Outlined.Share, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(labels.sharePdf)
-                }
-            }
+            PdfActionRow(
+                caption = labels.inspectionReport,
+                saveLabel = labels.savePdf,
+                shareLabel = labels.sharePdf,
+                saveTag = HistoryTestTags.SAVE_INSPECTION_REPORT,
+                shareTag = HistoryTestTags.SHARE_INSPECTION_REPORT,
+                onSave = { onSaveInspectionReport(session) },
+                onShare = { onShareInspectionReport(session) },
+            )
+        }
+        item {
+            PdfActionRow(
+                caption = labels.matchHistoryReport,
+                saveLabel = labels.savePdf,
+                shareLabel = labels.sharePdf,
+                saveTag = HistoryTestTags.SAVE_PDF,
+                shareTag = HistoryTestTags.SHARE_PDF,
+                onSave = { onSavePdf(session) },
+                onShare = { onSharePdf(session) },
+            )
         }
         item {
             Text(
@@ -1045,3 +1058,48 @@ private fun BackButton(onBack: () -> Unit) {
 
 private fun sortSessions(sessions: List<MatchSession>): List<MatchSession> =
     sessions.sortedWith(compareByDescending<MatchSession> { it.startedAt }.thenByDescending { it.id })
+
+/**
+ * A captioned save/share pair for one PDF. Both reports use the same button
+ * labels, so the caption is what tells the operator which PDF a row exports.
+ */
+@Composable
+private fun PdfActionRow(
+    caption: String,
+    saveLabel: String,
+    shareLabel: String,
+    saveTag: String,
+    shareTag: String,
+    onSave: () -> Unit,
+    onShare: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Text(
+            text = caption,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Button(
+                onClick = onSave,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag(saveTag),
+            ) {
+                Icon(Icons.Outlined.SaveAlt, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(saveLabel)
+            }
+            OutlinedButton(
+                onClick = onShare,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag(shareTag),
+            ) {
+                Icon(Icons.Outlined.Share, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(shareLabel)
+            }
+        }
+    }
+}

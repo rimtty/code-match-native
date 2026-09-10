@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.ZoneId
 import jp.rimtty.codematch.core.export.HistoryPdfExporter
+import jp.rimtty.codematch.core.export.HistoryReportKind
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchSession
 import org.junit.Assert.assertArrayEquals
@@ -50,6 +51,22 @@ class HistoryPdfBridgeTest {
         assertFalse(fileName.contains('/'))
         assertFalse(fileName.contains('\\'))
         assertFalse(fileName.contains(".."))
+    }
+
+    @Test
+    fun inspectionReportDocumentUsesTheInspectionPrefixAndStaysAPdf() {
+        val session = MatchSession(startedAt = 0L, name = "morning")
+
+        val fileName = HistoryPdfExporter.fileName(
+            session,
+            AppLanguage.ENGLISH,
+            ZoneId.of("UTC"),
+            HistoryReportKind.INSPECTION,
+        )
+        val document = PendingHistoryPdf(bytes = "%PDF-test".toByteArray(), fileName = fileName)
+
+        assertEquals("InspectionReport_morning.pdf", fileName)
+        assertEquals(HistoryPdfBridge.PDF_MIME_TYPE, document.mimeType)
     }
 
     @Test(expected = IllegalArgumentException::class)

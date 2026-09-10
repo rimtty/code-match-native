@@ -26,6 +26,9 @@ data class HistoryUiLabels(
     val shareAll: String,
     val savePdf: String,
     val sharePdf: String,
+    /** Captions of the two PDF action rows in the session detail. */
+    val inspectionReport: String,
+    val matchHistoryReport: String,
     val matchedCodes: String,
     val noMatchesTitle: String,
     val noMatchesDescription: String,

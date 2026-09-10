@@ -44,6 +44,8 @@ object HistoryUiResources {
         shareAll = stringResource(R.string.history_share_all),
         savePdf = stringResource(R.string.history_save_pdf),
         sharePdf = stringResource(R.string.history_share_pdf),
+        inspectionReport = stringResource(R.string.history_inspection_report),
+        matchHistoryReport = stringResource(R.string.history_match_history_report),
         matchedCodes = stringResource(R.string.history_matched_codes),
         noMatchesTitle = stringResource(R.string.history_no_matches_title),
         noMatchesDescription = stringResource(R.string.history_no_matches_description),

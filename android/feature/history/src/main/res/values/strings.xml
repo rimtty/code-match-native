@@ -18,6 +18,8 @@
     <string name="history_share_all">照合履歴をすべて共有</string>
     <string name="history_save_pdf">PDFで保存</string>
     <string name="history_share_pdf">共有する</string>
+    <string name="history_inspection_report">検品レポート</string>
+    <string name="history_match_history_report">照合履歴レポート</string>
     <string name="history_matched_codes">一致したコード</string>
     <string name="history_no_matches_title">一致履歴はありません</string>
     <string name="history_no_matches_description">このセッションではまだ一致したコードがありません。</string>

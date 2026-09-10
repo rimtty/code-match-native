@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import jp.rimtty.codematch.R
+import jp.rimtty.codematch.core.export.HistoryReportKind
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchSession
 import jp.rimtty.codematch.feature.history.HistoryContent
@@ -65,6 +66,7 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
     // intentionally not persisted; an interrupted picker flow is regenerated
     // from the current Room session when the user retries.
     var latestSaveSessionId by rememberSaveable { mutableStateOf<String?>(null) }
+    var latestSaveKind by rememberSaveable { mutableStateOf(HistoryReportKind.MATCH_HISTORY) }
     var exportGeneration by remember { mutableStateOf(0L) }
     var launchSavePicker: ((PendingHistoryPdf) -> Unit)? = null
 
@@ -77,15 +79,17 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
         feedback = HistoryPdfFeedback(message = message, retry = retry)
     }
 
-    fun startSave(session: MatchSession) {
+    fun startSave(session: MatchSession, kind: HistoryReportKind) {
         feedback = null
         latestSaveSessionId = session.id
+        latestSaveKind = kind
         val generation = exportGeneration + 1L
         exportGeneration = generation
         pendingDocument = null
         preparePdfForSave(
             session = session,
             language = state.language,
+            kind = kind,
             scope = scope,
         ) { result ->
             if (generation != exportGeneration) return@preparePdfForSave
@@ -93,19 +97,19 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
                 is HistoryPdfResult.Success -> {
                     val launch = launchSavePicker
                     if (launch == null) {
-                        reportPdfFailure(saveErrorMessage) { startSave(session) }
+                        reportPdfFailure(saveErrorMessage) { startSave(session, kind) }
                     } else {
                         launch(result.value)
                     }
                 }
                 is HistoryPdfResult.Failure -> {
-                    reportPdfFailure(saveErrorMessage) { startSave(session) }
+                    reportPdfFailure(saveErrorMessage) { startSave(session, kind) }
                 }
             }
         }
     }
 
-    fun startShare(session: MatchSession) {
+    fun startShare(session: MatchSession, kind: HistoryReportKind) {
         feedback = null
         val generation = exportGeneration + 1L
         exportGeneration = generation
@@ -114,6 +118,7 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
             context = context,
             session = session,
             language = state.language,
+            kind = kind,
             scope = scope,
         ) { result ->
             if (generation != exportGeneration) return@preparePdfForShare
@@ -122,12 +127,12 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
                     when (HistoryPdfBridge.launchShare(context, result.value)) {
                         is HistoryPdfResult.Success -> Unit
                         is HistoryPdfResult.Failure -> {
-                            reportPdfFailure(shareErrorMessage) { startShare(session) }
+                            reportPdfFailure(shareErrorMessage) { startShare(session, kind) }
                         }
                     }
                 }
                 is HistoryPdfResult.Failure -> {
-                    reportPdfFailure(shareErrorMessage) { startShare(session) }
+                    reportPdfFailure(shareErrorMessage) { startShare(session, kind) }
                 }
             }
         }
@@ -175,7 +180,8 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
             }
             HistoryPdfPickerResult.MissingPendingDocument -> {
                 val retrySession = state.sessions.firstOrNull { it.id == latestSaveSessionId }
-                reportPdfFailure(saveErrorMessage, retrySession?.let { session -> { startSave(session) } })
+                val retryKind = latestSaveKind
+                reportPdfFailure(saveErrorMessage, retrySession?.let { session -> { startSave(session, retryKind) } })
             }
             is HistoryPdfPickerResult.Selected -> {
                 val generation = exportGeneration
@@ -211,7 +217,8 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
             is HistoryPdfResult.Failure -> {
                 pendingDocument = null
                 val retrySession = state.sessions.firstOrNull { it.id == latestSaveSessionId }
-                reportPdfFailure(saveErrorMessage, retrySession?.let { session -> { startSave(session) } })
+                val retryKind = latestSaveKind
+                reportPdfFailure(saveErrorMessage, retrySession?.let { session -> { startSave(session, retryKind) } })
             }
         }
     }
@@ -285,8 +292,10 @@ fun HistoryRoute(modifier: Modifier = Modifier) {
                 },
                 onEntrySelected = { entryId -> selectedEntryId = entryId },
                 onBack = goBack,
-                onSavePdf = ::startSave,
-                onSharePdf = ::startShare,
+                onSavePdf = { session -> startSave(session, HistoryReportKind.MATCH_HISTORY) },
+                onSharePdf = { session -> startShare(session, HistoryReportKind.MATCH_HISTORY) },
+                onSaveInspectionReport = { session -> startSave(session, HistoryReportKind.INSPECTION) },
+                onShareInspectionReport = { session -> startShare(session, HistoryReportKind.INSPECTION) },
                 onShareAllHistory = ::startShareAllHistory,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -369,11 +378,12 @@ internal fun HistoryPdfFeedbackHost(
 private fun preparePdfForSave(
     session: MatchSession,
     language: AppLanguage,
+    kind: HistoryReportKind,
     scope: kotlinx.coroutines.CoroutineScope,
     onResult: (HistoryPdfResult<PendingHistoryPdf>) -> Unit,
 ) {
     scope.launch(Dispatchers.IO) {
-        val result = HistoryPdfBridge.createDocument(session, language)
+        val result = HistoryPdfBridge.createDocument(session, language, kind = kind)
         withContext(Dispatchers.Main.immediate) { onResult(result) }
     }
 }
@@ -382,11 +392,14 @@ private fun preparePdfForShare(
     context: Context,
     session: MatchSession,
     language: AppLanguage,
+    kind: HistoryReportKind,
     scope: kotlinx.coroutines.CoroutineScope,
     onResult: (HistoryPdfResult<Intent>) -> Unit,
 ) {
     scope.launch(Dispatchers.IO) {
-        val result = when (val cacheResult = HistoryPdfBridge.writeShareCache(context, session, language)) {
+        val result = when (
+            val cacheResult = HistoryPdfBridge.writeShareCache(context, session, language, kind = kind)
+        ) {
             is HistoryPdfResult.Success -> HistoryPdfBridge.createShareChooser(context, cacheResult.value)
             is HistoryPdfResult.Failure -> HistoryPdfResult.Failure(cacheResult.reason)
         }
