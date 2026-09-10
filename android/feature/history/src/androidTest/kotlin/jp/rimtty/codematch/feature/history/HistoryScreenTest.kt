@@ -237,13 +237,21 @@ class HistoryScreenTest {
             HistorySessionDetail(session = session, language = language.value)
         }
 
-        composeRule.onNodeWithText("1 box").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("2 boxes").performScrollTo().assertIsDisplayed()
+        // The group rows sit below two PDF action rows in a LazyColumn, so on a
+        // short emulator screen they are not composed until the list scrolls to
+        // them; scroll the detail list itself rather than the (absent) node.
+        val detail = composeRule.onNodeWithTag(HistoryTestTags.SESSION_DETAIL)
+        detail.performScrollToNode(hasText("1 box"))
+        composeRule.onNodeWithText("1 box").assertIsDisplayed()
+        detail.performScrollToNode(hasText("2 boxes"))
+        composeRule.onNodeWithText("2 boxes").assertIsDisplayed()
 
         composeRule.runOnIdle { language.value = AppLanguage.JAPANESE }
 
-        composeRule.onNodeWithText("1箱").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("2箱").performScrollTo().assertIsDisplayed()
+        detail.performScrollToNode(hasText("1箱"))
+        composeRule.onNodeWithText("1箱").assertIsDisplayed()
+        detail.performScrollToNode(hasText("2箱"))
+        composeRule.onNodeWithText("2箱").assertIsDisplayed()
         composeRule.onAllNodesWithText("1 box").assertCountEquals(0)
         composeRule.onAllNodesWithText("2 boxes").assertCountEquals(0)
     }
