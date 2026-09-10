@@ -57,7 +57,7 @@ final class ReportMailContentTests: XCTestCase {
         )
         let start = AppLanguage(locale).formatDateTime(startedAt)
 
-        let mail = ReportMailContent.make(session: session, kind: .matchHistory, fileName: "照合履歴_x.pdf", locale: locale)
+        let mail = ReportMailContent.make(session: session, kind: .matchHistory, fileName: "照合履歴レポート_モルテン_x.pdf", locale: locale)
 
         XCTAssertEqual(mail.subject, "照合履歴レポート \(start) - モルテン")
         XCTAssertTrue(mail.body.hasPrefix("照合履歴レポートをお送りします。\n\n■ セッション\n"))
@@ -65,7 +65,7 @@ final class ReportMailContentTests: XCTestCase {
         XCTAssertTrue(mail.body.contains("検査箱数: 1箱"))
         XCTAssertTrue(mail.body.contains("品番数: 1"))
         XCTAssertTrue(mail.body.contains("納品番号数: 1"))
-        XCTAssertTrue(mail.body.hasSuffix("■ 添付\n照合履歴_x.pdf"))
+        XCTAssertTrue(mail.body.hasSuffix("■ 添付\n照合履歴レポート_モルテン_x.pdf"))
         XCTAssertFalse(mail.body.contains("セッション名"))
     }
 }

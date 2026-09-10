@@ -7,17 +7,19 @@ enum SessionPDFExporter {
     private static let pageSize = CGSize(width: 595.2, height: 841.8) // A4 @72dpi
     private static let margin: CGFloat = 44
 
+    /// `照合履歴レポート_<仕向地>_<開始日時>.pdf`。検品レポートと同じ規則で並ぶようにする。
     static func fileName(for session: MatchSession, locale: Locale) -> String {
-        "\(AppLocalization.string("照合履歴"))_\(sanitizedStem(for: session, locale: locale)).pdf"
+        reportFileName(prefix: AppLocalization.string("照合履歴レポート"), session: session, locale: locale)
     }
 
-    /// 表示名（未設定なら開始日時）をファイル名向けに整えた語幹。
-    static func sanitizedStem(for session: MatchSession, locale: Locale) -> String {
-        let appLanguage = AppLanguage(locale)
-        let base = session.displayName.isEmpty
-            ? appLanguage.formatDateTime(session.startedAt)
-            : session.displayName
-        return sanitizedFileNamePart(base)
+    /// `<prefix>_<仕向地>_<開始日時>.pdf`。セッション名は使わず、仕向地のない旧履歴では仕向地を省く。
+    static func reportFileName(prefix: String, session: MatchSession, locale: Locale) -> String {
+        var parts = [prefix]
+        if let destination = session.resolvedDestination {
+            parts.append(sanitizedFileNamePart(destination.displayName))
+        }
+        parts.append(sanitizedFileNamePart(AppLanguage(locale).formatDateTime(session.startedAt)))
+        return parts.joined(separator: "_") + ".pdf"
     }
 
     /// ファイル名の1区画向けに `/`・`:`・空白を置き換える。

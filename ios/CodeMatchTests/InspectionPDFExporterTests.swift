@@ -143,9 +143,9 @@ final class InspectionPDFExporterTests: XCTestCase {
 
         XCTAssertEqual(inspection, "検品レポート_澤井製作所_\(start).pdf")
         XCTAssertEqual(noDestination, "検品レポート_\(start).pdf")
+        XCTAssertEqual(history, "照合履歴レポート_澤井製作所_\(start).pdf")
         XCTAssertFalse(inspection.contains("morning"))
         XCTAssertFalse(inspection.contains("/"))
-        XCTAssertTrue(history.hasPrefix("照合履歴_morning"), "照合履歴のファイル名は従来どおりセッション名")
     }
 
     // MARK: - Helpers

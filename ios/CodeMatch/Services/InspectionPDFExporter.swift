@@ -12,12 +12,7 @@ enum InspectionPDFExporter {
 
     /// `検品レポート_<仕向地>_<開始日時>.pdf`。セッション名ではなく仕向地と開始日時で並ぶようにする。
     static func fileName(for session: MatchSession, locale: Locale) -> String {
-        var parts = [AppLocalization.string("検品レポート")]
-        if let destination = session.resolvedDestination {
-            parts.append(SessionPDFExporter.sanitizedFileNamePart(destination.displayName))
-        }
-        parts.append(SessionPDFExporter.sanitizedFileNamePart(AppLanguage(locale).formatDateTime(session.startedAt)))
-        return parts.joined(separator: "_") + ".pdf"
+        SessionPDFExporter.reportFileName(prefix: AppLocalization.string("検品レポート"), session: session, locale: locale)
     }
 
     /// ページ番号 `n / N` を全ページに置くため2回描画する。1回目でページ数を数え、2回目で総数を印字する。

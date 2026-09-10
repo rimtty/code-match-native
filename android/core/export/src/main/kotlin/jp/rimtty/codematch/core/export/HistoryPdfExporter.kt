@@ -48,9 +48,13 @@ object HistoryPdfExporter {
         language: AppLanguage = AppLanguage.JAPANESE,
         zoneId: ZoneId = ZoneId.systemDefault(),
         kind: HistoryReportKind = HistoryReportKind.MATCH_HISTORY,
-    ): String = when (kind) {
-        HistoryReportKind.MATCH_HISTORY -> HistoryExportTextFormatter.fileName(session, language, zoneId)
-        HistoryReportKind.INSPECTION -> HistoryExportTextFormatter.inspectionFileName(session, language, zoneId)
+    ): String {
+        val labels = HistoryExportTextFormatter.labels(language)
+        val prefix = when (kind) {
+            HistoryReportKind.MATCH_HISTORY -> labels.filePrefix
+            HistoryReportKind.INSPECTION -> labels.inspectionFilePrefix
+        }
+        return HistoryExportTextFormatter.reportFileName(session, language, zoneId, prefix)
     }
 
     /** Name of the only cache directory used for a shareable history report. */

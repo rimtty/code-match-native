@@ -121,7 +121,7 @@ object HistoryExportTextFormatter {
     fun labels(language: AppLanguage): HistoryExportLabels = when (language) {
         AppLanguage.JAPANESE -> HistoryExportLabels(
             reportTitle = "照合履歴レポート",
-            filePrefix = "照合履歴",
+            filePrefix = "照合履歴レポート",
             sessionName = "セッション名",
             start = "開始",
             end = "終了",
@@ -200,7 +200,7 @@ object HistoryExportTextFormatter {
 
         AppLanguage.ENGLISH -> HistoryExportLabels(
             reportTitle = "Match History Report",
-            filePrefix = "MatchHistory",
+            filePrefix = "MatchHistoryReport",
             sessionName = "Session name",
             start = "Start",
             end = "End",
@@ -330,43 +330,25 @@ object HistoryExportTextFormatter {
     }
 
     /**
-     * Returns a filename safe to use below cache/document-provider roots.
+     * `<prefix>_<仕向地>_<開始日時>.pdf`, e.g. `検品レポート_澤井製作所_2026-09-07_2317.pdf`.
+     * Both reports are filed by destination and start time, never by the
+     * session name, so the saved file and the mail attachment sort the same
+     * way as the paper sheets. A session without a destination omits it.
      * Unicode names are retained, but path separators, control characters,
      * reserved punctuation, and traversal sequences are removed.
      */
-    fun fileName(
+    fun reportFileName(
         session: MatchSession,
         language: AppLanguage,
         zoneId: ZoneId = ZoneId.systemDefault(),
-        /** File-name prefix; the match history prefix unless a report supplies its own. */
-        prefix: String? = null,
-    ): String {
-        val labels = labels(language)
-        val filePrefix = prefix ?: labels.filePrefix
-        val source = session.displayName.ifBlank {
-            dateTime(session.startedAt, language, zoneId)
-        }
-        return "${filePrefix}_${sanitizeFileNamePart(source, session)}.pdf"
-    }
-
-    /**
-     * `検品レポート_<仕向地>_<開始日時>.pdf`: the inspection report is filed by
-     * destination and start time, never by the session name, so the mail
-     * attachment and the saved file sort the same way as the paper sheets.
-     */
-    fun inspectionFileName(
-        session: MatchSession,
-        language: AppLanguage,
-        zoneId: ZoneId = ZoneId.systemDefault(),
+        prefix: String,
     ): String {
         val labels = labels(language)
         val destination = session.resolvedDestination()
-        val prefix = buildString {
-            append(labels.inspectionFilePrefix)
-            if (destination != null) append('_').append(sanitizeFileNamePart(labels.destinationName(destination), session))
-        }
-        val start = sanitizeFileNamePart(dateTime(session.startedAt, language, zoneId), session)
-        return "${prefix}_$start.pdf"
+        val parts = mutableListOf(prefix)
+        if (destination != null) parts += sanitizeFileNamePart(labels.destinationName(destination), session)
+        parts += sanitizeFileNamePart(dateTime(session.startedAt, language, zoneId), session)
+        return parts.joinToString("_") + ".pdf"
     }
 
     private fun sanitizeFileNamePart(source: String, session: MatchSession): String {
