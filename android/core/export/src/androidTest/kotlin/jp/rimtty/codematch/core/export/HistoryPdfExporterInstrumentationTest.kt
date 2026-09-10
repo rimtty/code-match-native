@@ -93,6 +93,81 @@ class HistoryPdfExporterInstrumentationTest {
         }
     }
 
+    @Test
+    fun inspectionReportRendersEveryPageOfAMultiPageTable() {
+        val bytes = HistoryPdfExporter.generate(
+            session = longSawaiSession(),
+            language = AppLanguage.JAPANESE,
+            zoneId = ZoneId.of("UTC"),
+            kind = HistoryReportKind.INSPECTION,
+        )
+
+        assertTrue(bytes.size > MINIMUM_PDF_BYTES)
+        assertArrayEquals(PDF_HEADER, bytes.copyOf(PDF_HEADER.size))
+
+        val pdf = temporaryPdf(bytes, "inspection")
+        try {
+            ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                PdfRenderer(descriptor).use { renderer ->
+                    assertTrue("120 rows should span several pages", renderer.pageCount >= 3)
+                    repeat(renderer.pageCount) { pageIndex ->
+                        renderer.openPage(pageIndex).use { page ->
+                            val bitmap = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
+                            try {
+                                bitmap.eraseColor(Color.WHITE)
+                                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                assertTrue("page $pageIndex should contain the table", bitmap.hasNonWhitePixel())
+                            } finally {
+                                bitmap.recycle()
+                            }
+                        }
+                    }
+                }
+            }
+        } finally {
+            pdf.delete()
+        }
+    }
+
+    @Test
+    fun inspectionCacheWriteUsesTheInspectionPrefixBelowTheSameCacheDirectory() {
+        val file = HistoryPdfExporter.writeToCache(
+            context = context,
+            session = MatchSession(startedAt = 0L, name = "cache boundary"),
+            language = AppLanguage.ENGLISH,
+            zoneId = ZoneId.of("UTC"),
+            kind = HistoryReportKind.INSPECTION,
+        )
+        try {
+            val directory = File(context.cacheDir, HistoryPdfExporter.CACHE_DIRECTORY).canonicalFile
+            assertTrue(file.isFile)
+            assertTrue(file.length() > MINIMUM_PDF_BYTES)
+            assertEquals(directory, file.canonicalFile.parentFile)
+            assertTrue(file.name.startsWith("InspectionReport_"))
+            assertTrue(file.name.endsWith(".pdf"))
+        } finally {
+            file.delete()
+        }
+    }
+
+    /** 120 distinct Sawai slips: the card number differs per box so each is its own row. */
+    private fun longSawaiSession(): MatchSession = MatchSession(
+        startedAt = 1_700_000_000_000L,
+        endedAt = 1_700_000_120_000L,
+        name = "Long inspection",
+        entries = (0 until 120).map { index ->
+            val part = "BCJH" + index.toString().padStart(4, '0') + "GG"
+            MatchEntry(
+                id = "entry-$index",
+                code = "BCJH-${part.substring(4, 6)}-${part.substring(6)}",
+                matchedAt = 1_700_000_001_000L + index * 1_000L,
+                qrPayload = "DCLP675300" + part + "020000120000001200L000000000000BLBDILLU92   0*",
+                barcodePayload = "BCJH-${part.substring(4, 6)}-${part.substring(6)}@1N5X0C",
+                sequence = index.toLong(),
+            )
+        },
+    )
+
     private fun temporaryPdf(bytes: ByteArray, name: String): File =
         File(context.cacheDir, "$name-${System.nanoTime()}.pdf").apply {
             writeBytes(bytes)
