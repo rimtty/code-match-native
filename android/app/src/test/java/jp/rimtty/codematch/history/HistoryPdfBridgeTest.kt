@@ -10,6 +10,9 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.ZoneId
 import jp.rimtty.codematch.core.export.HistoryPdfExporter
+import jp.rimtty.codematch.core.export.HistoryReportKind
+import jp.rimtty.codematch.core.export.ReportMail
+import jp.rimtty.codematch.core.export.ReportMailContent
 import jp.rimtty.codematch.core.model.AppLanguage
 import jp.rimtty.codematch.core.model.MatchSession
 import org.junit.Assert.assertArrayEquals
@@ -50,6 +53,23 @@ class HistoryPdfBridgeTest {
         assertFalse(fileName.contains('/'))
         assertFalse(fileName.contains('\\'))
         assertFalse(fileName.contains(".."))
+    }
+
+    @Test
+    fun inspectionReportDocumentUsesTheInspectionPrefixAndStaysAPdf() {
+        val session = MatchSession(startedAt = 0L, name = "morning")
+
+        val fileName = HistoryPdfExporter.fileName(
+            session,
+            AppLanguage.ENGLISH,
+            ZoneId.of("UTC"),
+            HistoryReportKind.INSPECTION,
+        )
+        val document = PendingHistoryPdf(bytes = "%PDF-test".toByteArray(), fileName = fileName)
+
+        assertTrue(fileName, fileName.startsWith("InspectionReport_") && fileName.endsWith(".pdf"))
+        assertFalse(fileName.contains("morning"))
+        assertEquals(HistoryPdfBridge.PDF_MIME_TYPE, document.mimeType)
     }
 
     @Test(expected = IllegalArgumentException::class)
@@ -243,6 +263,49 @@ class HistoryPdfBridgeTest {
                 pending = null,
             ) is HistoryPdfPickerResult.MissingPendingDocument,
         )
+    }
+
+    @Test
+    fun mailIntentCarriesRecipientSubjectBodyAttachmentAndMailtoSelector() {
+        val uri = Uri.parse("content://${context.packageName}.fileprovider/history_pdf/report.pdf")
+        val mail = ReportMail(subject = "[CodeMatch] 検品レポート 朝便", body = "本文")
+
+        val intent = HistoryPdfBridge.createMailIntent(uri, mail)
+
+        assertEquals(Intent.ACTION_SEND, intent.action)
+        assertEquals(HistoryPdfBridge.PDF_MIME_TYPE, intent.type)
+        assertEquals(listOf(ReportMailContent.RECIPIENT), intent.getStringArrayExtra(Intent.EXTRA_EMAIL)?.toList())
+        assertEquals(mail.subject, intent.getStringExtra(Intent.EXTRA_SUBJECT))
+        assertEquals(mail.body, intent.getStringExtra(Intent.EXTRA_TEXT))
+        @Suppress("DEPRECATION")
+        assertEquals(uri, intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
+        assertTrue(intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+        assertEquals(uri, intent.clipData?.getItemAt(0)?.uri)
+        val selector = requireNotNull(intent.selector)
+        assertEquals(Intent.ACTION_SENDTO, selector.action)
+        assertEquals("mailto", selector.data?.scheme)
+    }
+
+    @Test
+    fun mailHandOffOpensTheMailIntentWhenAMailAppExistsAndTheChooserOtherwise() {
+        val uri = Uri.parse("content://${context.packageName}.fileprovider/history_pdf/report.pdf")
+        val file = File(context.cacheDir, "report.pdf")
+        val mail = ReportMail(subject = "s", body = "b")
+
+        val withMailApp = HistoryPdfBridge.createMailOrShareChooser(file, mail, { uri }, { true })
+        val withoutMailApp = HistoryPdfBridge.createMailOrShareChooser(file, mail, { uri }, { false })
+        val providerFailure = HistoryPdfBridge.createMailOrShareChooser(file, mail, { error("no root") }, { true })
+
+        assertTrue("result=$withMailApp", withMailApp is HistoryPdfResult.Success)
+        val mailIntent = (withMailApp as HistoryPdfResult.Success).value
+        assertEquals(Intent.ACTION_SEND, mailIntent.action)
+        assertEquals(mail.subject, mailIntent.getStringExtra(Intent.EXTRA_SUBJECT))
+
+        assertTrue("result=$withoutMailApp", withoutMailApp is HistoryPdfResult.Success)
+        assertEquals(Intent.ACTION_CHOOSER, (withoutMailApp as HistoryPdfResult.Success).value.action)
+
+        assertTrue(providerFailure is HistoryPdfResult.Failure)
+        assertEquals(HistoryPdfFailure.FILE_PROVIDER_FAILED, (providerFailure as HistoryPdfResult.Failure).reason)
     }
 
     @Test

@@ -25,6 +25,8 @@
 | `HistoryUiTextTest` | `android/feature/history/src/test/kotlin/jp/rimtty/codematch/feature/history/HistoryUiTextTest.kt` |
 | `HistoryExportTextTest` | `android/core/export/src/test/kotlin/jp/rimtty/codematch/core/export/HistoryExportTextTest.kt` |
 | `HistoryPdfContentTest` | `android/core/export/src/test/kotlin/jp/rimtty/codematch/core/export/HistoryPdfContentTest.kt` |
+| `InspectionReportContentTest` | `android/core/export/src/test/kotlin/jp/rimtty/codematch/core/export/InspectionReportContentTest.kt` |
+| `InspectionPdfContentTest` | `android/core/export/src/test/kotlin/jp/rimtty/codematch/core/export/InspectionPdfContentTest.kt` |
 | `HistoryDeliveryGroupsTest` | `android/core/export/src/test/kotlin/jp/rimtty/codematch/core/export/HistoryDeliveryGroupsTest.kt` |
 | `HistoryJsonExporterTest` | `android/core/export/src/test/kotlin/jp/rimtty/codematch/core/export/HistoryJsonExporterTest.kt` |
 | `HistoryPdfBridgeTest` | `android/app/src/test/java/jp/rimtty/codematch/history/HistoryPdfBridgeTest.kt` |
@@ -225,6 +227,24 @@ Issue #106（PR #113 / #114 / #115 / #116、iOS の履歴・PDF は #117）で�
 | BLE 診断ログが読取値を含まないままであること | `BleExternalScannerTest.kt::facadeMapsExternalScannerStateAndKeepsPayloadsOutOfDiagnostics`（変更なし） |
 
 実スキャナーでの照合ログ書き出し、共有先アプリでの受け取り、5,000 件を実際に超えた運用は未実施である。
+
+## 検品レポート（2026-09-11）
+
+セッション詳細の第2のPDF「検品レポート」（1行 = 澤井製作所の品番+枝番／モルテンの納品番号／デンソーの品番、品番順、表ヘッダーの繰り返しとページ番号）。Swift と Kotlin の行の作り方は同じ規則で、両側とも現場ラベルの実データで固定する。
+
+| 対象 | Swift | Android の証拠 | 分類 |
+|---|---|---|---|
+| 行のキーと並び（品番+枝番、`BCJH5281GG (02)` 表記、枝番なしは括弧なし）、箱数、1箱の納入数量、数量計 | `InspectionReportTests::testSawaiRowsAreKeyedByPartNumberAndSuffixAndSortedByPartNumber` | `InspectionReportContentTest.kt::sawaiRowsAreKeyedByPartNumberAndSuffixAndSortedByPartNumber` | D |
+| モルテンは納品番号ごと、生の部品番号と納入先、収容数と累計。並びは品番 → 納品番号で同じ品番の行が離れない | `InspectionReportTests::testMoltenRowsAreOnePerDeliveryNumberWithRawPartAndDeliveryPoint` + `::testMoltenRowsSortByPartNumberBeforeDeliveryNumberSoOnePartStaysTogether` | `InspectionReportContentTest.kt::moltenRowsAreOnePerDeliveryNumberWithRawPartAndDeliveryPoint` + `::moltenRowsSortByPartNumberBeforeDeliveryNumberSoOnePartStaysTogether` | D |
+| デンソーは品番ごと（`6-4`）、収容数と数量計 | `InspectionReportTests::testDensoRowsAreOnePerPartNumberFormattedSixFour` | `InspectionReportContentTest.kt::densoRowsAreOnePerPartNumberFormattedSixFour` | D |
+| 解析できない箱は末尾の行に残り、箱数の合計がセッションの箱数と一致する。仕向地なしは全行未解析 | `InspectionReportTests::testBoxesWithoutAParsableQRTrailAsUnparsedRowsSoNoBoxIsDropped` + `::testSessionWithoutDestinationFallsBackToSawaiLayoutWithEveryBoxUnparsed` | `InspectionReportContentTest.kt::boxesWithoutAParsableQrTrailAsUnparsedRowsSoNoBoxIsDropped` + `::sessionWithoutDestinationFallsBackToSawaiLayoutWithEveryBoxUnparsed` | D |
+| デンソーのかんばんを澤井製作所として読まない（寛容な解析器の誤認防止） | `InspectionReportTests::testADensoKanbanIsNeverReadAsASawaiSlip` | `InspectionReportContentTest.kt::aDensoKanbanIsNeverReadAsASawaiSlip` | D |
+| 見出し（検査箱数、品番数（枝番別）／納品番号数／品番数）、列名、セルの値、脚注、日英 | `InspectionPDFExporterTests::testSawaiReportPrintsHeaderCountsColumnsAndOneRowPerPartNumberWithSuffix` + `::testMoltenReportPrintsOneRowPerDeliveryNumberWithDeliveryPoint` + `::testDensoReportPrintsOneRowPerPartNumberWithoutInstructedQuantity` + `::testEmptySessionPrintsTheNoMatchesLine` | `InspectionPdfContentTest.kt`（6 件、ja/en 対） | D |
+| 複数ページで表ヘッダーが各ページに繰り返され、`n / N` が付く | `InspectionPDFExporterTests::testLongReportRepeatsTheTableHeaderOnEveryPageAndNumbersPages` | `HistoryPdfExporterInstrumentationTest.kt::inspectionReportRendersEveryPageOfAMultiPageTable`（全ページの実 render。ヘッダー繰り返しは pure content では表現できず render 側の責務） | P |
+| ファイル名は「検品レポート_」+ 照合履歴と同じ語幹、同じ `cache/codematch-pdf/` | `InspectionPDFExporterTests::testFileNameUsesTheInspectionPrefixAndTheHistoryStem` | `HistoryExportTextTest.kt::inspectionReportPrefixSharesTheHistoryFileNameSanitizing` + `HistoryPdfBridgeTest.kt::inspectionReportDocumentUsesTheInspectionPrefixAndStaysAPdf` + `HistoryPdfExporterInstrumentationTest.kt::inspectionCacheWriteUsesTheInspectionPrefixBelowTheSameCacheDirectory` | D |
+| セッション詳細に検品レポートの行が照合履歴の行の上にあり、4 つのボタンがそれぞれのコールバックを呼ぶ。font scale でも 48dp | （UI テストなし。識別子 `saveInspectionReportButton` / `shareInspectionReportButton` を保持） | `HistoryScreenTest.kt::sessionDetailOffersInspectionAndMatchHistoryPdfRowsInJapanese` + `HistoryFontScaleAccessibilityTest.kt::compactSessionDetailKeepsGroupsAndPdfActionsReachableAtLargeFontScales` | P |
+
+Swift 側は `PDFPageWriter`（表の行・ヘッダー再描画・フッター）を新設し、照合履歴レポートも同じ writer に載せ替えた（`SessionPDFExporterTests` は変更なしで通る）。Android 側は release gate の `File(` 許可リストを変えず、`HistoryPdfExporter` に `HistoryReportKind` を足して同じ cache 経路で書き出す。紙の検品表との実突き合わせは人手で行う。
 
 ## 残る物理・手動・未対応の証拠
 

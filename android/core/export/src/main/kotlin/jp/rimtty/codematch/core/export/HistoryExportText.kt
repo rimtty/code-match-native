@@ -66,6 +66,27 @@ data class HistoryExportLabels(
     /** Denso item number; [itemNumber] is the Sawai slip's 品目番号. */
     val densoItemNumber: String,
     val receivingCode: String,
+    /** 検品レポート: title, file prefix, header counts, column titles and footer. */
+    val inspectionTitle: String,
+    val inspectionFilePrefix: String,
+    val inspectionPartCount: String,
+    val inspectionPartCountBySuffix: String,
+    val columnNumber: String,
+    val columnPartNumber: String,
+    val columnDeliveryNumber: String,
+    val columnDeliveryDestination: String,
+    val columnBoxes: String,
+    val columnDeliveryQuantityPerBox: String,
+    val columnPackQuantityPerBox: String,
+    val columnTotalQuantity: String,
+    val columnCumulativeQuantity: String,
+    val columnCheck: String,
+    val inspectionFooterNote: String,
+    /** Pre-filled report e-mail: intro per report and headings. */
+    val mailIntroInspection: String,
+    val mailIntroHistory: String,
+    val mailSessionHeading: String,
+    val mailAttachmentHeading: String,
     /** Singular and plural units are kept separately for natural English. */
     val boxCountSingular: String = boxCount,
     val boxCountPlural: String = boxCount,
@@ -100,7 +121,7 @@ object HistoryExportTextFormatter {
     fun labels(language: AppLanguage): HistoryExportLabels = when (language) {
         AppLanguage.JAPANESE -> HistoryExportLabels(
             reportTitle = "照合履歴レポート",
-            filePrefix = "照合履歴",
+            filePrefix = "照合履歴レポート",
             sessionName = "セッション名",
             start = "開始",
             end = "終了",
@@ -153,13 +174,33 @@ object HistoryExportTextFormatter {
             deliveryRun = "便",
             densoItemNumber = "アイテムNo",
             receivingCode = "受入",
+            inspectionTitle = "検品レポート",
+            inspectionFilePrefix = "検品レポート",
+            inspectionPartCount = "品番数",
+            inspectionPartCountBySuffix = "品番数（枝番別）",
+            columnNumber = "No",
+            columnPartNumber = "品番",
+            columnDeliveryNumber = "納品番号",
+            columnDeliveryDestination = "納入先",
+            columnBoxes = "箱数",
+            columnDeliveryQuantityPerBox = "納入数量/箱",
+            columnPackQuantityPerBox = "収容数/箱",
+            columnTotalQuantity = "数量計",
+            columnCumulativeQuantity = "累計",
+            columnCheck = "確認",
+            inspectionFooterNote =
+                "検品表にあってこの一覧にない品番は、このセッションで照合されていません。",
+            mailIntroInspection = "検品レポートをお送りします。",
+            mailIntroHistory = "照合履歴レポートをお送りします。",
+            mailSessionHeading = "■ セッション",
+            mailAttachmentHeading = "■ 添付",
             boxCountSingular = "箱",
             boxCountPlural = "箱",
         )
 
         AppLanguage.ENGLISH -> HistoryExportLabels(
             reportTitle = "Match History Report",
-            filePrefix = "MatchHistory",
+            filePrefix = "MatchHistoryReport",
             sessionName = "Session name",
             start = "Start",
             end = "End",
@@ -212,6 +253,26 @@ object HistoryExportTextFormatter {
             deliveryRun = "Delivery run",
             densoItemNumber = "Item No.",
             receivingCode = "Receiving",
+            inspectionTitle = "Inspection Report",
+            inspectionFilePrefix = "InspectionReport",
+            inspectionPartCount = "Part numbers",
+            inspectionPartCountBySuffix = "Part numbers (by suffix)",
+            columnNumber = "No",
+            columnPartNumber = "Part no.",
+            columnDeliveryNumber = "Delivery no.",
+            columnDeliveryDestination = "Deliv. point",
+            columnBoxes = "Boxes",
+            columnDeliveryQuantityPerBox = "Qty / box",
+            columnPackQuantityPerBox = "Pack / box",
+            columnTotalQuantity = "Total qty",
+            columnCumulativeQuantity = "Total",
+            columnCheck = "Check",
+            inspectionFooterNote =
+                "Part numbers on the inspection sheet that are missing from this list were not matched in this session.",
+            mailIntroInspection = "Please find the inspection report attached.",
+            mailIntroHistory = "Please find the match history report attached.",
+            mailSessionHeading = "Session",
+            mailAttachmentHeading = "Attachment",
             boxCountSingular = "box",
             boxCountPlural = "boxes",
         )
@@ -269,19 +330,28 @@ object HistoryExportTextFormatter {
     }
 
     /**
-     * Returns a filename safe to use below cache/document-provider roots.
+     * `<prefix>_<仕向地>_<開始日時>.pdf`, e.g. `検品レポート_澤井製作所_2026-09-07_2317.pdf`.
+     * Both reports are filed by destination and start time, never by the
+     * session name, so the saved file and the mail attachment sort the same
+     * way as the paper sheets. A session without a destination omits it.
      * Unicode names are retained, but path separators, control characters,
      * reserved punctuation, and traversal sequences are removed.
      */
-    fun fileName(
+    fun reportFileName(
         session: MatchSession,
         language: AppLanguage,
         zoneId: ZoneId = ZoneId.systemDefault(),
+        prefix: String,
     ): String {
         val labels = labels(language)
-        val source = session.displayName.ifBlank {
-            dateTime(session.startedAt, language, zoneId)
-        }
+        val destination = session.resolvedDestination()
+        val parts = mutableListOf(prefix)
+        if (destination != null) parts += sanitizeFileNamePart(labels.destinationName(destination), session)
+        parts += sanitizeFileNamePart(dateTime(session.startedAt, language, zoneId), session)
+        return parts.joinToString("_") + ".pdf"
+    }
+
+    private fun sanitizeFileNamePart(source: String, session: MatchSession): String {
         val safe = buildString(source.length) {
             source.forEach { character ->
                 when {
@@ -296,8 +366,7 @@ object HistoryExportTextFormatter {
         }.trim('_', '.', ' ')
             .replace("..", "_")
             .ifBlank { "session_${session.id.take(8)}" }
-
-        return "${labels.filePrefix}_$safe.pdf"
+        return safe
     }
 
     private fun locale(language: AppLanguage): Locale = when (language) {

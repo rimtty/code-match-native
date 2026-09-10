@@ -237,13 +237,21 @@ class HistoryScreenTest {
             HistorySessionDetail(session = session, language = language.value)
         }
 
-        composeRule.onNodeWithText("1 box").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("2 boxes").performScrollTo().assertIsDisplayed()
+        // The group rows sit below two PDF action rows in a LazyColumn, so on a
+        // short emulator screen they are not composed until the list scrolls to
+        // them; scroll the detail list itself rather than the (absent) node.
+        val detail = composeRule.onNodeWithTag(HistoryTestTags.SESSION_DETAIL)
+        detail.performScrollToNode(hasText("1 box"))
+        composeRule.onNodeWithText("1 box").assertIsDisplayed()
+        detail.performScrollToNode(hasText("2 boxes"))
+        composeRule.onNodeWithText("2 boxes").assertIsDisplayed()
 
         composeRule.runOnIdle { language.value = AppLanguage.JAPANESE }
 
-        composeRule.onNodeWithText("1箱").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("2箱").performScrollTo().assertIsDisplayed()
+        detail.performScrollToNode(hasText("1箱"))
+        composeRule.onNodeWithText("1箱").assertIsDisplayed()
+        detail.performScrollToNode(hasText("2箱"))
+        composeRule.onNodeWithText("2箱").assertIsDisplayed()
         composeRule.onAllNodesWithText("1 box").assertCountEquals(0)
         composeRule.onAllNodesWithText("2 boxes").assertCountEquals(0)
     }
@@ -444,6 +452,49 @@ class HistoryScreenTest {
         composeRule.onNodeWithTag(HistoryTestTags.SESSION_DETAIL)
             .performScrollToNode(hasText("Delivery numbers"))
         composeRule.onNodeWithText("Delivery numbers").assertIsDisplayed()
+    }
+
+    @Test
+    fun sessionDetailOffersInspectionAndMatchHistoryPdfRowsInJapanese() {
+        val session = MatchSession(
+            id = "sawai-session",
+            startedAt = 1_000L,
+            endedAt = 2_000L,
+            destination = Destination.SAWAI,
+            entries = listOf(
+                MatchEntry(
+                    id = "box-1",
+                    code = "BCJH-52-81GG",
+                    matchedAt = 1_100L,
+                    qrPayload = "DCLP675300BCJH5281GG020000120000001200L000000000000BLBDILLU92   0*",
+                    barcodePayload = "BCJH-52-81GG@1N5X0C",
+                ),
+            ),
+        )
+        val saved = mutableListOf<String>()
+        val shared = mutableListOf<String>()
+        composeRule.setContent {
+            HistorySessionDetail(
+                session = session,
+                language = AppLanguage.JAPANESE,
+                onSavePdf = { saved += "history" },
+                onSharePdf = { shared += "history" },
+                onSaveInspectionReport = { saved += "inspection" },
+                onShareInspectionReport = { shared += "inspection" },
+            )
+        }
+
+        val detail = composeRule.onNodeWithTag(HistoryTestTags.SESSION_DETAIL)
+        detail.performScrollToNode(hasText("検品レポート"))
+        composeRule.onNodeWithText("検品レポート").assertIsDisplayed()
+        detail.performScrollToNode(hasText("照合履歴レポート"))
+        composeRule.onNodeWithText("照合履歴レポート").assertIsDisplayed()
+        composeRule.onNodeWithTag(HistoryTestTags.SAVE_INSPECTION_REPORT).performScrollTo().performClick()
+        composeRule.onNodeWithTag(HistoryTestTags.SHARE_INSPECTION_REPORT).performScrollTo().performClick()
+        composeRule.onNodeWithTag(HistoryTestTags.SAVE_PDF).performScrollTo().performClick()
+        composeRule.onNodeWithTag(HistoryTestTags.SHARE_PDF).performScrollTo().performClick()
+        assertEquals(listOf("inspection", "history"), saved)
+        assertEquals(listOf("inspection", "history"), shared)
     }
 
     private companion object {

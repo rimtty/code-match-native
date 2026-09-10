@@ -2,6 +2,7 @@ package jp.rimtty.codematch.core.export
 
 import jp.rimtty.codematch.core.matching.CodeMatcher
 import jp.rimtty.codematch.core.matching.DensoKanbanQrRecord
+import jp.rimtty.codematch.core.matching.KanbanQrRecord
 import jp.rimtty.codematch.core.matching.MoltenQrRecord
 import jp.rimtty.codematch.core.model.Destination
 import jp.rimtty.codematch.core.model.MatchEntry
@@ -90,6 +91,18 @@ fun formatMoltenDate(mmdd: String): String =
 fun formatMoltenTime(hhmm: String?): String? {
     val value = hhmm ?: return null
     return if (FOUR_DIGITS.matches(value)) "${value.substring(0, 2)}:${value.substring(2, 4)}" else value
+}
+
+/**
+ * Parses an entry's QR payload as a Sawai slip.
+ * The destination is detected first because [KanbanQrRecord.parse] is lenient:
+ * a Denso `JAMA...` payload satisfies its card-number rule and a Molten record
+ * would be read at the wrong positions.
+ */
+internal fun MatchEntry.sawaiRecord(): KanbanQrRecord? {
+    val payload = qrPayload ?: return null
+    if (CodeMatcher.detectDestination(payload) != Destination.SAWAI) return null
+    return KanbanQrRecord.parse(payload)
 }
 
 /**

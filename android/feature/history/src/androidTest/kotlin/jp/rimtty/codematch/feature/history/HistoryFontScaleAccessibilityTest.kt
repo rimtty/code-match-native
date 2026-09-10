@@ -38,6 +38,8 @@ class HistoryFontScaleAccessibilityTest {
         val selectedGroups = mutableListOf<String>()
         var saved = 0
         var shared = 0
+        var savedInspection = 0
+        var sharedInspection = 0
         val fontScale = mutableStateOf(FONT_SCALES.first())
         val session = sampleSession()
         setCompactContent(fontScale) {
@@ -48,6 +50,8 @@ class HistoryFontScaleAccessibilityTest {
                 onGroupSelected = selectedGroups::add,
                 onSavePdf = { saved += 1 },
                 onSharePdf = { shared += 1 },
+                onSaveInspectionReport = { savedInspection += 1 },
+                onShareInspectionReport = { sharedInspection += 1 },
             )
         }
 
@@ -57,10 +61,22 @@ class HistoryFontScaleAccessibilityTest {
                     fontScale.value = scale
                     saved = 0
                     shared = 0
+                    savedInspection = 0
+                    sharedInspection = 0
                     selectedGroups.clear()
                 }
             }
             val detail = composeRule.onNodeWithTag(HistoryTestTags.SESSION_DETAIL)
+            detail.performScrollToNode(hasTestTag(HistoryTestTags.SAVE_INSPECTION_REPORT))
+            composeRule.onNodeWithTag(HistoryTestTags.SAVE_INSPECTION_REPORT)
+                .assertIsDisplayed()
+                .assertHeightIsAtLeast(48.dp)
+                .performClick()
+            detail.performScrollToNode(hasTestTag(HistoryTestTags.SHARE_INSPECTION_REPORT))
+            composeRule.onNodeWithTag(HistoryTestTags.SHARE_INSPECTION_REPORT)
+                .assertIsDisplayed()
+                .assertHeightIsAtLeast(48.dp)
+                .performClick()
             detail.performScrollToNode(hasTestTag(HistoryTestTags.SAVE_PDF))
             composeRule.onNodeWithTag(HistoryTestTags.SAVE_PDF)
                 .assertIsDisplayed()
@@ -79,6 +95,8 @@ class HistoryFontScaleAccessibilityTest {
 
             assertEquals("fontScale=$scale", 1, saved)
             assertEquals("fontScale=$scale", 1, shared)
+            assertEquals("fontScale=$scale", 1, savedInspection)
+            assertEquals("fontScale=$scale", 1, sharedInspection)
             assertEquals("fontScale=$scale", listOf("PART-1"), selectedGroups)
         }
     }

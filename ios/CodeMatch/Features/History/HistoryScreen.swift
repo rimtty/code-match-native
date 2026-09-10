@@ -168,6 +168,16 @@ private struct SessionHistoryDetail: View {
     @State private var shareItem: ShareItem?
     @State private var showsExporter = false
     @State private var exportDocument: SessionPDFDocument?
+    /// fileExporter は1つなので、直前に選んだレポートのファイル名をここに持つ。
+    @State private var exportFileName: String?
+    /// 「共有する」で開くメール作成画面。「メール」が使えない端末では shareItem に切り替える。
+    @State private var mailItem: MailItem?
+
+    private struct MailItem: Identifiable {
+        let id = UUID()
+        let content: ReportMailContent
+        let attachment: MailComposeView.Attachment
+    }
 
     private struct ShareItem: Identifiable {
         let id = UUID()
@@ -230,45 +240,33 @@ private struct SessionHistoryDetail: View {
                     }
 
                     Section {
-                        HStack(spacing: 10) {
-                            Button {
+                        // 検品レポートを先に置く。紙の検品表と突き合わせる帳票で、照合履歴PDFは証跡。
+                        PDFActionRow(
+                            caption: AppLocalization.string("検品レポート"),
+                            saveIdentifier: "saveInspectionReportButton",
+                            shareIdentifier: "shareInspectionReportButton",
+                            onSave: {
+                                exportFileName = InspectionPDFExporter.fileName(for: session, locale: locale)
+                                exportDocument = SessionPDFDocument(
+                                    data: InspectionPDFExporter.generatePDF(for: session, locale: locale)
+                                )
+                                showsExporter = true
+                            },
+                            onShare: { shareReport(.inspection, session: session) }
+                        )
+                        PDFActionRow(
+                            caption: AppLocalization.string("照合履歴レポート"),
+                            saveIdentifier: "savePDFButton",
+                            shareIdentifier: "sharePDFButton",
+                            onSave: {
+                                exportFileName = SessionPDFExporter.fileName(for: session, locale: locale)
                                 exportDocument = SessionPDFDocument(
                                     data: SessionPDFExporter.generatePDF(for: session, locale: locale)
                                 )
                                 showsExporter = true
-                            } label: {
-                                Label(
-                                    AppLocalization.string("PDFで保存"),
-                                    systemImage: "arrow.down.doc.fill"
-                                )
-                                .font(.subheadline.weight(.bold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.white)
-                            .background(AppTheme.green, in: RoundedRectangle(cornerRadius: 12))
-                            .accessibilityIdentifier("savePDFButton")
-
-                            Button {
-                                shareItem = (try? SessionPDFExporter.writeTemporaryPDF(for: session, locale: locale))
-                                    .map { ShareItem(url: $0) }
-                            } label: {
-                                Label(
-                                    AppLocalization.string("共有する"),
-                                    systemImage: "square.and.arrow.up"
-                                )
-                                .font(.subheadline.weight(.bold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(AppTheme.green)
-                            .background(AppTheme.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-                            .accessibilityIdentifier("sharePDFButton")
-                        }
-                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                        .listRowBackground(Color.clear)
+                            },
+                            onShare: { shareReport(.matchHistory, session: session) }
+                        )
                     }
 
                     Section(AppLocalization.string("一致したコード")) {
@@ -325,18 +323,55 @@ private struct SessionHistoryDetail: View {
             isPresented: $showsExporter,
             document: exportDocument,
             contentType: .pdf,
-            defaultFilename: session.map { SessionPDFExporter.fileName(for: $0, locale: locale) } ?? "\(AppLocalization.string("照合履歴")).pdf"
+            defaultFilename: exportFileName
+                ?? session.map { SessionPDFExporter.fileName(for: $0, locale: locale) }
+                ?? "\(AppLocalization.string("照合履歴")).pdf"
         ) { _ in
             exportDocument = nil
+            exportFileName = nil
         }
         .sheet(item: $shareItem) { item in
             ActivityShareSheet(items: [item.url])
                 .presentationDetents([.medium, .large])
         }
+        .sheet(item: $mailItem) { item in
+            MailComposeView(content: item.content, attachment: item.attachment) {
+                mailItem = nil
+            }
+            .ignoresSafeArea()
+        }
     }
 
     private var session: MatchSession? {
         historyStore.sessions.first(where: { $0.id == sessionID })
+    }
+
+    /// 「共有する」: 宛先・件名・本文・PDF添付を埋めたメール作成画面を開く。
+    /// 「メール」にアカウントがない端末では従来どおりの共有シートに切り替える。
+    private func shareReport(_ kind: ReportKind, session: MatchSession) {
+        if MailComposeView.canSendMail {
+            let data: Data
+            let fileName: String
+            switch kind {
+            case .inspection:
+                data = InspectionPDFExporter.generatePDF(for: session, locale: locale)
+                fileName = InspectionPDFExporter.fileName(for: session, locale: locale)
+            case .matchHistory:
+                data = SessionPDFExporter.generatePDF(for: session, locale: locale)
+                fileName = SessionPDFExporter.fileName(for: session, locale: locale)
+            }
+            mailItem = MailItem(
+                content: ReportMailContent.make(session: session, kind: kind, fileName: fileName, locale: locale),
+                attachment: MailComposeView.Attachment(data: data, fileName: fileName)
+            )
+            return
+        }
+        let url: URL?
+        switch kind {
+        case .inspection: url = try? InspectionPDFExporter.writeTemporaryPDF(for: session, locale: locale)
+        case .matchHistory: url = try? SessionPDFExporter.writeTemporaryPDF(for: session, locale: locale)
+        }
+        shareItem = url.map { ShareItem(url: $0) }
     }
 
     private var navigationTitleText: String {
@@ -624,5 +659,56 @@ private struct PayloadText: View {
                 .font(.footnote)
                 .foregroundStyle(AppTheme.muted)
         }
+    }
+}
+
+
+/// 1種類のPDFの「保存」「共有」ボタンの組。2つのレポートがボタン文言を共有するので、
+/// どのPDFを書き出す行かは上のキャプションで示す。
+private struct PDFActionRow: View {
+    let caption: String
+    let saveIdentifier: String
+    let shareIdentifier: String
+    let onSave: () -> Void
+    let onShare: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(caption)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppTheme.muted)
+                .padding(.leading, 4)
+            HStack(spacing: 10) {
+                Button(action: onSave) {
+                    Label(
+                        AppLocalization.string("PDFで保存"),
+                        systemImage: "arrow.down.doc.fill"
+                    )
+                    .font(.subheadline.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .background(AppTheme.green, in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityIdentifier(saveIdentifier)
+
+                Button(action: onShare) {
+                    Label(
+                        AppLocalization.string("共有する"),
+                        systemImage: "square.and.arrow.up"
+                    )
+                    .font(.subheadline.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(AppTheme.green)
+                .background(AppTheme.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityIdentifier(shareIdentifier)
+            }
+        }
+        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .listRowBackground(Color.clear)
     }
 }

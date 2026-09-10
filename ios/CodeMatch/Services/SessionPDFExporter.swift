@@ -7,22 +7,32 @@ enum SessionPDFExporter {
     private static let pageSize = CGSize(width: 595.2, height: 841.8) // A4 @72dpi
     private static let margin: CGFloat = 44
 
+    /// `照合履歴レポート_<仕向地>_<開始日時>.pdf`。検品レポートと同じ規則で並ぶようにする。
     static func fileName(for session: MatchSession, locale: Locale) -> String {
-        let appLanguage = AppLanguage(locale)
-        let base = session.displayName.isEmpty
-            ? appLanguage.formatDateTime(session.startedAt)
-            : session.displayName
-        let safe = base
+        reportFileName(prefix: AppLocalization.string("照合履歴レポート"), session: session, locale: locale)
+    }
+
+    /// `<prefix>_<仕向地>_<開始日時>.pdf`。セッション名は使わず、仕向地のない旧履歴では仕向地を省く。
+    static func reportFileName(prefix: String, session: MatchSession, locale: Locale) -> String {
+        var parts = [prefix]
+        if let destination = session.resolvedDestination {
+            parts.append(sanitizedFileNamePart(destination.displayName))
+        }
+        parts.append(sanitizedFileNamePart(AppLanguage(locale).formatDateTime(session.startedAt)))
+        return parts.joined(separator: "_") + ".pdf"
+    }
+
+    /// ファイル名の1区画向けに `/`・`:`・空白を置き換える。
+    static func sanitizedFileNamePart(_ value: String) -> String {
+        value
             .replacingOccurrences(of: "/", with: "-")
             .replacingOccurrences(of: ":", with: "")
             .replacingOccurrences(of: " ", with: "_")
-        return "\(AppLocalization.string("照合履歴"))_\(safe).pdf"
     }
 
     static func generatePDF(for session: MatchSession, locale: Locale) -> Data {
         let appLanguage = AppLanguage(locale)
         let renderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: pageSize))
-        let contentWidth = pageSize.width - margin * 2
 
         let titleFont = UIFont.boldSystemFont(ofSize: 20)
         let headFont = UIFont.boldSystemFont(ofSize: 12)
@@ -32,70 +42,30 @@ enum SessionPDFExporter {
         let gray = UIColor(white: 0.38, alpha: 1)
 
         return renderer.pdfData { context in
-            var cursorY: CGFloat = 0
+            // 描画カーソルは検品レポートと共通の PDFPageWriter。フッター帯は使わない（footerHeight 0）ので
+            // 改ページ位置は従来の閉包実装と同じ。
+            let writer = PDFPageWriter(context: context, pageSize: pageSize, margin: margin, footerHeight: 0)
+            writer.beginPage()
 
-            func beginPage() {
-                context.beginPage()
-                cursorY = margin
-            }
-
-            func ensureSpace(_ height: CGFloat) {
-                if cursorY + height > pageSize.height - margin {
-                    beginPage()
-                }
-            }
-
-            @discardableResult
-            func draw(_ text: String, font: UIFont, color: UIColor = .black, spacing: CGFloat = 4) -> CGFloat {
-                let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
-                let attributed = NSAttributedString(string: text, attributes: attributes)
-                let bounds = attributed.boundingRect(
-                    with: CGSize(width: contentWidth, height: .greatestFiniteMagnitude),
-                    options: [.usesLineFragmentOrigin, .usesFontLeading],
-                    context: nil
-                )
-                ensureSpace(bounds.height + spacing)
-                attributed.draw(
-                    with: CGRect(x: margin, y: cursorY, width: contentWidth, height: ceil(bounds.height)),
-                    options: [.usesLineFragmentOrigin, .usesFontLeading],
-                    context: nil
-                )
-                cursorY += ceil(bounds.height) + spacing
-                return bounds.height
-            }
-
-            func drawDivider() {
-                ensureSpace(10)
-                let path = UIBezierPath()
-                path.move(to: CGPoint(x: margin, y: cursorY + 4))
-                path.addLine(to: CGPoint(x: pageSize.width - margin, y: cursorY + 4))
-                UIColor(white: 0.82, alpha: 1).setStroke()
-                path.lineWidth = 0.7
-                path.stroke()
-                cursorY += 10
-            }
-
-            beginPage()
-
-            draw(AppLocalization.string("照合履歴レポート"), font: titleFont, spacing: 6)
+            writer.draw(AppLocalization.string("照合履歴レポート"), font: titleFont, spacing: 6)
             if !session.displayName.isEmpty {
-                draw("\(AppLocalization.string("セッション名")): \(session.displayName)", font: headFont, spacing: 4)
+                writer.draw("\(AppLocalization.string("セッション名")): \(session.displayName)", font: headFont, spacing: 4)
             }
-            draw(
+            writer.draw(
                 "\(AppLocalization.string("開始")): \(appLanguage.formatDateTime(session.startedAt))",
                 font: bodyFont,
                 color: gray,
                 spacing: 2
             )
             if let endedAt = session.endedAt {
-                draw(
+                writer.draw(
                     "\(AppLocalization.string("終了")): \(appLanguage.formatDateTime(endedAt))",
                     font: bodyFont,
                     color: gray,
                     spacing: 2
                 )
             } else {
-                draw(
+                writer.draw(
                     "\(AppLocalization.string("状態")): \(AppLocalization.string("照合中"))",
                     font: bodyFont,
                     color: gray,
@@ -103,7 +73,7 @@ enum SessionPDFExporter {
                 )
             }
             if let destination = session.resolvedDestination {
-                draw(
+                writer.draw(
                     AppLocalization.string("仕向地: \(destination.displayName)"),
                     font: bodyFont,
                     color: gray,
@@ -112,7 +82,7 @@ enum SessionPDFExporter {
             }
             // モルテンは同じ品番でも納品番号ごとに納品書が分かれるため、種類数も添える
             let showsDeliveryNumberCount = session.resolvedDestination == .molten
-            draw(
+            writer.draw(
                 AppLocalization.string(
                     "検査箱数: \(session.matchedCount)箱（品番数: \(session.groupedEntries.count)）"
                 ),
@@ -121,17 +91,17 @@ enum SessionPDFExporter {
                 spacing: showsDeliveryNumberCount ? 2 : 8
             )
             if showsDeliveryNumberCount {
-                draw(
+                writer.draw(
                     AppLocalization.string("納品番号数: \(session.deliveryNumberCount)"),
                     font: bodyFont,
                     color: gray,
                     spacing: 8
                 )
             }
-            drawDivider()
+            writer.drawDivider()
 
             if session.entries.isEmpty {
-                draw(AppLocalization.string("一致したコードはありません。"), font: bodyFont, color: gray)
+                writer.draw(AppLocalization.string("一致したコードはありません。"), font: bodyFont, color: gray)
             }
 
             func quantityText(_ value: Double?) -> String {
@@ -144,23 +114,23 @@ enum SessionPDFExporter {
             /// 澤井製作所・モルテンは従来どおり `nil` で、出力は変わらない。
             func drawBoxEntry(_ entry: MatchHistoryEntry, number: Int, kanbanSerial: String? = nil) {
                 // 箱ごとの見出し＋全文2行はまとめて改ページ判定する
-                ensureSpace(kanbanSerial == nil ? 48 : 62)
+                writer.ensureSpace(kanbanSerial == nil ? 48 : 62)
                 let managementCode = entry.barcodePayload.flatMap(TagBarcodeRecord.parse)?.managementCode
                 if let kanbanSerial {
-                    draw(
+                    writer.draw(
                         AppLocalization.string("かんばん連番: \(kanbanSerial)"),
                         font: bodyFont,
                         spacing: 2
                     )
                 }
-                draw(
+                writer.draw(
                     AppLocalization.string(
                         "\(number)箱目　照合時刻: \(appLanguage.formatDateTime(entry.matchedAt))　管理コード: \(managementCode ?? "-")"
                     ),
                     font: bodyFont,
                     spacing: 2
                 )
-                draw(
+                writer.draw(
                     AppLocalization.string(
                         "QR全文: \(entry.qrPayload ?? AppLocalization.string("記録なし（旧バージョンで照合）"))"
                     ),
@@ -168,7 +138,7 @@ enum SessionPDFExporter {
                     color: gray,
                     spacing: 2
                 )
-                draw(
+                writer.draw(
                     AppLocalization.string(
                         "Code 128全文: \(entry.barcodePayload ?? AppLocalization.string("記録なし（旧バージョンで照合）"))"
                     ),
@@ -181,15 +151,15 @@ enum SessionPDFExporter {
             // 同一品番は1グループにまとめ、何箱検査したかがひと目でわかるようにする
             for (index, group) in session.groupedEntries.enumerated() {
                 // 1グループの見出し＋詳細ブロックはまとめて改ページ判定する
-                ensureSpace(150)
+                writer.ensureSpace(150)
                 let groupBoxCount = AppLocalization.string("\(group.boxCount)箱")
-                draw(
+                writer.draw(
                     "#\(appLanguage.formatInteger(index + 1)) \(group.code) (\(groupBoxCount))",
                     font: monoBoldFont,
                     spacing: 2
                 )
                 if group.boxCount > 1 {
-                    draw(
+                    writer.draw(
                         AppLocalization.string(
                             "照合時刻: \(appLanguage.formatDateTime(group.firstMatchedAt)) 〜 \(appLanguage.formatDateTime(group.lastMatchedAt))"
                         ),
@@ -198,7 +168,7 @@ enum SessionPDFExporter {
                         spacing: 4
                     )
                 } else {
-                    draw(
+                    writer.draw(
                         AppLocalization.string("照合時刻: \(appLanguage.formatDateTime(group.firstMatchedAt))"),
                         font: bodyFont,
                         color: gray,
@@ -216,30 +186,30 @@ enum SessionPDFExporter {
                     // モルテンは同じ品番でも納品書(納品番号)ごとに納入先や指示日が変わる
                     for deliveryGroup in deliveryGroups {
                         // 納品番号1件分の見出し＋納品書情報3行はまとめて改ページ判定する
-                        ensureSpace(110)
+                        writer.ensureSpace(110)
                         let record = deliveryGroup.record
-                        draw(
+                        writer.draw(
                             AppLocalization.string(
                                 "納品番号 \(deliveryGroup.deliveryNumber)（\(deliveryGroup.boxCount)箱・累計 \(deliveryGroup.totalQuantity)個）"
                             ),
                             font: headFont,
                             spacing: 2
                         )
-                        draw(
+                        writer.draw(
                             AppLocalization.string(
                                 "受注者: \(record.ordererCode)　部品番号: \(CodeMatcher.format(partNumber: record.partNumber, destination: .molten))　納品番号: \(record.deliveryNumber)"
                             ),
                             font: bodyFont,
                             spacing: 2
                         )
-                        draw(
+                        writer.draw(
                             AppLocalization.string(
                                 "納入先: \(record.deliveryDestination)　TYロケーション: \(record.tyLocation ?? "-")　供給先: \(record.supplyPoint)"
                             ),
                             font: bodyFont,
                             spacing: 2
                         )
-                        draw(
+                        writer.draw(
                             AppLocalization.string(
                                 "収容数: \(record.packQuantity)　納入指示日(JUMP): \(record.formattedInstructionDate)　時刻: \(record.formattedInstructionTime ?? "-")"
                             ),
@@ -247,12 +217,12 @@ enum SessionPDFExporter {
                             spacing: 4
                         )
 
-                        draw(AppLocalization.string("各箱の読み取り記録"), font: headFont, spacing: 2)
+                        writer.draw(AppLocalization.string("各箱の読み取り記録"), font: headFont, spacing: 2)
                         for (boxIndex, entry) in deliveryGroup.entries.enumerated() {
                             drawBoxEntry(entry, number: boxIndex + 1)
                         }
                     }
-                    drawDivider()
+                    writer.drawDivider()
                     continue
                 }
 
@@ -260,24 +230,24 @@ enum SessionPDFExporter {
                 // 澤井製作所の解析は寛容でデンソーのQRも受理してしまうため、必ず先に判定する。
                 if let denso = group.entries.compactMap({ $0.densoRecord }).first {
                     // かんばん情報3行はまとめて改ページ判定する
-                    ensureSpace(70)
+                    writer.ensureSpace(70)
                     let instructedQuantity = denso.instructedQuantity
                         .map { appLanguage.formatInteger($0) } ?? "-"
-                    draw(
+                    writer.draw(
                         AppLocalization.string(
                             "部品番号: \(CodeMatcher.format(partNumber: denso.partNumber, destination: .denso))　収容数: \(denso.packQuantity)　指示数: \(instructedQuantity)"
                         ),
                         font: bodyFont,
                         spacing: 2
                     )
-                    draw(
+                    writer.draw(
                         AppLocalization.string(
                             "次区: \(denso.nextProcess ?? "-")　指示: \(denso.instructionCode ?? "-")　納入日: \(denso.formattedDeliveryDate ?? "-")　便: \(denso.deliveryRun ?? "-")"
                         ),
                         font: bodyFont,
                         spacing: 2
                     )
-                    draw(
+                    writer.draw(
                         AppLocalization.string(
                             "管理番号: \(denso.managementNumber ?? "-")　アイテムNo: \(denso.itemNumber ?? "-")　受入: \(denso.receivingCode ?? "-")"
                         ),
@@ -285,7 +255,7 @@ enum SessionPDFExporter {
                         spacing: 4
                     )
 
-                    draw(AppLocalization.string("各箱の読み取り記録"), font: headFont, spacing: 2)
+                    writer.draw(AppLocalization.string("各箱の読み取り記録"), font: headFont, spacing: 2)
                     for (boxIndex, entry) in group.entries.enumerated() {
                         drawBoxEntry(
                             entry,
@@ -293,28 +263,28 @@ enum SessionPDFExporter {
                             kanbanSerial: entry.densoRecord?.kanbanSerial
                         )
                     }
-                    drawDivider()
+                    writer.drawDivider()
                     continue
                 }
 
                 if let qr = group.entries.compactMap({ $0.kanbanRecord }).first {
                     let suffix = qr.partSuffix.map { AppLocalization.string("（枝番 \($0)）") } ?? ""
-                    draw(AppLocalization.string("納品書情報"), font: headFont, spacing: 2)
-                    draw(
+                    writer.draw(AppLocalization.string("納品書情報"), font: headFont, spacing: 2)
+                    writer.draw(
                         AppLocalization.string(
                             "品目番号: \(CodeMatcher.format(partNumber: qr.partNumber, destination: .sawai))\(suffix)　カード番号: \(qr.cardNumber)"
                         ),
                         font: bodyFont,
                         spacing: 2
                     )
-                    draw(
+                    writer.draw(
                         AppLocalization.string(
                             "納入数量: \(quantityText(qr.deliveryQuantity))　指示数: \(quantityText(qr.instructedQuantity))"
                         ),
                         font: bodyFont,
                         spacing: 2
                     )
-                    draw(
+                    writer.draw(
                         AppLocalization.string(
                             "工場: \(qr.factoryCode ?? "-")　受入部品庫: \(qr.warehouseCode ?? "-")　供給先: \(qr.supplyPointCode ?? "-")"
                         ),
@@ -323,14 +293,14 @@ enum SessionPDFExporter {
                     )
                 }
 
-                draw(AppLocalization.string("各箱の読み取り記録"), font: headFont, spacing: 2)
+                writer.draw(AppLocalization.string("各箱の読み取り記録"), font: headFont, spacing: 2)
                 for (boxIndex, entry) in group.entries.enumerated() {
                     drawBoxEntry(entry, number: boxIndex + 1)
                 }
-                drawDivider()
+                writer.drawDivider()
             }
 
-            draw(
+            writer.draw(
                 AppLocalization.string("CodeMatch により生成 — このレポートは端末内のデータから作成されています。"),
                 font: UIFont.systemFont(ofSize: 8.5),
                 color: UIColor(white: 0.55, alpha: 1),
