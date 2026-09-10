@@ -235,7 +235,7 @@ Issue #106（PR #113 / #114 / #115 / #116、iOS の履歴・PDF は #117）で�
 | 対象 | Swift | Android の証拠 | 分類 |
 |---|---|---|---|
 | 行のキーと並び（品番+枝番、`BCJH5281GG (02)` 表記、枝番なしは括弧なし）、箱数、1箱の納入数量、数量計 | `InspectionReportTests::testSawaiRowsAreKeyedByPartNumberAndSuffixAndSortedByPartNumber` | `InspectionReportContentTest.kt::sawaiRowsAreKeyedByPartNumberAndSuffixAndSortedByPartNumber` | D |
-| モルテンは納品番号ごと、生の部品番号と納入先、収容数と累計 | `InspectionReportTests::testMoltenRowsAreOnePerDeliveryNumberWithRawPartAndDeliveryPoint` | `InspectionReportContentTest.kt::moltenRowsAreOnePerDeliveryNumberWithRawPartAndDeliveryPoint` | D |
+| モルテンは納品番号ごと、生の部品番号と納入先、収容数と累計。並びは品番 → 納品番号で同じ品番の行が離れない | `InspectionReportTests::testMoltenRowsAreOnePerDeliveryNumberWithRawPartAndDeliveryPoint` + `::testMoltenRowsSortByPartNumberBeforeDeliveryNumberSoOnePartStaysTogether` | `InspectionReportContentTest.kt::moltenRowsAreOnePerDeliveryNumberWithRawPartAndDeliveryPoint` + `::moltenRowsSortByPartNumberBeforeDeliveryNumberSoOnePartStaysTogether` | D |
 | デンソーは品番ごと（`6-4`）、収容数と数量計 | `InspectionReportTests::testDensoRowsAreOnePerPartNumberFormattedSixFour` | `InspectionReportContentTest.kt::densoRowsAreOnePerPartNumberFormattedSixFour` | D |
 | 解析できない箱は末尾の行に残り、箱数の合計がセッションの箱数と一致する。仕向地なしは全行未解析 | `InspectionReportTests::testBoxesWithoutAParsableQRTrailAsUnparsedRowsSoNoBoxIsDropped` + `::testSessionWithoutDestinationFallsBackToSawaiLayoutWithEveryBoxUnparsed` | `InspectionReportContentTest.kt::boxesWithoutAParsableQrTrailAsUnparsedRowsSoNoBoxIsDropped` + `::sessionWithoutDestinationFallsBackToSawaiLayoutWithEveryBoxUnparsed` | D |
 | デンソーのかんばんを澤井製作所として読まない（寛容な解析器の誤認防止） | `InspectionReportTests::testADensoKanbanIsNeverReadAsASawaiSlip` | `InspectionReportContentTest.kt::aDensoKanbanIsNeverReadAsASawaiSlip` | D |

@@ -9,6 +9,9 @@ final class InspectionReportTests: XCTestCase {
     private let sawaiQRNoSuffix = "DAYA004770DFR55281GA  0001000000010000Y      000000BYBYTLYB15   0*"
     private let moltenQRD10E = "AK6805D10E50N10B         U543820000MB    S600700000020908    "
     private let moltenQRPAF1 = "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+    // 納品番号 U009740 は U011230 より小さいが、品番 PAF115423 は D10E50N10B より後ろ。
+    private let moltenQRPAF1423 = "AK6805PAF115423          U009740000MDCU4TS6030000012009081330"
+    private let moltenQRD10EMDT = "AK6805D10E50N10B         U011230000MDTD  S6030000002009081330"
     private let densoQRKanban0140 = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
     private let densoQRKanban0141 = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0141SWS    20260908S0010000720000009924543330454333M6"
 
@@ -67,6 +70,24 @@ final class InspectionReportTests: XCTestCase {
         XCTAssertEqual(d10e.deliveryDestination, "MB")
         XCTAssertEqual(d10e.boxCount, 1)
         XCTAssertEqual(d10e.totalQuantity, 2)
+    }
+
+    func testMoltenRowsSortByPartNumberBeforeDeliveryNumberSoOnePartStaysTogether() {
+        let session = MatchSession(
+            startedAt: startedAt,
+            entries: [
+                entry("PAF1-15-423", moltenQRPAF1423, "PAF1-15-423@0N5R3C"),
+                entry("PAF1-15-422", moltenQRPAF1, "PAF1-15-422@0NKD3C"),
+                entry("D10E-50-N10B", moltenQRD10E, "D10E-50-N10B@0UBL00"),
+                entry("D10E-50-N10B", moltenQRD10EMDT, "D10E-50-N10B@0UK60K")
+            ],
+            destination: .molten
+        )
+
+        let report = InspectionReport.make(session: session)
+
+        XCTAssertEqual(report.rows.map(\.keyText), ["U011230", "U543820", "UAG5560", "U009740"])
+        XCTAssertEqual(report.rows.map(\.partNumber), ["D10E50N10B", "D10E50N10B", "PAF115422", "PAF115423"])
     }
 
     func testDensoRowsAreOnePerPartNumberFormattedSixFour() throws {

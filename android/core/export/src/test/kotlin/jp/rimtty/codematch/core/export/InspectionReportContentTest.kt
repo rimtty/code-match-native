@@ -21,6 +21,11 @@ class InspectionReportContentTest {
         "AK6805D10E50N10B         U543820000MB    S600700000020908    "
     private val moltenQrPAF1 =
         "AK6805PAF115422          UAG5560000FA2P5901FEM000012009080000"
+    // 納品番号 U009740 は U011230 より小さいが、品番 PAF115423 は D10E50N10B より後ろ。
+    private val moltenQrPAF1423 =
+        "AK6805PAF115423          U009740000MDCU4TS6030000012009081330"
+    private val moltenQrD10EMDT =
+        "AK6805D10E50N10B         U011230000MDTD  S6030000002009081330"
     private val densoQr0140 = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0140SWS    20260908S0010000720000009924543330454333M6"
     private val densoQr0141 = "JAMA501195000001021100021041011102112071210412406127041410214201144061520440205515015160151908520045210652606523105220640102208601507722000000024D850C01008D85045M      0141SWS    20260908S0010000720000009924543330454333M6"
 
@@ -80,6 +85,31 @@ class InspectionReportContentTest {
         assertEquals("MB", d10e.deliveryDestination)
         assertEquals(1, d10e.boxCount)
         assertEquals(2.0, d10e.totalQuantity)
+    }
+
+    @Test
+    fun moltenRowsSortByPartNumberBeforeDeliveryNumberSoOnePartStaysTogether() {
+        val session = MatchSession(
+            startedAt = 0L,
+            destination = Destination.MOLTEN,
+            entries = listOf(
+                entry("one", "PAF1-15-423", moltenQrPAF1423, "PAF1-15-423@0N5R3C"),
+                entry("two", "PAF1-15-422", moltenQrPAF1, "PAF1-15-422@0NKD3C"),
+                entry("three", "D10E-50-N10B", moltenQrD10E, "D10E-50-N10B@0UBL00"),
+                entry("four", "D10E-50-N10B", moltenQrD10EMDT, "D10E-50-N10B@0UK60K"),
+            ),
+        )
+
+        val report = InspectionReportContent.build(session)
+
+        assertEquals(
+            listOf("U011230", "U543820", "UAG5560", "U009740"),
+            report.rows.map { it.keyText },
+        )
+        assertEquals(
+            listOf("D10E50N10B", "D10E50N10B", "PAF115422", "PAF115423"),
+            report.rows.map { it.partNumber },
+        )
     }
 
     @Test

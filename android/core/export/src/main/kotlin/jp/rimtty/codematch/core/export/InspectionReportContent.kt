@@ -45,7 +45,7 @@ data class InspectionReport(
 /**
  * Builds the inspection report rows of a session.
  *
- * Rows are sorted by their key (part number, then suffix or delivery number)
+ * Rows are sorted by part number, then by suffix (Sawai) or delivery number (Molten),
  * so the operator can find each line of the paper sheet quickly; scan order is
  * deliberately not offered. Boxes whose QR cannot be parsed for the locked
  * destination are appended as trailing rows keyed by the recorded code, so
@@ -74,9 +74,11 @@ object InspectionReportContent {
                     )
                 }
 
+                // A Molten sheet lists parts, so rows sort by part number first and
+                // the delivery numbers of one part stay together.
                 Destination.MOLTEN -> entry.moltenRecord()?.let { record ->
                     parsed.add(
-                        key = SortKey(record.deliveryNumber, ""),
+                        key = SortKey(record.partNumber, record.deliveryNumber),
                         keyText = record.deliveryNumber,
                         quantity = record.packQuantity.toDouble(),
                         partNumber = record.partNumber,

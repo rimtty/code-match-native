@@ -38,7 +38,7 @@ struct InspectionReportRow: Equatable {
 
 /// セッション1件分の検品レポートの行。
 ///
-/// 行はキー（品番、次いで枝番または納品番号）の昇順に並べ、操作者が検品表の行を
+/// 行は品番、次いで枝番（澤井製作所）または納品番号（モルテン）の昇順に並べ、操作者が検品表の行を
 /// すぐ見つけられるようにする。読取順は意図的に提供しない。仕向地として解析できない
 /// QRの箱は記録済みの品番をキーにした行として末尾に残し、レポートの箱数の合計が
 /// 常にセッションの箱数と一致するようにする。Android の `InspectionReportContent` と同じ規則。
@@ -80,9 +80,10 @@ struct InspectionReport: Equatable {
                     placed = true
                 }
             case .molten:
+                // モルテンの一覧表は品番ごとなので、品番を第1キーにして同じ品番の納品番号を並べる
                 if let record = entry.moltenRecord {
                     parsed.add(
-                        key: SortKey(primary: record.deliveryNumber, secondary: ""),
+                        key: SortKey(primary: record.partNumber, secondary: record.deliveryNumber),
                         keyText: record.deliveryNumber,
                         quantity: Double(record.packQuantity),
                         partNumber: record.partNumber,
