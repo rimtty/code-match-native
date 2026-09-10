@@ -60,6 +60,15 @@ JDK/SDKがない環境ではGradle結果を推測せず、実行不能として�
 
 ## 履歴
 
+### 2026-09-11 検品レポート PDF
+
+紙の検品表（品番・箱数の一覧）と突き合わせるための第2のPDF「検品レポート」を、セッション詳細の照合履歴レポートの行の上に追加した（iOS と同時、ブランチ `codex/inspection-report-poc`）。
+
+- `core/export` に純 JVM の `InspectionReportContent`（1行 = 澤井製作所の品番+枝番／モルテンの納品番号（納入先つき）／デンソーの品番、品番順、解析できない箱は品番をキーに末尾へ）と `InspectionPdfContent`（見出し行と `PdfTable` の列・セル）を置き、`HistoryPdfExporter` に `HistoryReportKind`（`MATCH_HISTORY` / `INSPECTION`）と private の `PageCursor` を足した。検品レポートは固定高さの表を2回描画してページ総数を印字し、表ヘッダーを各ページに繰り返す。`File(` を作るのは従来どおり `HistoryPdfExporter` だけで、cache も `cache/codematch-pdf/` のまま（release gate は無変更）。
+- `HistoryPdfBridge` / `HistoryRoute` に `kind` を通し、`HistoryScreen` の PDF ボタンをキャプションつきの `PdfActionRow` 2行（`saveInspectionReportButton` / `shareInspectionReportButton` と既存の `savePDFButton` / `sharePDFButton`）にした。文言は `history_inspection_report` / `history_match_history_report` を日英へ追加し、PDF 内のラベルは `HistoryExportLabels` に追加した。ファイル名は「検品レポート_」（英語 `InspectionReport_`）+ 照合履歴と同じ語幹。
+
+証跡: `lintDebug testDebugUnitTest assembleDebug`（全件成功）、`:app:assembleRelease` と `verify-release-hardening.sh`（全項目通過）、Pixel_7 emulator で `:core:export` 4件・`:feature:history` 18件の instrumentation が成功。紙の検品表との実突き合わせと共有先での受け取りは未実施。
+
 ### 2026-09-08 照合ログ
 
 現場デバッグ用に、カメラ・BLEどちらの入力でも照合の結果と不受理を端末内へ記録し、設定画面の最下部から書き出せるようにした（Issue #120、Android側 #122）。
