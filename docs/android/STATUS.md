@@ -60,6 +60,10 @@ JDK/SDKがない環境ではGradle結果を推測せず、実行不能として�
 
 ## 履歴
 
+### 2026-09-11 レポートのメール共有
+
+セッション詳細の「共有する」（検品レポート・照合履歴レポート）を、宛先固定（`ReportMailContent.RECIPIENT`）・件名・定型本文・PDF 添付を埋めたメールアプリの起動に変えた（ブランチ `codex/inspection-report-mail`、PoC ブランチの上に積んであり単独で巻き戻せる）。`core/export/ReportMailContent` が純 JVM で件名と本文を組み立て、`HistoryPdfBridge.createMailOrShareChooser` が `ACTION_SEND` + `mailto:` セレクタの Intent を作る。メールアプリが解決できなければ従来の共有チューザーに戻る。`AndroidManifest.xml` に `mailto:` の `<queries>` を足した以外、権限・FileProvider・release gate は無変更。証跡: `ReportMailContentTest` 3件、`HistoryPdfBridgeTest` にメール Intent とフォールバックの2件、`lintDebug testDebugUnitTest assembleDebug`、`:app:assembleRelease` と `verify-release-hardening.sh`。実メールアプリでの受け取りは Pixel 7 で確認する。
+
 ### 2026-09-11 検品レポート PDF
 
 紙の検品表（品番・箱数の一覧）と突き合わせるための第2のPDF「検品レポート」を、セッション詳細の照合履歴レポートの行の上に追加した（iOS と同時、ブランチ `codex/inspection-report-poc`）。
