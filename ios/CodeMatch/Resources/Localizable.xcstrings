@@ -6312,6 +6312,102 @@
           }
         }
       }
+    },
+    "お疲れさまです。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hello,"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "お疲れさまです。"
+          }
+        }
+      }
+    },
+    "CodeMatch の検品レポートをお送りします。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please find the CodeMatch inspection report attached."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CodeMatch の検品レポートをお送りします。"
+          }
+        }
+      }
+    },
+    "CodeMatch の照合履歴レポートをお送りします。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please find the CodeMatch match history report attached."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CodeMatch の照合履歴レポートをお送りします。"
+          }
+        }
+      }
+    },
+    "■ セッション" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Session"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "■ セッション"
+          }
+        }
+      }
+    },
+    "■ 添付" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attachment"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "■ 添付"
+          }
+        }
+      }
+    },
+    "このメールは CodeMatch から作成しました。内容は端末内のデータのみです。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Created by CodeMatch. The contents are on-device data only."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このメールは CodeMatch から作成しました。内容は端末内のデータのみです。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

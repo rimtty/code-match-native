@@ -1,0 +1,86 @@
+import Foundation
+
+/// セッション詳細から書き出す2種類のPDF。
+enum ReportKind {
+    case matchHistory
+    case inspection
+}
+
+/// レポートPDFをメールで共有するときの宛先・件名・本文。
+///
+/// 宛先は当面固定で、レポートは操作者自身の受信箱にだけ送る。本文にはレポートの見出し
+/// （セッション、仕向地、箱数・行数）を繰り返し、添付を開かなくても内容が分かるようにする。
+/// 送信そのものは操作者が使うメールアプリに任せる。Android の `ReportMailContent` と同じ規則。
+struct ReportMailContent: Equatable {
+    /// すべてのレポートメールの宛先。
+    static let recipients = ["ttyrim@gmail.com"]
+
+    let subject: String
+    let body: String
+
+    static func make(session: MatchSession, kind: ReportKind, fileName: String, locale: Locale) -> ReportMailContent {
+        let appLanguage = AppLanguage(locale)
+        let title: String
+        switch kind {
+        case .matchHistory: title = AppLocalization.string("照合履歴レポート")
+        case .inspection: title = AppLocalization.string("検品レポート")
+        }
+        let destination = session.resolvedDestination
+        let sessionLabel = session.displayName.isEmpty
+            ? appLanguage.formatDateTime(session.startedAt)
+            : session.displayName
+        var subject = "[CodeMatch] \(title) \(sessionLabel)"
+        if let destination {
+            subject += " - \(destination.displayName)"
+        }
+
+        var lines: [String] = []
+        lines.append(AppLocalization.string("お疲れさまです。"))
+        switch kind {
+        case .matchHistory: lines.append(AppLocalization.string("CodeMatch の照合履歴レポートをお送りします。"))
+        case .inspection: lines.append(AppLocalization.string("CodeMatch の検品レポートをお送りします。"))
+        }
+        lines.append("")
+        lines.append(AppLocalization.string("■ セッション"))
+        if !session.displayName.isEmpty {
+            lines.append("\(AppLocalization.string("セッション名")): \(session.displayName)")
+        }
+        lines.append("\(AppLocalization.string("開始")): \(appLanguage.formatDateTime(session.startedAt))")
+        if let endedAt = session.endedAt {
+            lines.append("\(AppLocalization.string("終了")): \(appLanguage.formatDateTime(endedAt))")
+        } else {
+            lines.append("\(AppLocalization.string("状態")): \(AppLocalization.string("照合中"))")
+        }
+        if let destination {
+            lines.append(AppLocalization.string("仕向地: \(destination.displayName)"))
+        }
+        lines.append(AppLocalization.string("検査箱数: \(session.matchedCount)箱"))
+        lines.append(contentsOf: countLines(session: session, kind: kind, destination: destination))
+        lines.append("")
+        lines.append(AppLocalization.string("■ 添付"))
+        lines.append(fileName)
+        lines.append("")
+        lines.append(AppLocalization.string("このメールは CodeMatch から作成しました。内容は端末内のデータのみです。"))
+
+        return ReportMailContent(subject: subject, body: lines.joined(separator: "\n"))
+    }
+
+    /// レポート自身の見出しと同じ件数の行。
+    private static func countLines(session: MatchSession, kind: ReportKind, destination: Destination?) -> [String] {
+        switch kind {
+        case .inspection:
+            let report = InspectionReport.make(session: session)
+            switch report.layout {
+            case .sawai: return [AppLocalization.string("品番数（枝番別）: \(report.rowCount)")]
+            case .molten: return [AppLocalization.string("納品番号数: \(report.rowCount)")]
+            case .denso: return [AppLocalization.string("品番数: \(report.rowCount)")]
+            }
+        case .matchHistory:
+            var lines = [AppLocalization.string("品番数: \(session.groupedEntries.count)")]
+            if destination == .molten {
+                lines.append(AppLocalization.string("納品番号数: \(session.deliveryNumberCount)"))
+            }
+            return lines
+        }
+    }
+}

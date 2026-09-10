@@ -170,6 +170,14 @@ private struct SessionHistoryDetail: View {
     @State private var exportDocument: SessionPDFDocument?
     /// fileExporter は1つなので、直前に選んだレポートのファイル名をここに持つ。
     @State private var exportFileName: String?
+    /// 「共有する」で開くメール作成画面。「メール」が使えない端末では shareItem に切り替える。
+    @State private var mailItem: MailItem?
+
+    private struct MailItem: Identifiable {
+        let id = UUID()
+        let content: ReportMailContent
+        let attachment: MailComposeView.Attachment
+    }
 
     private struct ShareItem: Identifiable {
         let id = UUID()
@@ -244,10 +252,7 @@ private struct SessionHistoryDetail: View {
                                 )
                                 showsExporter = true
                             },
-                            onShare: {
-                                shareItem = (try? InspectionPDFExporter.writeTemporaryPDF(for: session, locale: locale))
-                                    .map { ShareItem(url: $0) }
-                            }
+                            onShare: { shareReport(.inspection, session: session) }
                         )
                         PDFActionRow(
                             caption: AppLocalization.string("照合履歴レポート"),
@@ -260,10 +265,7 @@ private struct SessionHistoryDetail: View {
                                 )
                                 showsExporter = true
                             },
-                            onShare: {
-                                shareItem = (try? SessionPDFExporter.writeTemporaryPDF(for: session, locale: locale))
-                                    .map { ShareItem(url: $0) }
-                            }
+                            onShare: { shareReport(.matchHistory, session: session) }
                         )
                     }
 
@@ -332,10 +334,44 @@ private struct SessionHistoryDetail: View {
             ActivityShareSheet(items: [item.url])
                 .presentationDetents([.medium, .large])
         }
+        .sheet(item: $mailItem) { item in
+            MailComposeView(content: item.content, attachment: item.attachment) {
+                mailItem = nil
+            }
+            .ignoresSafeArea()
+        }
     }
 
     private var session: MatchSession? {
         historyStore.sessions.first(where: { $0.id == sessionID })
+    }
+
+    /// 「共有する」: 宛先・件名・本文・PDF添付を埋めたメール作成画面を開く。
+    /// 「メール」にアカウントがない端末では従来どおりの共有シートに切り替える。
+    private func shareReport(_ kind: ReportKind, session: MatchSession) {
+        if MailComposeView.canSendMail {
+            let data: Data
+            let fileName: String
+            switch kind {
+            case .inspection:
+                data = InspectionPDFExporter.generatePDF(for: session, locale: locale)
+                fileName = InspectionPDFExporter.fileName(for: session, locale: locale)
+            case .matchHistory:
+                data = SessionPDFExporter.generatePDF(for: session, locale: locale)
+                fileName = SessionPDFExporter.fileName(for: session, locale: locale)
+            }
+            mailItem = MailItem(
+                content: ReportMailContent.make(session: session, kind: kind, fileName: fileName, locale: locale),
+                attachment: MailComposeView.Attachment(data: data, fileName: fileName)
+            )
+            return
+        }
+        let url: URL?
+        switch kind {
+        case .inspection: url = try? InspectionPDFExporter.writeTemporaryPDF(for: session, locale: locale)
+        case .matchHistory: url = try? SessionPDFExporter.writeTemporaryPDF(for: session, locale: locale)
+        }
+        shareItem = url.map { ShareItem(url: $0) }
     }
 
     private var navigationTitleText: String {
