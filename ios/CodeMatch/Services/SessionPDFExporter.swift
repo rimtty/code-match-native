@@ -8,15 +8,19 @@ enum SessionPDFExporter {
     private static let margin: CGFloat = 44
 
     static func fileName(for session: MatchSession, locale: Locale) -> String {
+        "\(AppLocalization.string("照合履歴"))_\(sanitizedStem(for: session, locale: locale)).pdf"
+    }
+
+    /// 表示名（未設定なら開始日時）をファイル名向けに整えた語幹。検品レポートも同じ規則を使う。
+    static func sanitizedStem(for session: MatchSession, locale: Locale) -> String {
         let appLanguage = AppLanguage(locale)
         let base = session.displayName.isEmpty
             ? appLanguage.formatDateTime(session.startedAt)
             : session.displayName
-        let safe = base
+        return base
             .replacingOccurrences(of: "/", with: "-")
             .replacingOccurrences(of: ":", with: "")
             .replacingOccurrences(of: " ", with: "_")
-        return "\(AppLocalization.string("照合履歴"))_\(safe).pdf"
     }
 
     static func generatePDF(for session: MatchSession, locale: Locale) -> Data {

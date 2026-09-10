@@ -28,6 +28,8 @@
 		A10000000000000000000107 /* SessionPDFExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000107 /* SessionPDFExporterTests.swift */; };
 		A10000000000000000000108 /* HistoryExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000108 /* HistoryExporterTests.swift */; };
 		A10000000000000000000109 /* ScanLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000109 /* ScanLogStoreTests.swift */; };
+		A1000000000000000000010A /* InspectionReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000010A /* InspectionReportTests.swift */; };
+		A1000000000000000000010B /* InspectionPDFExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000010B /* InspectionPDFExporterTests.swift */; };
 		A1000000000000000000000C /* CodeMatchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* CodeMatchUITests.swift */; };
 		A1000000000000000000000D /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* RootTabView.swift */; };
 		A1000000000000000000000E /* HistoryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* HistoryModels.swift */; };
@@ -40,6 +42,9 @@
 		A10000000000000000000015 /* SessionPDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* SessionPDFExporter.swift */; };
 		A10000000000000000000019 /* HistoryExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001F /* HistoryExporter.swift */; };
 		A1000000000000000000001A /* ScanLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* ScanLogStore.swift */; };
+		A1000000000000000000001B /* InspectionReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000021 /* InspectionReport.swift */; };
+		A1000000000000000000001C /* PDFPageWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000022 /* PDFPageWriter.swift */; };
+		A1000000000000000000001D /* InspectionPDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000023 /* InspectionPDFExporter.swift */; };
 		A10000000000000000000016 /* BluetoothScannerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001C /* BluetoothScannerService.swift */; };
 		A10000000000000000000018 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001E /* Localizable.xcstrings */; };
 		A10000000000000000000060 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000060 /* InfoPlist.strings */; };
@@ -85,6 +90,8 @@
 		A20000000000000000000107 /* SessionPDFExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPDFExporterTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000108 /* HistoryExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryExporterTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000109 /* ScanLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanLogStoreTests.swift; sourceTree = "<group>"; };
+		A2000000000000000000010A /* InspectionReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectionReportTests.swift; sourceTree = "<group>"; };
+		A2000000000000000000010B /* InspectionPDFExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectionPDFExporterTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000000D /* CodeMatchUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeMatchUITests.swift; sourceTree = "<group>"; };
 		A20000000000000000000010 /* CodeMatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CodeMatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000011 /* CodeMatchTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CodeMatchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -100,6 +107,9 @@
 		A2000000000000000000001B /* SessionPDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPDFExporter.swift; sourceTree = "<group>"; };
 		A2000000000000000000001F /* HistoryExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryExporter.swift; sourceTree = "<group>"; };
 		A20000000000000000000020 /* ScanLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanLogStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000021 /* InspectionReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectionReport.swift; sourceTree = "<group>"; };
+		A20000000000000000000022 /* PDFPageWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFPageWriter.swift; sourceTree = "<group>"; };
+		A20000000000000000000023 /* InspectionPDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectionPDFExporter.swift; sourceTree = "<group>"; };
 		A2000000000000000000001C /* BluetoothScannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothScannerService.swift; sourceTree = "<group>"; };
 		A2000000000000000000001E /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		A20000000000000000000060 /* InfoPlist.strings */ = {
@@ -187,6 +197,7 @@
 			children = (
 				A20000000000000000000003 /* ScanModels.swift */,
 				A20000000000000000000014 /* HistoryModels.swift */,
+				A20000000000000000000021 /* InspectionReport.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -200,6 +211,8 @@
 				A2000000000000000000001B /* SessionPDFExporter.swift */,
 				A2000000000000000000001F /* HistoryExporter.swift */,
 				A20000000000000000000020 /* ScanLogStore.swift */,
+				A20000000000000000000022 /* PDFPageWriter.swift */,
+				A20000000000000000000023 /* InspectionPDFExporter.swift */,
 				A2000000000000000000001C /* BluetoothScannerService.swift */,
 			);
 			path = Services;
@@ -241,6 +254,8 @@
 				A20000000000000000000107 /* SessionPDFExporterTests.swift */,
 				A20000000000000000000108 /* HistoryExporterTests.swift */,
 				A20000000000000000000109 /* ScanLogStoreTests.swift */,
+				A2000000000000000000010A /* InspectionReportTests.swift */,
+				A2000000000000000000010B /* InspectionPDFExporterTests.swift */,
 			);
 			path = CodeMatchTests;
 			sourceTree = "<group>";
@@ -452,6 +467,9 @@
 				A10000000000000000000015 /* SessionPDFExporter.swift in Sources */,
 				A10000000000000000000019 /* HistoryExporter.swift in Sources */,
 				A1000000000000000000001A /* ScanLogStore.swift in Sources */,
+				A1000000000000000000001B /* InspectionReport.swift in Sources */,
+				A1000000000000000000001C /* PDFPageWriter.swift in Sources */,
+				A1000000000000000000001D /* InspectionPDFExporter.swift in Sources */,
 				A10000000000000000000016 /* BluetoothScannerService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -470,6 +488,8 @@
 				A10000000000000000000107 /* SessionPDFExporterTests.swift in Sources */,
 				A10000000000000000000108 /* HistoryExporterTests.swift in Sources */,
 				A10000000000000000000109 /* ScanLogStoreTests.swift in Sources */,
+				A1000000000000000000010A /* InspectionReportTests.swift in Sources */,
+				A1000000000000000000010B /* InspectionPDFExporterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
