@@ -6313,54 +6313,6 @@
         }
       }
     },
-    "お疲れさまです。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hello,"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "お疲れさまです。"
-          }
-        }
-      }
-    },
-    "CodeMatch の検品レポートをお送りします。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Please find the CodeMatch inspection report attached."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CodeMatch の検品レポートをお送りします。"
-          }
-        }
-      }
-    },
-    "CodeMatch の照合履歴レポートをお送りします。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Please find the CodeMatch match history report attached."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CodeMatch の照合履歴レポートをお送りします。"
-          }
-        }
-      }
-    },
     "■ セッション" : {
       "localizations" : {
         "en" : {
@@ -6389,6 +6341,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "■ 添付"
+          }
+        }
+      }
+    },
+    "検品レポートをお送りします。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please find the inspection report attached."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "検品レポートをお送りします。"
+          }
+        }
+      }
+    },
+    "照合履歴レポートをお送りします。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please find the match history report attached."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照合履歴レポートをお送りします。"
           }
         }
       }

@@ -48,8 +48,7 @@ class ReportMailContentTest {
         assertEquals("検品レポート $start - 澤井製作所", mail.subject)
         assertFalse(mail.subject.contains("朝便"))
         val expectedBody = listOf(
-            "お疲れさまです。",
-            "CodeMatch の検品レポートをお送りします。",
+            "検品レポートをお送りします。",
             "",
             "■ セッション",
             "セッション名: 朝便",
@@ -84,7 +83,7 @@ class ReportMailContentTest {
 
         val start = HistoryExportTextFormatter.dateTime(1_700_000_000_000L, AppLanguage.ENGLISH, utc)
         assertEquals("Match History Report $start - Molten", mail.subject)
-        assertTrue(mail.body.startsWith("Hello,\nPlease find the CodeMatch match history report attached.\n"))
+        assertTrue(mail.body.startsWith("Please find the match history report attached.\n\nSession\n"))
         assertTrue(mail.body.contains("Status: In progress"))
         assertTrue(mail.body.contains("Boxes: 1 box"))
         assertTrue(mail.body.contains("Part numbers: 1"))

@@ -30,8 +30,7 @@ final class ReportMailContentTests: XCTestCase {
         XCTAssertEqual(mail.subject, "検品レポート \(appLanguage.formatDateTime(startedAt)) - 澤井製作所")
         XCTAssertFalse(mail.subject.contains("朝便"))
         let expectedBody = [
-            "お疲れさまです。",
-            "CodeMatch の検品レポートをお送りします。",
+            "検品レポートをお送りします。",
             "",
             "■ セッション",
             "セッション名: 朝便",
@@ -61,7 +60,7 @@ final class ReportMailContentTests: XCTestCase {
         let mail = ReportMailContent.make(session: session, kind: .matchHistory, fileName: "照合履歴_x.pdf", locale: locale)
 
         XCTAssertEqual(mail.subject, "照合履歴レポート \(start) - モルテン")
-        XCTAssertTrue(mail.body.hasPrefix("お疲れさまです。\nCodeMatch の照合履歴レポートをお送りします。\n"))
+        XCTAssertTrue(mail.body.hasPrefix("照合履歴レポートをお送りします。\n\n■ セッション\n"))
         XCTAssertTrue(mail.body.contains("状態: 照合中"))
         XCTAssertTrue(mail.body.contains("検査箱数: 1箱"))
         XCTAssertTrue(mail.body.contains("品番数: 1"))

@@ -82,8 +82,7 @@ data class HistoryExportLabels(
     val columnCumulativeQuantity: String,
     val columnCheck: String,
     val inspectionFooterNote: String,
-    /** Pre-filled report e-mail: greeting, intro per report, headings and footer. */
-    val mailGreeting: String,
+    /** Pre-filled report e-mail: intro per report and headings. */
     val mailIntroInspection: String,
     val mailIntroHistory: String,
     val mailSessionHeading: String,
@@ -191,9 +190,8 @@ object HistoryExportTextFormatter {
             columnCheck = "確認",
             inspectionFooterNote =
                 "検品表にあってこの一覧にない品番は、このセッションで照合されていません。",
-            mailGreeting = "お疲れさまです。",
-            mailIntroInspection = "CodeMatch の検品レポートをお送りします。",
-            mailIntroHistory = "CodeMatch の照合履歴レポートをお送りします。",
+            mailIntroInspection = "検品レポートをお送りします。",
+            mailIntroHistory = "照合履歴レポートをお送りします。",
             mailSessionHeading = "■ セッション",
             mailAttachmentHeading = "■ 添付",
             boxCountSingular = "箱",
@@ -271,9 +269,8 @@ object HistoryExportTextFormatter {
             columnCheck = "Check",
             inspectionFooterNote =
                 "Part numbers on the inspection sheet that are missing from this list were not matched in this session.",
-            mailGreeting = "Hello,",
-            mailIntroInspection = "Please find the CodeMatch inspection report attached.",
-            mailIntroHistory = "Please find the CodeMatch match history report attached.",
+            mailIntroInspection = "Please find the inspection report attached.",
+            mailIntroHistory = "Please find the match history report attached.",
             mailSessionHeading = "Session",
             mailAttachmentHeading = "Attachment",
             boxCountSingular = "box",

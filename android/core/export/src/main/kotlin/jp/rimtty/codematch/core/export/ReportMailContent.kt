@@ -50,7 +50,6 @@ object ReportMailContent {
         }
 
         val lines = mutableListOf<String>()
-        lines += labels.mailGreeting
         lines += when (kind) {
             HistoryReportKind.MATCH_HISTORY -> labels.mailIntroHistory
             HistoryReportKind.INSPECTION -> labels.mailIntroInspection

@@ -33,10 +33,9 @@ struct ReportMailContent: Equatable {
         }
 
         var lines: [String] = []
-        lines.append(AppLocalization.string("お疲れさまです。"))
         switch kind {
-        case .matchHistory: lines.append(AppLocalization.string("CodeMatch の照合履歴レポートをお送りします。"))
-        case .inspection: lines.append(AppLocalization.string("CodeMatch の検品レポートをお送りします。"))
+        case .matchHistory: lines.append(AppLocalization.string("照合履歴レポートをお送りします。"))
+        case .inspection: lines.append(AppLocalization.string("検品レポートをお送りします。"))
         }
         lines.append("")
         lines.append(AppLocalization.string("■ セッション"))
